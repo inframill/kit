@@ -1,0 +1,46 @@
+#cloud-config
+
+preserve_hostname: false
+
+package_update: true
+package_upgrade: true
+ssh_pwauth: false
+
+users:
+  - name: "{{ .ssh_user }}"
+    gecos: "{{ .ssh_user }}"
+    groups:
+      - sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys: {{ toJSON .ssh_public_keys }}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    owner: root:root
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+
+packages:
+  - python3
+  - sudo
+  - ufw
+  - vim
+  - htop
+  - curl
+  - git
+  - certbot
+  - unzip
+  - make
+
+runcmd:
+  # Show the full DNS hostname in the configured user's shell prompt.
+  - sed -i 's/\\h/\\H/g' /home/{{ .ssh_user }}/.bashrc
+  - systemctl restart ssh

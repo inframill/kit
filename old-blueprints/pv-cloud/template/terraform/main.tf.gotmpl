@@ -1,0 +1,95 @@
+locals {
+  app    = "{{ .instance_name }}"
+  loc    = "eu-central"
+  labels = { app = local.app, "managed-by" = "terraform" }
+
+  private_networks = {
+    for network in var.private_networks : network.name => network
+  }
+  network_attachments = merge({}, [
+    for node_name, node in var.nodes : {
+      for network_name in node.private_networks : "${node_name}/${network_name}" => {
+        node_name    = node_name
+        network_name = network_name
+      }
+    }
+  ]...)
+}
+
+provider "hcloud" {
+  token = var.hcloud_token
+}
+
+resource "hcloud_network" "this" {
+  for_each = local.private_networks
+
+  name     = "${each.key}-${local.app}"
+  ip_range = each.value.cidr
+  labels   = local.labels
+}
+
+resource "hcloud_network_subnet" "this" {
+  for_each = local.private_networks
+
+  network_id   = hcloud_network.this[each.key].id
+  type         = "cloud"
+  network_zone = local.loc
+  ip_range     = each.value.cidr
+}
+
+resource "hcloud_firewall" "this" {
+  name   = local.app
+  labels = local.labels
+
+  rule {
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "22"
+    source_ips  = var.ssh_source_ips
+    description = "SSH"
+  }
+
+  rule {
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "80"
+    source_ips  = ["0.0.0.0/0", "::/0"]
+    description = "HTTP"
+  }
+
+  rule {
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "443"
+    source_ips  = ["0.0.0.0/0", "::/0"]
+    description = "HTTPS"
+  }
+
+  apply_to {
+    label_selector = "app=${local.app}"
+  }
+}
+
+resource "hcloud_server" "this" {
+  for_each = var.nodes
+
+  name        = "${each.key}-${local.app}"
+  server_type = each.value.server_type
+  image       = "ubuntu-26.04"
+  location    = each.value.location
+  ssh_keys    = []
+  user_data   = file("${path.module}/cloud-init.yaml")
+  labels      = merge(local.labels, { role = each.key })
+
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = true
+  }
+}
+
+resource "hcloud_server_network" "this" {
+  for_each = local.network_attachments
+
+  server_id = hcloud_server.this[each.value.node_name].id
+  subnet_id = hcloud_network_subnet.this[each.value.network_name].id
+}

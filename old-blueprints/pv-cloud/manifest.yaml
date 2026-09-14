@@ -1,0 +1,26 @@
+api_version: inframill.dev/blueprint/v1
+description: Public web Instance with private Networks
+
+systems:
+  ansible:
+    config: ansible.cfg
+    inventory:
+      nodes: instance.nodes
+      address_type: instance.ansible.address_type
+      user: instance.ssh_user
+    roles:
+      - common
+      - web
+      - data
+    playbooks:
+      site: site.yml
+  terraform:
+    environment:
+      TF_VAR_hcloud_token:
+        secret: instance.hcproj
+      AWS_ACCESS_KEY_ID:
+        secret: instance.infra_state_bucket.access_key_ref
+      AWS_SECRET_ACCESS_KEY:
+        secret: instance.infra_state_bucket.secret_key_ref
+    backend_config:
+      bucket: instance.infra_state_bucket.bucket
