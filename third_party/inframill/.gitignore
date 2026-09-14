@@ -1,0 +1,32 @@
+# Local workspace data and Instance request inputs
+/workspaces/
+/packages/
+/instance-configs/
+/instance-config/
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+.envrc
+ssh/*
+
+config.yaml
+.inframill/
+/inframill/
+/locks/
+/blueprints/*/runtime/
+
+# Editor, cache and script output
+.idea
+.DS_Store
+out
+temp
+
+# TypeScript integration test dependencies and build output
+node_modules/
+/tests/engine/.build/
+
+# Local CLI build output
+/main
+/dist/

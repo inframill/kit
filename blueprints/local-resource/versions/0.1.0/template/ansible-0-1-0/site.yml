@@ -1,0 +1,12 @@
+---
+- name: Verify local workflow
+  hosts: local
+  gather_facts: true
+  tasks:
+    - name: Verify target architecture
+      ansible.builtin.assert:
+        that:
+          - "ansible_facts.architecture == ('aarch64' if kit_architecture == 'arm64' else 'x86_64') or (kit_architecture == 'arm64' and ansible_facts.architecture == 'arm64')"
+    - name: Verify Python execution
+      ansible.builtin.assert:
+        that: ansible_facts.python.version.major == 3

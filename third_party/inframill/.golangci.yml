@@ -1,0 +1,126 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  relative-path-mode: gomod
+
+linters:
+  # New linters are enabled by default. Keep the denylist limited to analyzers
+  # that are deprecated, duplicate repository checks, or enforce subjective
+  # policies rather than detecting defects.
+  default: all
+  disable:
+    # Deprecated linters with maintained replacements.
+    - exhaustruct
+    - gomodguard
+    - wsl
+
+    # The architecture suite enforces Inframill's dependency rules directly.
+    - depguard
+    - gomodguard_v2
+
+    # Backend and Engine own lifetime contexts; contextcheck cannot follow
+    # worker cancellation across these boundaries reliably.
+    - containedctx
+    - contextcheck
+
+    # Complexity thresholds and size limits are review signals, not defects.
+    - cyclop
+    - dupl
+    - funlen
+    - gocognit
+    - gocyclo
+    - maintidx
+    - nestif
+
+    # These enforce broad or conflicting coding styles instead of correctness.
+    - decorder
+    - dogsled
+    - embeddedstructfieldcheck
+    - err113
+    - exhaustruct_v5
+    - forbidigo
+    - funcorder
+    - gochecknoglobals
+    - gochecknoinits
+    - godox
+    - grouper
+    - interfacebloat
+    - inamedparam
+    - ireturn
+    - lll
+    - mnd
+    - nlreturn
+    - noinlineerr
+    - nonamedreturns
+    - tagalign
+    - tagliatelle
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl_v5
+
+    # Tests may share process state and must opt into parallelism deliberately.
+    - paralleltest
+    - tparallel
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    exhaustive:
+      check:
+        - switch
+        - map
+      default-signifies-exhaustive: false
+    govet:
+      enable-all: true
+      disable:
+        # Field ordering is an optimization concern, not a correctness rule, and
+        # conflicts with grouping fields by their external contract.
+        - fieldalignment
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+    revive:
+      confidence: 0.8
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    generated: strict
+    warn-unused: true
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      custom-order: true
+      sections:
+        - standard
+        - default
+        - prefix(github.com/sir-hassan/inframill)
+    gofumpt:
+      module-path: github.com/sir-hassan/inframill
+      extra:
+        group-params: true
+        clothe-returns: true
+        balance-calls: true
+  exclusions:
+    generated: strict
+    warn-unused: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,33 @@
+main:
+  port: 8080
+  shutdownTimeout: 10s
+  readHeaderTimeout: 5s
+  readTimeout: 30s
+  writeTimeout: 150s
+  idleTimeout: 60s
+
+logger:
+  type: slog
+  settings:
+    level: debug
+    format: json
+
+engine:
+  dataDir: ./.inframill
+  drivers:
+    debug:
+      path: ./dist/inframill
+      args: [driver, debug]
+
+handlers:
+  - type: connect-engine
+    settings:
+      path: /inframill.v1.EngineService/
+
+workers: []
+
+cli:
+  endpoint: http://127.0.0.1:8080
+  timeout: 2m
+  output: table
+  color: auto

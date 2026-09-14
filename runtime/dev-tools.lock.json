@@ -1,0 +1,16 @@
+{
+  "opentofu": {
+    "darwin_arm64": {
+      "url": "https://github.com/opentofu/opentofu/releases/download/v1.11.5/tofu_1.11.5_darwin_arm64.zip",
+      "sha256": "ce81702643dcdea497259b4de4639d9ee73746560683b9d2b778aae8f7d62827"
+    },
+    "linux_arm64": {
+      "url": "https://github.com/opentofu/opentofu/releases/download/v1.11.5/tofu_1.11.5_linux_arm64.zip",
+      "sha256": "1b79f8fe3cbf7ac0540507bb6bd0ecab1675c78393bbf492867eaabb79840eec"
+    },
+    "linux_amd64": {
+      "url": "https://github.com/opentofu/opentofu/releases/download/v1.11.5/tofu_1.11.5_linux_amd64.zip",
+      "sha256": "901121681e751574d739de5208cad059eddf9bd739b575745cf9e3c961b28a13"
+    }
+  }
+}

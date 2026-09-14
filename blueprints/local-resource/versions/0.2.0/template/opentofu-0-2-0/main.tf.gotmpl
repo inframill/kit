@@ -1,0 +1,18 @@
+terraform {
+  required_version = "= 1.11.5"
+}
+resource "terraform_data" "local" {
+  input = "Inframill Kit local acceptance fixture"
+}
+output "inframill_nodes" {
+  value = {
+    localhost = {
+      name = "localhost"
+      roles = ["local"]
+      architecture = {{ toJSON .architecture }}
+      public_ipv4 = "127.0.0.1"
+      private_ipv4 = ""
+      fqdn = ""
+    }
+  }
+}

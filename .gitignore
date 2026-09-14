@@ -1,0 +1,6 @@
+/bin/
+/dist/
+/.cache/
+/.inframill/
+*.pyc
+__pycache__/

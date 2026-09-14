@@ -1,0 +1,61 @@
+version: '3'
+vars:
+  VERSION: '{{default "0.1.0" .VERSION}}'
+  KIT_VERSION: '{{default "0.1.0" .KIT_VERSION}}'
+  REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
+  NAMESPACE: '{{default "inframill" .NAMESPACE}}'
+env:
+  VERSION: '{{.VERSION}}'
+  KIT_VERSION: '{{.KIT_VERSION}}'
+  REGISTRY: '{{.REGISTRY}}'
+  NAMESPACE: '{{.NAMESPACE}}'
+  BLUEPRINT: '{{default "" .BLUEPRINT}}'
+  DRIVER: '{{default "" .DRIVER}}'
+  DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
+  RELEASE_SET: '{{default "development" .RELEASE_SET}}'
+  REFERENCE: '{{default "" .REFERENCE}}'
+  PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}'
+tasks:
+  setup:
+    cmds: ['python3 scripts/setup-dev.py']
+  build:
+    cmds: ['go run ./cmd/kit-build build']
+  inframill:build:
+    cmds: ['go run ./cmd/kit-build inframill']
+  config:
+    cmds: ['go run ./cmd/kit-build config']
+  check-fast:
+    cmds:
+      - go test -vet=off ./...
+      - task: build
+  check-full:
+    cmds:
+      - task: check-fast
+      - task: inframill:build
+      - python3 scripts/check.py full
+  driver:check:
+    cmds: ['go run ./cmd/kit-build driver:check']
+  blueprint:check:
+    cmds: ['go run ./cmd/kit-build blueprint:check']
+  blueprint:source-digest:
+    cmds: ['go run ./cmd/kit-build blueprint:source-digest']
+  blueprint:package:
+    cmds: ['go run ./cmd/kit-build blueprint:package']
+  blueprint:push:
+    cmds: ['go run ./cmd/kit-build blueprint:push']
+  blueprint:verify:
+    cmds: ['go run ./cmd/kit-build blueprint:verify']
+  blueprints:package:
+    cmds: ['go run ./cmd/kit-build blueprints:package']
+  blueprints:push:
+    cmds: ['go run ./cmd/kit-build blueprints:push']
+  bundle:
+    cmds: ['sh scripts/bundle.sh']
+  bundle:push:
+    cmds: ['go run ./cmd/kit-build bundle:push']
+  bundle:verify:
+    cmds: ['go run ./cmd/kit-build bundle:verify']
+  registry:up:
+    cmds: ['docker compose -f runtime/registry.compose.yaml up -d']
+  registry:down:
+    cmds: ['docker compose -f runtime/registry.compose.yaml down']

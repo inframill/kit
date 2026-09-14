@@ -1,0 +1,27 @@
+{
+  "name": "local-resource",
+  "version": "0.1.0",
+  "protocol": 1,
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "drivers": [
+    {
+      "id": "opentofu-0-1-0",
+      "name": "opentofu",
+      "version": "0.1.0"
+    },
+    {
+      "id": "ansible-0-1-0",
+      "name": "ansible",
+      "version": "0.1.0"
+    }
+  ],
+  "status": "supported",
+  "source_sha256": "sha256:e0444a4fb134d459a8fb8b1003be91a79efc21d8d19f2add4234c2d56a04aacc"
+}

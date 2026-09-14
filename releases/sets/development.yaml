@@ -1,0 +1,16 @@
+{
+  "blueprints": [
+    {
+      "name": "pv-cloud",
+      "version": "0.1.0"
+    },
+    {
+      "name": "local-resource",
+      "version": "0.1.0"
+    },
+    {
+      "name": "local-resource",
+      "version": "0.2.0"
+    }
+  ]
+}

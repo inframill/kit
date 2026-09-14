@@ -1,0 +1,176 @@
+syntax = "proto3";
+package inframill.v1;
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+option go_package = "github.com/sir-hassan/inframill/internal/gen/inframill/v1;inframillv1";
+
+service EngineService {
+ rpc FetchBlueprint(FetchBlueprintRequest) returns (FetchBlueprintResponse);
+ rpc ListBlueprints(ListBlueprintsRequest) returns (ListBlueprintsResponse);
+ rpc ListDrivers(ListDriversRequest) returns (ListDriversResponse);
+ rpc ListCommandDefinitions(ListCommandDefinitionsRequest) returns (ListCommandDefinitionsResponse);
+ rpc InitInstance(InitInstanceRequest) returns (InitInstanceResponse);
+ rpc SubmitCommand(SubmitCommandRequest) returns (SubmitCommandResponse);
+ rpc GetCommandExecution(GetCommandExecutionRequest) returns (GetCommandExecutionResponse);
+ rpc ListCommandExecutions(ListCommandExecutionsRequest) returns (ListCommandExecutionsResponse);
+ rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
+ rpc ListInstances(ListInstancesRequest) returns (ListInstancesResponse);
+ rpc ReadCommandLog(ReadCommandLogRequest) returns (ReadCommandLogResponse);
+}
+message BlueprintInfo {
+ string repository = 1;
+ string reference = 2;
+ string digest = 3;
+ repeated string tags = 4;
+ string api_version = 5;
+ string description = 6;
+ string directory = 7;
+}
+message FetchBlueprintRequest { string reference = 1; }
+message FetchBlueprintResponse { BlueprintInfo blueprint = 1; }
+message ListBlueprintsRequest {}
+message ListBlueprintsResponse { repeated BlueprintInfo blueprints = 1; }
+
+enum SafetyClass {
+ SAFETY_CLASS_UNSPECIFIED = 0;
+ SAFETY_CLASS_READ_ONLY = 1;
+ SAFETY_CLASS_REVERSIBLE = 2;
+ SAFETY_CLASS_MUTATING = 3;
+ SAFETY_CLASS_DESTRUCTIVE = 4;
+}
+message CommandDefinition {
+ string name = 1;
+ string description = 2;
+ google.protobuf.Struct arguments_schema = 3;
+ SafetyClass safety = 4;
+ repeated string effects = 5;
+ string verification = 6;
+}
+message ListCommandDefinitionsRequest {}
+message ListCommandDefinitionsResponse { repeated CommandDefinition commands = 1; }
+message InstanceConfig {
+ string blueprint = 1;
+ google.protobuf.Struct values = 2;
+}
+enum InstanceStatus {
+ INSTANCE_STATUS_UNSPECIFIED = 0;
+ INSTANCE_STATUS_IDLE = 1;
+ INSTANCE_STATUS_RUNNING = 2;
+ INSTANCE_STATUS_FAILED = 3;
+}
+message Failure {
+ string code = 1;
+ string message = 2;
+ string path = 3;
+}
+message Instance {
+ string id = 1;
+ string name = 2;
+ string blueprint = 3;
+ google.protobuf.Struct values = 4;
+ InstanceStatus status = 5;
+ Failure failure = 6;
+}
+message InitInstanceRequest {
+ string name = 1;
+ InstanceConfig instance = 2;
+}
+message InitInstanceResponse { Instance instance = 1; }
+message GetInstanceRequest { string instance_id = 1; }
+message GetInstanceResponse {
+ Instance instance = 1;
+ google.protobuf.Timestamp observed_at = 2;
+}
+message ListInstancesRequest {
+ string project = 1;
+ int32 limit = 2;
+ string cursor = 3;
+}
+message ListInstancesResponse {
+ repeated Instance instances = 1;
+ string next_cursor = 2;
+ google.protobuf.Timestamp observed_at = 3;
+}
+message CommandRequest {
+ string id = 1;
+ string command = 2;
+ google.protobuf.Struct args = 3;
+ string idempotency_key = 4;
+}
+message SubmitCommandRequest {
+ string instance_id = 1;
+ string command = 2;
+ google.protobuf.Struct args = 3;
+ string idempotency_key = 4;
+}
+message SubmitCommandResponse { string command_id = 1; }
+enum CommandStatus {
+ COMMAND_STATUS_UNSPECIFIED = 0;
+ COMMAND_STATUS_QUEUED = 1;
+ COMMAND_STATUS_RUNNING = 2;
+ COMMAND_STATUS_SUCCEEDED = 3;
+ COMMAND_STATUS_FAILED = 4;
+ COMMAND_STATUS_INTERRUPTED = 5;
+}
+message CommandExecution {
+ CommandRequest request = 1;
+ CommandStatus status = 2;
+ google.protobuf.Timestamp created_at = 3;
+ google.protobuf.Timestamp started_at = 4;
+ google.protobuf.Timestamp ended_at = 5;
+ google.protobuf.Value result = 6;
+ Failure error = 7;
+}
+message GetCommandExecutionRequest {
+ string instance_id = 1;
+ string command_id = 2;
+}
+message GetCommandExecutionResponse {
+ CommandExecution execution = 1;
+ google.protobuf.Timestamp observed_at = 2;
+}
+message ListCommandExecutionsRequest {
+ string instance_id = 1;
+ CommandStatus status = 2;
+ int32 limit = 3;
+ string cursor = 4;
+}
+message ListCommandExecutionsResponse {
+ repeated CommandExecution executions = 1;
+ string next_cursor = 2;
+ google.protobuf.Timestamp observed_at = 3;
+}
+enum LogStream {
+ LOG_STREAM_UNSPECIFIED = 0;
+ LOG_STREAM_STDOUT = 1;
+ LOG_STREAM_STDERR = 2;
+}
+message ReadCommandLogRequest {
+ string instance_id = 1;
+ string command_id = 2;
+ LogStream stream = 3;
+ int64 offset = 4;
+ int32 limit = 5;
+}
+message ReadCommandLogResponse {
+ bytes data = 1;
+ int64 next_offset = 2;
+ bool eof = 3;
+}
+
+// Health reflects the latest effect-free info probe, not infrastructure health.
+enum DriverStatus {
+ DRIVER_STATUS_UNSPECIFIED = 0;
+ DRIVER_STATUS_CONNECTED = 1;
+ DRIVER_STATUS_OFFLINE = 2;
+}
+message DriverInfo {
+ string id = 1;
+ string name = 2;
+ string version = 3;
+ DriverStatus status = 4;
+ string reason = 5;
+ google.protobuf.Timestamp checked_at = 6;
+}
+message ListDriversRequest {}
+message ListDriversResponse { repeated DriverInfo drivers = 1; }

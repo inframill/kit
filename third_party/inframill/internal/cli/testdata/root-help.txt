@@ -1,0 +1,28 @@
+Manage named Instances through external Drivers
+
+Usage:
+  inframill [flags]
+  inframill [command]
+
+Local commands:
+  driver      Inspect local Drivers and run Driver protocol entry points
+  exec        Execute locally and stream the verified result
+  history     Read existing local Instance command history
+  server      Start the daemon using required application configuration
+
+Daemon commands:
+  blueprint   Manage blueprint resources
+  command     Manage command resources
+  instance    Manage instance resources
+
+Utilities:
+  completion  Generate the autocompletion script for the specified shell
+  help        Help about any command
+  version     Print the core release version
+
+Flags:
+      --color string   human output color: auto, always or never (default "auto")
+  -h, --help           help for inframill
+  -v, --version        version for inframill
+
+Use "inframill [command] --help" for more information about a command.

@@ -1,0 +1,58 @@
+{
+  "api_version": "inframill.dev/blueprint/v1",
+  "description": "pv-cloud 0.1.0",
+  "drivers": {
+    "opentofu-0-1-0": {
+      "required_driver_version": "0.1.0",
+      "id": "opentofu-0-1-0",
+      "backend": "s3",
+      "node_output": "inframill_nodes",
+      "artifact": "opentofu-0-1-0-nodes-v1.json",
+      "environment": {
+        "HCLOUD_TOKEN": {
+          "secret_from_value": "cloud_secret_ref"
+        },
+        "AWS_ACCESS_KEY_ID": {
+          "secret_from_value": "infra_state_bucket.access_key_ref"
+        },
+        "AWS_SECRET_ACCESS_KEY": {
+          "secret_from_value": "infra_state_bucket.secret_key_ref"
+        }
+      },
+      "backend_config": {
+        "bucket": {
+          "from_value": "infra_state_bucket.bucket"
+        },
+        "region": {
+          "from_value": "infra_state_bucket.region"
+        },
+        "use_path_style": {
+          "from_value": "infra_state_bucket.use_path_style"
+        }
+      }
+    },
+    "ansible-0-1-0": {
+      "required_driver_version": "0.1.0",
+      "id": "ansible-0-1-0",
+      "producer_id": "opentofu-0-1-0",
+      "producer_version": "0.1.0",
+      "artifact": "opentofu-0-1-0-nodes-v1.json",
+      "address_mode": {
+        "from_value": "ansible.address_mode"
+      },
+      "ssh_user": {
+        "from_value": "ssh_user"
+      },
+      "connection": "ssh",
+      "host_key_policy": "strict",
+      "roles": [
+        "common",
+        "web",
+        "data"
+      ],
+      "playbooks": {
+        "site": "site.yml"
+      }
+    }
+  }
+}

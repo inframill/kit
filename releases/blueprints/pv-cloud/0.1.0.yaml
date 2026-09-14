@@ -1,0 +1,27 @@
+{
+  "name": "pv-cloud",
+  "version": "0.1.0",
+  "protocol": 1,
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "drivers": [
+    {
+      "id": "opentofu-0-1-0",
+      "name": "opentofu",
+      "version": "0.1.0"
+    },
+    {
+      "id": "ansible-0-1-0",
+      "name": "ansible",
+      "version": "0.1.0"
+    }
+  ],
+  "status": "supported",
+  "source_sha256": "sha256:536998f16364132027c6ecadd9534f6cb29d8d8dcf99e179d34e318c5079f54c"
+}

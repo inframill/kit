@@ -1,0 +1,10 @@
+{
+  "name": "ansible",
+  "version": "0.2.0",
+  "tool_version": "2.20.1",
+  "implementation": "internal/driverkit",
+  "features": [
+    "baseline",
+    "tags"
+  ]
+}
