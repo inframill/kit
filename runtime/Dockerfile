@@ -1,6 +1,7 @@
 ARG BASE_IMAGE=python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d
 FROM ${BASE_IMAGE}
 ARG TARGETARCH
+ARG INFRAMILL_VERSION
 ARG SOURCE_DATE_EPOCH=1759190400
 LABEL org.opencontainers.image.source="https://github.com/inframill/kit"
 LABEL org.opencontainers.image.description="Inframill runtime with versioned Kit drivers, OpenTofu and Ansible Core"
@@ -21,6 +22,7 @@ COPY NOTICES.md /usr/share/inframill/NOTICES.md
 RUN mkdir -p /var/lib/inframill \
     && cp /build/bundle.lock.json /usr/share/inframill/bundle.lock.json \
     && dpkg-query -W > /usr/share/inframill/os-packages.txt \
+    && test "$(inframill --version)" = "$INFRAMILL_VERSION" \
     && inframill-kit version \
     && /opt/inframill/tools/opentofu/1.11.5/tofu version \
     && /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook --version

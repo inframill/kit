@@ -23,8 +23,10 @@ opaque driver configuration. Implement version selection and compatibility check
 in Kit and its build tooling; verify their integration without assuming core
 dependency resolution or automatic version upgrades.
 Reference inspected: commit `acb50af152b4412110639ffaf7de1779f97304aa`.
-The revision was unavailable from the remote, so an unmodified licensed source
-snapshot under `third_party/inframill/` supplies the public protocol and runtime build.
+Kit imports the public driver protocol from the sibling `../inframill` Go module.
+The bundle copies prebuilt Linux ARM64 and AMD64 binaries from that project's
+`dist/` directory, verifying the per-platform paths and checksums in the bundle
+lock. It does not build Inframill. The local `third_party` directory is removed.
 
 Confirmed project name: Inframill Kit. Repository: `inframill/kit`; Go module:
 `github.com/inframill/kit`; executable: `inframill-kit`. The runtime image repository
@@ -509,7 +511,9 @@ Bulk publication is not atomic; report partial success and preserve already
 published immutable artifacts when retrying.
 
 Have `task bundle` invoke `scripts/bundle.sh`, driven by a committed per-bundle
-dependency lock. Pin Inframill revision/version, Inframill Kit version/build digest,
+dependency lock. Require prebuilt Inframill binaries from the sibling `dist/`
+directory; never invoke its build/release tasks. Pin each binary path, SHA-256
+and ELF architecture, Inframill revision/version, Inframill Kit version/build digest,
 every selected driver name/version and its OpenTofu or Ansible Core, Python and
 Python dependencies, plus any preloaded provider checksums and container base
 digest. Blueprint provider locks belong to each blueprint release; preloading must
@@ -642,9 +646,10 @@ Implemented in this checkout:
 - GHCR defaults to the `inframill` namespace. Docker credential helpers support
   manual authenticated pushes. No GitHub Actions or automatic publication was
   added. A disposable local registry supports integration verification.
-- The unavailable upstream revision is supplied as an unchanged licensed source
-  snapshot. Runtime distribution includes component notices and matching source
-  archives. The original `old-blueprints/` migration input is unchanged.
+- Kit uses the sibling public protocol module; the bundle copies that project's
+  prebuilt Linux releases. The local `third_party` snapshot is removed. Runtime
+  distribution includes component notices and OpenTofu/Python source archives.
+  The original `old-blueprints/` migration input is unchanged.
 
 Verification completed during implementation:
 
@@ -687,7 +692,7 @@ including conflicting-tag rejection and both platform execution paths. The log i
 `.cache/check-full.log`. `git diff --check`, Go formatting and Python syntax checks
 also passed.
 
-Built artifacts ready for manual publication:
+Initial artifact digests (runtime superseded by the binary-input update below):
 
 | Artifact | Digest |
 | --- | --- |
@@ -697,4 +702,32 @@ Built artifacts ready for manual publication:
 | Runtime 0.1.0 index | `sha256:488a19d980589f2cdcc641f2b4204d0806286aa900e22ccb0dc54ea5931765a2` |
 
 The OCI layouts and build records are under `dist/`. These are unpublished local
-artifacts. The runtime build record's source hashes match the current checkout.
+artifacts. The initial runtime used the source snapshot; rebuild it after the binary-input update.
+
+## Prebuilt Inframill inputs — implemented 2026-09-14
+
+`task bundle` now copies existing Inframill Linux AMD64 and ARM64 binaries from
+`../inframill/dist/0.0.0-dev/`. `INFRAMILL_DIST_DIR` overrides the input root;
+`inframill.binaries` in the bundle lock pins each relative filename and SHA-256.
+The build rejects missing files, changed contents, non-Linux executables and
+architecture mismatches. Each image verifies the copied executable's version.
+Kit never invokes an Inframill build or release task.
+
+The local `third_party/` directory is removed. Kit's Go module uses the sibling
+`../inframill` public driver protocol. Bundle source material contains Kit and
+available dependency notices, without embedding the sibling source tree.
+`task inframill:copy` selects the native binary from the same versioned release
+for local checks; it avoids the older unversioned `dist/inframill` binary.
+
+Verification: all six binary-input tests and `task check-full` passed. Both
+runtime variants completed the actual driver workflows and four provider mock
+tests (native ARM64, emulated AMD64). Copied image executables match the sibling
+release checksums byte-for-byte, and the images contain no `third_party` tree.
+`git diff --check` passed. Logs are `.cache/binary-copy-bundle.log` and
+`.cache/binary-copy-full.log`. No GHCR publication was performed.
+
+The current local runtime index is
+`sha256:5e860b923f8f07c4f2a712d1ffc395a15f8c7bb9dce7c42df95f1601b947814e`.
+Its layout/build record are under `dist/bundles/0.1.0/`; prior unpublished output
+was moved to `.cache/` before rebuilding. The external release acceptance gates
+listed above remain unchanged.

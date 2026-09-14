@@ -9,6 +9,7 @@ env:
   KIT_VERSION: '{{.KIT_VERSION}}'
   REGISTRY: '{{.REGISTRY}}'
   NAMESPACE: '{{.NAMESPACE}}'
+  INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
   BLUEPRINT: '{{default "" .BLUEPRINT}}'
   DRIVER: '{{default "" .DRIVER}}'
   DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
@@ -20,18 +21,19 @@ tasks:
     cmds: ['python3 scripts/setup-dev.py']
   build:
     cmds: ['go run ./cmd/kit-build build']
-  inframill:build:
-    cmds: ['go run ./cmd/kit-build inframill']
+  inframill:copy:
+    cmds: ['go run ./cmd/kit-build inframill:copy']
   config:
     cmds: ['go run ./cmd/kit-build config']
   check-fast:
     cmds:
+      - python3 -m unittest discover -s scripts -p "test_*.py"
       - go test -vet=off ./...
       - task: build
   check-full:
     cmds:
       - task: check-fast
-      - task: inframill:build
+      - task: inframill:copy
       - python3 scripts/check.py full
   driver:check:
     cmds: ['go run ./cmd/kit-build driver:check']

@@ -1,4 +1,0 @@
-api_version: inframill.dev/blueprint/v1
-description: Local debug operations for testing Inframill
-drivers:
-  debug: {}

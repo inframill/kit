@@ -2,7 +2,7 @@ module github.com/inframill/kit
 
 go 1.27.0
 
-replace github.com/sir-hassan/inframill => ./third_party/inframill
+replace github.com/sir-hassan/inframill => ../inframill
 
 require (
 	github.com/opencontainers/go-digest v1.0.0

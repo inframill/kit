@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Build both platforms to a local OCI layout. Never authenticate or push."""
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
+from bundle_inputs import read_binary
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 version=os.environ.get('VERSION','0.1.0')
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
 lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=json.loads(lock_path.read_text())
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
+inframill_dist=(ROOT/os.environ.get('INFRAMILL_DIST_DIR','../inframill/dist')).resolve()
+inputs=lock['inframill']['binaries']
+if set(inputs)!={'amd64','arm64'}:raise SystemExit('Both prebuilt Inframill architectures required')
+try:
+    inframill_binaries={arch:read_binary(inframill_dist,inputs[arch],arch) for arch in ['amd64','arm64']}
+except (ValueError,OSError) as error:raise SystemExit(str(error))
 if subprocess.check_output(['go','env','GOVERSION'],text=True).strip()!=lock['go_version']:raise SystemExit('Go toolchain differs from bundle lock')
 if set(lock['platforms'])!={'linux/amd64','linux/arm64'}:raise SystemExit('Both platforms required')
 # Check the declared components against the executable that will be shipped.
@@ -32,18 +39,19 @@ def run(args,**kwargs):
     print('+',' '.join(map(str,args)),flush=True);subprocess.run(list(map(str,args)),check=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     stage=pathlib.Path(td);context=stage/'context';context.mkdir();sources=context/'sources';sources.mkdir()
-    for name in ['go.mod','go.sum','LICENSE','README.md','cmd','internal','third_party','drivers','releases','scripts','runtime','Taskfile.yml']:
+    for name in ['go.mod','go.sum','LICENSE','README.md','cmd','internal','drivers','releases','scripts','runtime','Taskfile.yml']:
         p=ROOT/name
         if p.is_dir():shutil.copytree(p,sources/name,ignore=shutil.ignore_patterns('__pycache__'))
         else:shutil.copy2(p,sources/name)
-    # Collect notices from the actual linked Go modules, excluding tool-only modules.
+    # Collect notices using the sibling source module; Inframill itself is only
+    # copied from dist, never compiled here. No sibling source is embedded.
     module_dirs=set()
-    for directory,target in [(ROOT,'./cmd/inframill-kit'),(ROOT/'third_party/inframill','./cmd')]:
+    for directory,target in [(ROOT,'./cmd/inframill-kit'),(ROOT.parent/'inframill','./cmd')]:
         text=subprocess.check_output(['go','list','-deps','-f','{{if .Module}}{{.Module.Dir}}{{end}}',target],cwd=directory,text=True)
         module_dirs.update(pathlib.Path(p) for p in text.splitlines() if p)
     notices=sources/'go-dependency-notices';notices.mkdir()
     for module in sorted(module_dirs):
-        if module in [ROOT,ROOT/'third_party/inframill']:continue
+        if module == ROOT:continue
         for pattern in ['LICENSE*','COPYING*','NOTICE*','AUTHORS*']:
             for file in module.glob(pattern):
                 if file.is_file():
@@ -52,7 +60,8 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
         bindir=context/f'bin/linux/{arch}';bindir.mkdir(parents=True)
         env={**os.environ,'GOOS':'linux','GOARCH':arch,'CGO_ENABLED':'0'}
         run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['kit_version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
-        run(['go','build','-trimpath','-buildvcs=false','-o',bindir/'inframill','./cmd'],cwd=ROOT/'third_party/inframill',env=env)
+        (bindir/'inframill').write_bytes(inframill_binaries[arch])
+        (bindir/'inframill').chmod(0o755)
     drivers={}
     for d in lock['drivers']:
         base,sep,pre=d['version'].partition('-');alias=d['name']+'-'+base.replace('.','-')+('-pre-'+pre.encode().hex() if sep else '')
@@ -61,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     for name in ['Dockerfile','requirements.lock','python-sources.lock.json','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
     shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');shutil.copy2(lock_path,context/'bundle.lock.json')
     tar=stage/'image.tar'
-    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag','inframill/runtime:'+version,context])
+    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag','inframill/runtime:'+version,context])
     layout=stage/'oci';layout.mkdir()
     with tarfile.open(tar) as archive:
         for item in archive:
@@ -75,6 +84,6 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     rootmanifest=json.loads((layout/'blobs/sha256'/descriptor['digest'].split(':')[1]).read_text())
     found={m.get('platform',{}).get('architecture') for m in rootmanifest['manifests']}
     if found!={'amd64','arm64'}:raise RuntimeError('Missing runtime platform')
-    record={'source_files':{str(p.relative_to(sources)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.rglob('*') if p.is_file()},'version':version,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),'descriptor':descriptor,'platforms':rootmanifest['manifests'],'binaries':{str(p.relative_to(context)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (context/'bin').rglob('*') if p.is_file()}}
+    record={'inframill':lock['inframill'],'source_files':{str(p.relative_to(sources)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.rglob('*') if p.is_file()},'version':version,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),'descriptor':descriptor,'platforms':rootmanifest['manifests'],'binaries':{str(p.relative_to(context)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (context/'bin').rglob('*') if p.is_file()}}
     output.mkdir();shutil.move(str(layout),output/'oci');(output/'build.json').write_text(json.dumps(record,indent=2)+'\n')
     print('Built local bundle:',output,'digest:',descriptor['digest'])

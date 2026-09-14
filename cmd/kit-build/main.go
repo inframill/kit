@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/inframill/kit/internal/catalog"
@@ -84,8 +85,47 @@ func run() error {
 			return e
 		}
 		return command(root, "go", "build", "-trimpath", "-ldflags=-X main.version="+kv, "-o", "bin/inframill-kit", "./cmd/inframill-kit")
-	case "inframill":
-		return command(filepath.Join(root, "third_party/inframill"), "go", "build", "-trimpath", "-o", filepath.Join(root, "bin/inframill"), "./cmd")
+	case "inframill:copy":
+		lockBytes, err := os.ReadFile(filepath.Join(root, "releases/bundles", version+".lock.yaml"))
+		if err != nil {
+			return err
+		}
+		var lock struct {
+			Inframill struct {
+				Version  string `json:"version"`
+				Binaries map[string]struct {
+					Path string `json:"path"`
+				} `json:"binaries"`
+			} `json:"inframill"`
+		}
+		if err = json.Unmarshal(lockBytes, &lock); err != nil {
+			return err
+		}
+		iv := lock.Inframill.Version
+		if !catalog.ValidVersion(iv) {
+			return errors.New("invalid Inframill release version")
+		}
+		relative := filepath.Join(iv, "inframill_"+iv+"_"+runtime.GOOS+"_"+runtime.GOARCH)
+		if runtime.GOOS == "linux" {
+			entry, ok := lock.Inframill.Binaries[runtime.GOARCH]
+			if !ok || !filepath.IsLocal(entry.Path) {
+				return errors.New("missing native Inframill release path")
+			}
+			relative = entry.Path
+		}
+		source := filepath.Join(env("INFRAMILL_DIST_DIR", filepath.Join(root, "..", "inframill", "dist")), relative)
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return fmt.Errorf("read prebuilt native Inframill binary: %w", err)
+		}
+		if err = os.MkdirAll(filepath.Join(root, "bin"), 0755); err != nil {
+			return err
+		}
+		destination := filepath.Join(root, "bin", "inframill")
+		if err = os.WriteFile(destination, data, 0755); err != nil {
+			return err
+		}
+		return os.Chmod(destination, 0755)
 	case "config":
 		drivers := map[string]any{}
 		for _, r := range catalog.List() {

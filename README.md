@@ -29,7 +29,7 @@ runs with `python3`; set `PYTHON` for the interpreter used by the Ansible test v
 ```sh
 PYTHON=/path/to/python3.13 task setup
 task build KIT_VERSION=0.1.0
-task inframill:build
+task inframill:copy
 task check-fast
 ```
 
@@ -39,9 +39,30 @@ are Linux ARM64/AMD64 and macOS ARM64. Override `OPENTOFU_PATH` and `ANSIBLE_PAT
 with absolute executable paths when using an existing installation; versions are
 still checked against the selected driver's lock.
 
-The pinned Inframill revision was not available from its remote during development.
-An exact, licensed source snapshot is included in [third_party](third_party/README.md).
-Builds require no sibling checkout or private GitHub authentication.
+Kit imports the public driver protocol from the sibling `../inframill` Go module.
+The local `third_party` snapshot has been removed. `task inframill:copy` copies
+the host-platform binary from the same versioned sibling release to `bin/inframill`
+for native local checks. On this macOS ARM64 host that input is
+`../inframill/dist/0.0.0-dev/inframill_0.0.0-dev_darwin_arm64`.
+
+The bundle copies these existing Linux release binaries from the sibling project:
+
+```text
+../inframill/dist/0.0.0-dev/inframill_0.0.0-dev_linux_amd64
+../inframill/dist/0.0.0-dev/inframill_0.0.0-dev_linux_arm64
+```
+
+Their paths and SHA-256 checksums are pinned under `inframill.binaries` in
+`releases/bundles/0.1.0.lock.yaml`. Both must already exist. The bundle validates
+the checksum and ELF architecture, copies the bytes, and sets executable mode.
+It never runs Inframill's build/release tasks or falls back to compiling Inframill.
+Kit itself is compiled for both architectures from this repository.
+
+Override the binary input directory with `task bundle INFRAMILL_DIST_DIR=/path/to/dist`.
+Paths in the lock are relative to that directory. Select new paths/checksums in a
+new bundle lock when changing the Inframill release; mismatches fail the build.
+The sibling source checkout supplies the protocol dependency and dependency
+notices, but its source tree is not embedded in the runtime.
 
 ```sh
 task blueprint:check BLUEPRINT=local-resource VERSION=0.1.0
@@ -250,7 +271,9 @@ Deprecated releases remain retrievable for pinned Instances. A newer bundle must
 retain required drivers to serve older Instances; it never upgrades them implicitly.
 
 The runtime ships license notices, component locks, matching OpenTofu/Ansible and
-Python dependency sources, and the Kit/Inframill snapshot. See
+Python dependency sources, and Kit sources. Inframill is copied from its pinned
+binary release; available Go dependency notices are collected from the sibling
+module. See
 [runtime/NOTICES.md](runtime/NOTICES.md). OpenTofu uses MPL-2.0 and Ansible Core uses
 GPL-3.0-or-later; their redistribution conditions apply independently of Kit's MIT
 license. New dependency selections require a release-specific license review.

@@ -1,7 +1,6 @@
 {
   "version": "0.1.0",
   "kit_version": "0.1.0",
-  "inframill_revision": "acb50af152b4412110639ffaf7de1779f97304aa",
   "platforms": [
     "linux/amd64",
     "linux/arm64"
@@ -51,5 +50,19 @@
       "sha256": "450f962f262d9f484ad1fb73454650740cdce0d83a854ad8b6c183cc5822eb09"
     }
   },
-  "go_version": "go1.27.0"
+  "go_version": "go1.27.0",
+  "inframill": {
+    "version": "0.0.0-dev",
+    "revision": "acb50af152b4412110639ffaf7de1779f97304aa",
+    "binaries": {
+      "amd64": {
+        "path": "0.0.0-dev/inframill_0.0.0-dev_linux_amd64",
+        "sha256": "de522f7ea6196328cee8c3751158d6dbbe2de8917baf8a1d0291d0ceb895d552"
+      },
+      "arm64": {
+        "path": "0.0.0-dev/inframill_0.0.0-dev_linux_arm64",
+        "sha256": "6daddc20c5c6c7e044dba4e949eabe1d19bdf7db194b1e7a69990d4e52c7f678"
+      }
+    }
+  }
 }

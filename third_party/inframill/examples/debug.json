@@ -1,8 +1,0 @@
-{
-  "blueprint": "example.invalid/debug:latest",
-  "values": {
-    "message": "Hello from Inframill",
-    "mode": "success",
-    "secret_ref": "debug_token"
-  }
-}
