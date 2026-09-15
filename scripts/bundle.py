@@ -2,10 +2,11 @@
 """Build both platforms to a local OCI layout. Never authenticate or push."""
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
 from bundle_inputs import read_binary
+from release_config import bundle_lock, configuration
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 version=os.environ.get('VERSION','0.1.0')
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
-lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=json.loads(lock_path.read_text())
+lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=bundle_lock(version)
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
 inframill_dist=(ROOT/os.environ.get('INFRAMILL_DIST_DIR','../inframill/dist')).resolve()
 inputs=lock['inframill']['binaries']
@@ -30,16 +31,14 @@ for driver in lock['drivers']:
     if release['name']!=key[0] or release['version']!=key[1] or release['tool_version']!=catalog[key] or installed!=catalog[key]:raise SystemExit('Driver/tool lock mismatch')
     if release['protocol']!=1 or set(release['platforms'])!=set(lock['platforms']):raise SystemExit('Driver platform/protocol mismatch')
 if not selected:raise SystemExit('Bundle must select at least one driver')
-for file,key in [('runtime/requirements.lock','python_requirements_sha256'),('runtime/python-sources.lock.json','python_sources_sha256')]:
-    if hashlib.sha256((ROOT/file).read_bytes()).hexdigest()!=lock[key]:raise SystemExit('Dependency lock checksum mismatch: '+file)
-output=ROOT/f'dist/bundles/{version}'
+output=(ROOT/os.environ.get('KIT_DIST_DIR','dist'))/f'bundles/{version}'
 if output.exists():raise SystemExit('Bundle output already exists; push it or select a new version. Explicitly move development output aside before rebuilding.')
 output.parent.mkdir(parents=True,exist_ok=True)
 def run(args,**kwargs):
     print('+',' '.join(map(str,args)),flush=True);subprocess.run(list(map(str,args)),check=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     stage=pathlib.Path(td);context=stage/'context';context.mkdir();sources=context/'sources';sources.mkdir()
-    for name in ['go.mod','go.sum','LICENSE','README.md','cmd','internal','drivers','releases','scripts','runtime','Taskfile.yml']:
+    for name in ['go.mod','go.sum','LICENSE','README.md','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
         p=ROOT/name
         if p.is_dir():shutil.copytree(p,sources/name,ignore=shutil.ignore_patterns('__pycache__'))
         else:shutil.copy2(p,sources/name)
@@ -62,15 +61,11 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
         run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['kit_version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
         (bindir/'inframill').write_bytes(inframill_binaries[arch])
         (bindir/'inframill').chmod(0o755)
-    drivers={}
-    for d in lock['drivers']:
-        base,sep,pre=d['version'].partition('-');alias=d['name']+'-'+base.replace('.','-')+('-pre-'+pre.encode().hex() if sep else '')
-        drivers[alias]={'path':'/usr/local/bin/inframill-kit','args':['driver',d['name'],'--driver-version',d['version']]}
-    (context/'config.json').write_text(json.dumps({'engine':{'dataDir':'/var/lib/inframill','drivers':drivers},'handlers':[{'type':'connect-engine','settings':{'path':'/inframill.v1.EngineService/'}}]}))
+    (context/'config.json').write_text(json.dumps(configuration('/usr/local/bin/inframill-kit','/var/lib/inframill',drivers=lock['drivers'])))
     for name in ['Dockerfile','requirements.lock','python-sources.lock.json','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
-    shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');shutil.copy2(lock_path,context/'bundle.lock.json')
+    shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');(context/'bundle.lock.json').write_text(json.dumps(lock,indent=2)+'\n')
     tar=stage/'image.tar'
-    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag','inframill/runtime:'+version,context])
+    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','OPENTOFU_VERSION='+lock['opentofu']['version'],'--build-arg','ANSIBLE_VERSION='+lock['ansible_core'],'--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag','inframill/runtime:'+version,context])
     layout=stage/'oci';layout.mkdir()
     with tarfile.open(tar) as archive:
         for item in archive:

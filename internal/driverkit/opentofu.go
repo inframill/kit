@@ -25,10 +25,10 @@ type planRecord struct {
 	Destroy       bool         `json:"destroy"`
 }
 
-func (r runner) invalidate(c Config, req wire.Request) error {
+func (r runner) invalidate(c Config, req invocation) error {
 	return writePrivate(req.ArtifactDirectory, c.Artifact, map[string]any{"schema": 1, "valid": false})
 }
-func (r runner) tofu(ctx context.Context, release catalog.Release, c Config, a Arguments, req wire.Request) (any, error) {
+func (r runner) tofu(ctx context.Context, release catalog.Release, c Config, a Arguments, req invocation) (any, error) {
 	switch req.Command {
 	case "init":
 		args := []string{"init", "-input=false", "-no-color", "-lockfile=readonly"}
@@ -83,7 +83,7 @@ func (r runner) tofu(ctx context.Context, release catalog.Release, c Config, a A
 			return nil, e
 		}
 		name := c.ID + "-plan-" + req.CommandID
-		rec := planRecord{1, *req.Binding, release.Version, release.ToolVersion, jsonHash(c), source, hash(b), req.CommandID, a.Destroy}
+		rec := planRecord{1, req.Binding, release.Version, release.ToolVersion, jsonHash(c), source, hash(b), req.CommandID, a.Destroy}
 		if e = writeBytes(req.ArtifactDirectory, name+".bin", b); e != nil {
 			return nil, e
 		}
@@ -105,7 +105,7 @@ func (r runner) tofu(ctx context.Context, release catalog.Release, c Config, a A
 		if e != nil {
 			return nil, e
 		}
-		if rec.Schema != 1 || rec.Binding != *req.Binding || rec.CommandID != a.PlanID || rec.DriverVersion != release.Version || rec.ToolVersion != release.ToolVersion || rec.ConfigHash != jsonHash(c) || rec.SourceHash != source || rec.Destroy != (req.Command == "destroy") {
+		if rec.Schema != 1 || rec.Binding != req.Binding || rec.CommandID != a.PlanID || rec.DriverVersion != release.Version || rec.ToolVersion != release.ToolVersion || rec.ConfigHash != jsonHash(c) || rec.SourceHash != source || rec.Destroy != (req.Command == "destroy") {
 			return nil, errors.New("saved plan is incompatible; create a fresh plan")
 		}
 		raw, e := readPrivate(req.ArtifactDirectory, name+".bin", maxArtifact)
@@ -189,7 +189,7 @@ func managed(m module) int {
 	}
 	return n
 }
-func (r runner) publish(ctx context.Context, release catalog.Release, c Config, req wire.Request) (any, error) {
+func (r runner) publish(ctx context.Context, release catalog.Release, c Config, req invocation) (any, error) {
 	b, code, e := r.call(ctx, true, "output", "-json", c.NodeOutput)
 	if e = toolSuccess(code, e); e != nil {
 		return nil, e
@@ -201,7 +201,7 @@ func (r runner) publish(ctx context.Context, release catalog.Release, c Config, 
 	if len(nodes) == 0 || len(nodes) > 1000 {
 		return nil, errors.New("node output must contain 1..1000 nodes")
 	}
-	artifact := Nodes{Schema: 1, Valid: true, Binding: *req.Binding, ProducerID: c.ID, ProducerName: release.Name, ProducerVersion: release.Version, CommandID: req.CommandID}
+	artifact := Nodes{Schema: 1, Valid: true, Binding: req.Binding, ProducerID: c.ID, ProducerName: release.Name, ProducerVersion: release.Version, CommandID: req.CommandID}
 	keys := make([]string, 0, len(nodes))
 	for k := range nodes {
 		keys = append(keys, k)

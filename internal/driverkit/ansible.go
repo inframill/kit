@@ -11,13 +11,12 @@ import (
 	"strings"
 
 	"github.com/inframill/kit/internal/catalog"
-	wire "github.com/sir-hassan/inframill/pkg/driver"
 )
 
 //go:embed kit_callback.py
 var callback []byte
 
-func (r runner) ansible(ctx context.Context, release catalog.Release, c Config, a Arguments, req wire.Request) (any, error) {
+func (r runner) ansible(ctx context.Context, release catalog.Release, c Config, a Arguments, req invocation) (any, error) {
 	playbook := c.Playbooks[a.Playbook]
 	if _, e := readPrivate(req.WorkspaceDirectory, playbook, maxArtifact); e != nil {
 		return nil, e

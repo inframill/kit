@@ -50,7 +50,7 @@ func checkNode(n Node) error {
 	}
 	return nil
 }
-func loadNodes(c Config, req wire.Request) (Nodes, error) {
+func loadNodes(c Config, req invocation) (Nodes, error) {
 	var n Nodes
 	b, e := readPrivate(req.ArtifactDirectory, c.Artifact, maxArtifact)
 	if e != nil {
@@ -59,12 +59,12 @@ func loadNodes(c Config, req wire.Request) (Nodes, error) {
 	if e = decode(b, &n); e != nil {
 		return n, e
 	}
-	if n.Schema != 1 || !n.Valid || n.Binding != *req.Binding || n.ProducerID != c.ProducerID || n.ProducerName != "opentofu" || n.ProducerVersion != c.ProducerVersion || !uuid.MatchString(n.CommandID) || len(n.Nodes) == 0 {
+	if n.Schema != 1 || !n.Valid || n.Binding != req.Binding || n.ProducerID != c.ProducerID || n.ProducerName != "opentofu" || n.ProducerVersion != c.ProducerVersion || !uuid.MatchString(n.CommandID) || len(n.Nodes) == 0 {
 		return n, errors.New("missing, invalid, incompatible or incorrectly bound node artifact")
 	}
 	return n, nil
 }
-func inventory(c Config, req wire.Request) (map[string]any, error) {
+func inventory(c Config, req invocation) (map[string]any, error) {
 	ns, e := loadNodes(c, req)
 	if e != nil {
 		return nil, e

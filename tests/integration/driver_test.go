@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func TestRealInframillDiscoveryVersionsAndCancellation(t *testing.T) {
 		t.Fatal(e)
 	}
 	bin := filepath.Join(t.TempDir(), "inframill-kit")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/inframill-kit")
+	cmd := exec.Command("go", "build", "-tags=kit_testdrivers", "-o", bin, "./cmd/inframill-kit")
 	cmd.Dir = root
 	if b, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("build: %s: %v", b, e)
@@ -57,7 +58,7 @@ wait
 	if e = m.Validate(t.Context(), wire.ValidationRequest{Drivers: map[string]wire.Config{"opentofu-new": config}}); e == nil {
 		t.Fatal("remapped driver alias bypassed exact version")
 	}
-	p, e := m.Prepare(t.Context(), wire.CommandRequest{DriverID: "opentofu-old", Command: "plan", Scope: wire.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), DriverConfig: config, Binding: wire.Binding{InstanceID: "11111111-1111-4111-8111-111111111111"}, CommandID: "22222222-2222-4222-8222-222222222222"}})
+	p, e := m.Prepare(t.Context(), wire.CommandRequest{DriverID: "opentofu-old", Command: "plan", Scope: wire.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), DriverConfig: config, Binding: wire.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/example", Blueprint: "example", BlueprintReference: "ghcr.io/test/example:1", Digest: strings.Repeat("a", 64)}, Values: map[string]any{}, CommandID: "22222222-2222-4222-8222-222222222222"}})
 	if e != nil {
 		t.Fatal(e)
 	}

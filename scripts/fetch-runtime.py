@@ -12,7 +12,7 @@ def download(url,sha,path):
             h.update(b);f.write(b)
     if h.hexdigest()!=sha:raise RuntimeError('Checksum mismatch for '+url)
     return path
-asset=lock['opentofu']['assets'][arch];archive=download(asset['url'],asset['sha256'],'/build/tofu.zip')
+asset=lock['opentofu']['assets']['linux/'+arch];archive=download(asset['url'],asset['sha256'],'/build/tofu.zip')
 out=pathlib.Path('/opt/inframill/tools/opentofu')/lock['opentofu']['version'];out.mkdir(parents=True,exist_ok=True)
 with zipfile.ZipFile(archive) as z:
     (out/'tofu').write_bytes(z.read('tofu'))

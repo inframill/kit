@@ -19,8 +19,7 @@ import (
 )
 
 type Options struct {
-	Tool   string
-	Stderr io.Writer
+	Tool string
 }
 
 func Info(r catalog.Release) wire.Info {
@@ -42,9 +41,7 @@ func Info(r catalog.Release) wire.Info {
 		add("init", wire.Mutating, "writes provider cache and backend configuration; contacts registry and backend", "tool exit status", nil)
 		add("validate", wire.ReadOnly, "reads prepared configuration/providers", "OpenTofu validation result", nil)
 		props := map[string]any{"destroy": boolean}
-		if r.Version != "0.1.0" {
-			props["refresh_only"] = boolean
-		}
+		props["refresh_only"] = boolean
 		add("plan", wire.Mutating, "reads infrastructure, acquires backend locks, saves a private plan", "detailed exit status and bound plan integrity", props)
 		for _, n := range []string{"apply", "destroy"} {
 			s := wire.Mutating
@@ -66,86 +63,104 @@ func Info(r catalog.Release) wire.Info {
 				verification = "nonempty structured recap without failed or unreachable hosts"
 			}
 			p := map[string]any{"playbook": str, "hosts": ids}
-			if r.Version != "0.1.0" {
-				p["tags"] = ids
-			}
+			p["tags"] = ids
 			add(n, s, effect, verification, p, "playbook")
 		}
 	}
 	return wire.Info{Name: r.Name, Version: r.Version, Protocol: wire.Protocol, Commands: commands}
 }
-func Execute(ctx context.Context, r catalog.Release, mode, command string, input io.Reader, out io.Writer, opts Options) error {
-	if mode == "info" {
-		if command != "" {
-			return errors.New("info takes no command")
-		}
-		return json.NewEncoder(out).Encode(Info(r))
+
+// invocation holds implementation inputs supplied by the public Driver callbacks.
+// Protocol decoding and validation belong to driver.Serve.
+type invocation struct {
+	wire.ExecutionContext
+	Command            string
+	Arguments          map[string]any
+	BlueprintDirectory string
+}
+
+type Driver struct {
+	release catalog.Release
+	options Options
+}
+
+var _ wire.Driver = (*Driver)(nil)
+
+func New(release catalog.Release, options Options) *Driver {
+	return &Driver{release: release, options: options}
+}
+
+func (d *Driver) Definition() (wire.Definition, error) {
+	info := Info(d.release)
+	return wire.Definition{Name: info.Name, Commands: info.Commands}, nil
+}
+
+func (d *Driver) ValidateConfig(ctx context.Context, config wire.Config) error {
+	_, _, err := parse(d.release, invocation{ExecutionContext: wire.ExecutionContext{DriverConfig: config}})
+	return errors.Join(ctx.Err(), err)
+}
+
+func (d *Driver) ValidateBlueprint(ctx context.Context, input wire.BlueprintValidation) error {
+	_, _, err := parse(d.release, invocation{ExecutionContext: wire.ExecutionContext{DriverConfig: input.Config}, BlueprintDirectory: input.BlueprintDirectory})
+	return errors.Join(ctx.Err(), err)
+}
+
+func (d *Driver) ValidateInstance(ctx context.Context, input wire.InstanceValidation) error {
+	_, _, err := parse(d.release, invocation{ExecutionContext: wire.ExecutionContext{DriverConfig: input.Config, Binding: input.Binding, Values: input.Values}})
+	return errors.Join(ctx.Err(), err)
+}
+
+func (d *Driver) Prepare(ctx context.Context, scope wire.ExecutionContext, command string, arguments map[string]any) (wire.PreparedCommand, error) {
+	req := invocation{ExecutionContext: scope, Command: command, Arguments: arguments}
+	c, a, err := parse(d.release, req)
+	if err = errors.Join(ctx.Err(), err); err != nil {
+		return nil, err
 	}
-	if mode != "validate" && mode != "run" {
-		return errors.New("expected info, validate or run")
+	return &prepared{driver: d, request: req, config: c, arguments: a}, nil
+}
+
+type prepared struct {
+	driver    *Driver
+	request   invocation
+	config    Config
+	arguments Arguments
+}
+
+func (p *prepared) Execute(ctx context.Context) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	data, e := io.ReadAll(io.LimitReader(input, wire.MaxRequest+1))
-	if e != nil {
-		return e
+	r, req, c, a := p.driver.release, p.request, p.config, p.arguments
+	env, err := environment(c, req.Values)
+	if err != nil {
+		return nil, err
 	}
-	var req wire.Request
-	if e = wire.DecodeRequest(data, &req); e != nil {
-		return e
-	}
-	c, a, e := parse(r, req)
-	if e != nil {
-		return e
-	}
-	if mode == "validate" {
-		if command != "" {
-			return errors.New("validate takes no CLI command")
-		}
-		return json.NewEncoder(out).Encode(map[string]bool{"valid": true})
-	}
-	if req.Command != command || command == "" {
-		return errors.New("CLI and request command disagree")
-	}
-	if req.Binding == nil || !uuid.MatchString(req.CommandID) || req.WorkspaceDirectory == "" || req.ArtifactDirectory == "" {
-		return errors.New("run requires binding, CommandID, workspace and artifact directories")
-	}
-	if opts.Stderr == nil {
-		opts.Stderr = io.Discard
-	}
-	env, e := environment(c, req.Values)
-	if e != nil {
-		return e
-	}
-	if opts.Tool == "" {
+	tool := p.driver.options.Tool
+	if tool == "" {
 		if r.Name == "opentofu" {
-			opts.Tool = "/opt/inframill/tools/opentofu/" + r.ToolVersion + "/tofu"
+			tool = "/opt/inframill/tools/opentofu/" + r.ToolVersion + "/tofu"
 		} else {
-			opts.Tool = "/opt/inframill/tools/ansible/" + r.ToolVersion + "/bin/ansible-playbook"
+			tool = "/opt/inframill/tools/ansible/" + r.ToolVersion + "/bin/ansible-playbook"
 		}
 	}
-	if !filepath.IsAbs(opts.Tool) {
-		return errors.New("tool path must be absolute")
+	if !filepath.IsAbs(tool) {
+		return nil, errors.New("tool path must be absolute")
 	}
-	run := runner{tool: opts.Tool, dir: req.WorkspaceDirectory, env: env, stderr: opts.Stderr}
-	if r.Name == "ansible" && command == "inventory" {
-		v, e := inventory(c, req)
-		if e != nil {
-			return e
-		}
-		return json.NewEncoder(out).Encode(v)
+	logs := req.Logs
+	if logs == nil {
+		logs = io.Discard
 	}
-	if e = run.verify(ctx, r); e != nil {
-		return e
+	run := runner{tool: tool, dir: req.WorkspaceDirectory, env: env, stderr: logs}
+	if r.Name == "ansible" && req.Command == "inventory" {
+		return inventory(c, req)
 	}
-	var result any
+	if err := run.verify(ctx, r); err != nil {
+		return nil, err
+	}
 	if r.Name == "opentofu" {
-		result, e = run.tofu(ctx, r, c, a, req)
-	} else {
-		result, e = run.ansible(ctx, r, c, a, req)
+		return run.tofu(ctx, r, c, a, req)
 	}
-	if e != nil {
-		return e
-	}
-	return json.NewEncoder(out).Encode(result)
+	return run.ansible(ctx, r, c, a, req)
 }
 func environment(c Config, values map[string]any) ([]string, error) {
 	env := []string{"LANG=C.UTF-8", "LC_ALL=C.UTF-8", "TF_IN_AUTOMATION=1", "TF_INPUT=0", "CHECKPOINT_DISABLE=1", "ANSIBLE_NOCOLOR=1"}

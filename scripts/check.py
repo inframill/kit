@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
 """Manual verification. Infrastructure effects are limited to disposable local fixtures."""
 import contextlib, io, tarfile, json, os, pathlib, platform, shutil, subprocess, sys, tempfile, time, uuid
-ROOT=pathlib.Path(__file__).resolve().parent.parent
+from release_config import ROOT, FIXTURES, local_tools, configuration, blueprint_root, driver_ids, fixture_cases, registry_image, bundle_output
 
 def run(args, **kwargs):
     print('+', ' '.join(map(str,args)),file=sys.stderr,flush=True)
     return subprocess.run(list(map(str,args)),check=True,text=True,**kwargs)
 def tools():
-    tofu=pathlib.Path(os.environ.get('OPENTOFU_PATH',ROOT/'.cache/tools/opentofu/1.11.5/tofu')).resolve()
-    ansible=pathlib.Path(os.environ.get('ANSIBLE_PATH',ROOT/'.cache/ansible-2.20.1/bin/ansible-playbook')).resolve()
+    tofu,ansible=local_tools()
     for tool in [tofu,ansible,ROOT/'bin/inframill-kit',ROOT/'bin/inframill']:
         if not tool.is_file():raise RuntimeError(f'Missing prerequisite {tool}; see README setup')
     return tofu,ansible
 
 def config(path,workspace,tofu,ansible):
-    drivers={}
-    for name,tool in [('opentofu',tofu),('ansible',ansible)]:
-        for version in ['0.1.0','0.2.0']:
-            drivers[name+'-'+version.replace('.','-')]={'path':str(ROOT/'bin/inframill-kit'),'args':['driver',name,'--driver-version',version,'--tool',str(tool)]}
-    path.write_text(json.dumps({'engine':{'dataDir':str(workspace),'drivers':drivers},'handlers':[{'type':'connect-engine','settings':{'path':'/inframill.v1.EngineService/'}}]}))
+    path.write_text(json.dumps(configuration(ROOT/'bin/inframill-kit',workspace,{'opentofu':tofu,'ansible':ansible})))
 
 def execute(tmp,conf,instance,name,command,args=None,source=None,env=None):
     token=uuid.uuid4().hex;result=tmp/(token+'-result.json')
@@ -32,11 +27,11 @@ def execute(tmp,conf,instance,name,command,args=None,source=None,env=None):
     return output.get('result',{})
 
 def local_flow(tmp,conf,version,reference=None,env=None):
-    iid=tmp/('local-'+version+'.json');data=json.loads((ROOT/f'examples/local-resource-{version}.json').read_text())
+    iid=tmp/('local-'+version+'.json');data=json.loads((FIXTURES/f'examples/local-resource-{version}.json').read_text())
     data['values']['architecture']='arm64' if platform.machine() in ('arm64','aarch64') else 'amd64'
     if reference:data['blueprint']=reference
-    iid.write_text(json.dumps(data));src=None if reference else ROOT/f'blueprints/local-resource/versions/{version}'
-    prefix='opentofu-'+version.replace('.','-');ap='ansible-'+version.replace('.','-');name='test/local-'+version.replace('.','-')
+    iid.write_text(json.dumps(data));src=None if reference else FIXTURES/f'blueprints/local-resource/versions/{version}'
+    ids=driver_ids('local-resource',version);prefix=ids['opentofu'];ap=ids['ansible'];name='test/local-'+version.replace('.','-')
     def do(command,args=None):return execute(tmp,conf,iid,name,command,args,src,env)
     do(prefix+'.init');do(prefix+'.validate');plan=do(prefix+'.plan')
     do(prefix+'.apply',{'plan_id':plan['plan_id']});do(ap+'.inventory');do(ap+'.syntax-check',{'playbook':'site'});do(ap+'.check',{'playbook':'site'});do(ap+'.apply',{'playbook':'site'})
@@ -49,11 +44,11 @@ def blueprint_check(name,version):
         if name=='local-resource':local_flow(tmp,conf,version);return
         if name!='pv-cloud' or version!='0.1.0':raise RuntimeError('No declared integration fixture for this blueprint version')
         # Syntax-check initializes/render-validates the Instance, without cloud access.
-        instance=ROOT/'examples/pv-cloud-0.1.0.json';source=ROOT/'blueprints/pv-cloud/versions/0.1.0'
+        instance=ROOT/'examples/pv-cloud-0.1.0.json';source=ROOT/'blueprints/pv-cloud/versions/0.1.0';ids=driver_ids(name,version)
         for architecture in ['arm64','amd64']:
-            execute(tmp,conf,ROOT/f'examples/pv-cloud-{architecture}.json','test/pv-'+architecture,'ansible-0-1-0.syntax-check',{'playbook':'site'},source)
-        execute(tmp,conf,instance,'test/pv-cloud','ansible-0-1-0.syntax-check',{'playbook':'site'},source)
-        dirs=list((tmp/'data').glob('instances/*/workspace/opentofu-0-1-0'))
+            execute(tmp,conf,ROOT/f'examples/pv-cloud-{architecture}.json','test/pv-'+architecture,ids['ansible']+'.syntax-check',{'playbook':'site'},source)
+        execute(tmp,conf,instance,'test/pv-cloud',ids['ansible']+'.syntax-check',{'playbook':'site'},source)
+        dirs=list((tmp/'data').glob('instances/*/workspace/'+ids['opentofu']))
         if len(dirs)!=3:raise RuntimeError('Rendered OpenTofu workspaces not found')
         work=dirs[0]
         run([tofu,'init','-backend=false','-input=false','-lockfile=readonly','-no-color'],cwd=work)
@@ -62,7 +57,7 @@ def blueprint_check(name,version):
 
 @contextlib.contextmanager
 def registry():
-    image=json.loads((ROOT/'runtime/registry.lock.json').read_text())['image'];name='kit-test-'+uuid.uuid4().hex[:12]
+    image=registry_image();name='kit-test-'+uuid.uuid4().hex[:12]
     run(['docker','network','create',name],stdout=subprocess.DEVNULL)
     run(['docker','run','-d','--rm','--network',name,'--network-alias','registry','--name',name,'-p','127.0.0.1::5000',image],stdout=subprocess.DEVNULL)
     try:
@@ -80,7 +75,11 @@ def registry_check():
         run(['go','run','./cmd/kit-build','blueprints:package'],cwd=ROOT,env=env)
         run(['go','run','./cmd/kit-build','blueprints:push'],cwd=ROOT,env=env)
         run(['go','run','./cmd/kit-build','blueprints:push'],cwd=ROOT,env=env)
-        for v in ['0.1.0','0.2.0']:
+        for case in fixture_cases():
+            selection={**env,'BLUEPRINT_ROOT':str(FIXTURES),'BLUEPRINT':case['name'],'VERSION':case['version']}
+            for action in ['blueprint:package','blueprint:push','blueprint:push']:
+                run(['go','run','./cmd/kit-build',action],cwd=ROOT,env=selection)
+        for v in [case['version'] for case in fixture_cases()]:
             local_flow(tmp,conf,v,f'{address}/inframill/blueprints/local-resource:{v}',env)
         # Attempt to publish newer content under the older tag, without touching
         # source releases or the already built immutable package directories.
@@ -98,12 +97,12 @@ def registry_check():
         config(conf,tmp/'fresh-data',tofu,ansible)
         local_flow(tmp,conf,'0.1.0',address+'/inframill/blueprints/local-resource@'+record['descriptor']['digest'],env)
         # Publish the existing bundle only to this disposable test registry.
-        if not (ROOT/'dist/bundles/0.1.0/build.json').is_file():raise RuntimeError('Run task bundle before check-full container verification')
-        run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'VERSION':'0.1.0'})
+        if not (bundle_output()/'build.json').is_file():raise RuntimeError('Run task bundle before check-full container verification')
+        run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(bundle_output().parent.parent),'VERSION':bundle_output().name})
         # Import the exact OCI bytes for execution: Docker Desktop's daemon has a
         # different loopback interface from the workstation's registry port.
         image='docker.io/library/inframill-kit-test:'+uuid.uuid4().hex
-        layout=ROOT/'dist/bundles/0.1.0/oci';index=json.loads((layout/'index.json').read_text())
+        layout=bundle_output()/'oci';index=json.loads((layout/'index.json').read_text())
         for manifest in index['manifests']:
             manifest.setdefault('annotations',{})['org.opencontainers.image.ref.name']=image.rsplit(':',1)[1]
             manifest['annotations']['io.containerd.image.name']=image
@@ -116,7 +115,7 @@ def registry_check():
         run(['docker','load','-i',archive])
         try:
             for arch in ['arm64','amd64']:
-                run(['docker','run','--rm','--pull=never','--platform','linux/'+arch,'--network',network,'-e','KIT_TEST_REGISTRY=registry:5000','--mount','type=bind,src='+str(ROOT/'scripts/runtime-smoke.py')+',dst=/verify.py,readonly','--mount','type=bind,src='+str(ROOT/'examples/pv-cloud-0.1.0.json')+',dst=/pv-example.json,readonly','--entrypoint','python3',image,'/verify.py'])
+                run(['docker','run','--rm','--pull=never','--platform','linux/'+arch,'--network',network,'-e','KIT_TEST_REGISTRY=registry:5000','-e','KIT_TEST_FIXTURES='+json.dumps([{**case,'drivers':driver_ids(case['name'],case['version'])} for case in fixture_cases()]),'--mount','type=bind,src='+str(ROOT/'scripts/runtime-smoke.py')+',dst=/verify.py,readonly','--mount','type=bind,src='+str(ROOT/'examples/pv-cloud-0.1.0.json')+',dst=/pv-example.json,readonly','--entrypoint','python3',image,'/verify.py'])
         finally:subprocess.run(['docker','image','rm',image],stdout=subprocess.DEVNULL,check=False)
 
 
@@ -124,7 +123,8 @@ def main():
     action=sys.argv[1]
     if action=='registry':registry_check();return
     if action=='full':
-        for name,v in [('local-resource','0.1.0'),('local-resource','0.2.0'),('pv-cloud','0.1.0')]:blueprint_check(name,v)
+        os.environ['BUNDLE_VERSION']=os.environ.get('VERSION','0.1.0')
+        for case in fixture_cases()+json.loads((ROOT/'releases/sets/default.yaml').read_text())['blueprints']:blueprint_check(case['name'],case['version'])
         registry_check();return
     if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('VERSION','0.1.0'));return
     if action=='driver:check':
@@ -136,10 +136,10 @@ def main():
         tofu,ansible=tools()
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             tmp=pathlib.Path(td);conf=tmp/'config.json';config(conf,tmp/'data',tofu,ansible)
-            name=os.environ.get('BLUEPRINT','');version=os.environ.get('VERSION','0.1.0');example=ROOT/f'examples/{name}-{version}.json'
+            name=os.environ.get('BLUEPRINT','');version=os.environ.get('VERSION','0.1.0');example=blueprint_root(name)/f'examples/{name}-{version}.json'
             data=json.loads(example.read_text());data['blueprint']=reference;instance=tmp/'instance.json';instance.write_text(json.dumps(data))
             # Blueprint and driver versions are independent release identities.
-            release=json.loads(run(['go','run','./cmd/kit-build','blueprint:requirements'],cwd=ROOT,capture_output=True).stdout)
+            release=json.loads(run(['go','run','./cmd/kit-build','blueprint:requirements'],cwd=ROOT,env={**os.environ,'BLUEPRINT_ROOT':str(blueprint_root(name))},capture_output=True).stdout)
             candidates=[d['id'] for d in release['drivers'] if d['name']=='ansible']
             if len(candidates)!=1:raise RuntimeError('Verification requires a fixture selecting one Ansible driver')
             execute(tmp,conf,instance,'verify/blueprint',candidates[0]+'.syntax-check',{'playbook':'site'})

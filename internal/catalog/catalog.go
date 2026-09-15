@@ -4,9 +4,13 @@ package catalog
 import (
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"regexp"
 	"sort"
 	"strings"
+
+	descriptors "github.com/inframill/kit/releases"
+	"gopkg.in/yaml.v3"
 )
 
 type Release struct {
@@ -66,9 +70,20 @@ func List() []Release {
 	return out
 }
 func init() {
-	for _, v := range []string{"0.1.0", "0.2.0"} {
-		Register(Release{"opentofu", v, "1.11.5"})
-		Register(Release{"ansible", v, "2.20.1"})
+	files, err := fs.Glob(descriptors.Drivers, "drivers/*/*.yaml")
+	if err != nil {
+		panic(err)
+	}
+	for _, path := range files {
+		data, err := descriptors.Drivers.ReadFile(path)
+		if err != nil {
+			panic(err)
+		}
+		var r Release
+		if err = yaml.Unmarshal(data, &r); err != nil {
+			panic(err)
+		}
+		Register(r)
 	}
 }
 

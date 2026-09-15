@@ -10,10 +10,11 @@ env:
   REGISTRY: '{{.REGISTRY}}'
   NAMESPACE: '{{.NAMESPACE}}'
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
+  KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
   BLUEPRINT: '{{default "" .BLUEPRINT}}'
   DRIVER: '{{default "" .DRIVER}}'
   DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
-  RELEASE_SET: '{{default "development" .RELEASE_SET}}'
+  RELEASE_SET: '{{default "default" .RELEASE_SET}}'
   REFERENCE: '{{default "" .REFERENCE}}'
   PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}'
 tasks:
@@ -36,9 +37,9 @@ tasks:
       - task: inframill:copy
       - python3 scripts/check.py full
   driver:check:
-    cmds: ['go run ./cmd/kit-build driver:check']
+    cmds: ['python3 scripts/check.py driver:check']
   blueprint:check:
-    cmds: ['go run ./cmd/kit-build blueprint:check']
+    cmds: ['python3 scripts/check.py blueprint:check']
   blueprint:source-digest:
     cmds: ['go run ./cmd/kit-build blueprint:source-digest']
   blueprint:package:
@@ -46,17 +47,17 @@ tasks:
   blueprint:push:
     cmds: ['go run ./cmd/kit-build blueprint:push']
   blueprint:verify:
-    cmds: ['go run ./cmd/kit-build blueprint:verify']
+    cmds: ['python3 scripts/check.py blueprint:verify']
   blueprints:package:
     cmds: ['go run ./cmd/kit-build blueprints:package']
   blueprints:push:
     cmds: ['go run ./cmd/kit-build blueprints:push']
   bundle:
-    cmds: ['sh scripts/bundle.sh']
+    cmds: ['python3 scripts/bundle.py']
   bundle:push:
     cmds: ['go run ./cmd/kit-build bundle:push']
   bundle:verify:
-    cmds: ['go run ./cmd/kit-build bundle:verify']
+    cmds: ['python3 scripts/check.py bundle:verify']
   registry:up:
     cmds: ['docker compose -f runtime/registry.compose.yaml up -d']
   registry:down:

@@ -16,6 +16,7 @@ import (
 func fixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	t.Setenv("KIT_DIST_DIR", filepath.Join(root, "dist"))
 	src := filepath.Join(root, "blueprints/test/versions/0.1.0")
 	os.MkdirAll(filepath.Join(src, "template/opentofu-0-1-0"), 0755)
 	os.MkdirAll(filepath.Join(root, "releases/blueprints/test"), 0755)

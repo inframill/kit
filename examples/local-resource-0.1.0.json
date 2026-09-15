@@ -1,6 +1,0 @@
-{
-  "blueprint": "ghcr.io/inframill/blueprints/local-resource:0.1.0",
-  "values": {
-    "architecture": "arm64"
-  }
-}

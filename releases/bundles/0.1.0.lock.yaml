@@ -11,16 +11,8 @@
       "version": "0.1.0"
     },
     {
-      "name": "opentofu",
-      "version": "0.2.0"
-    },
-    {
       "name": "ansible",
       "version": "0.1.0"
-    },
-    {
-      "name": "ansible",
-      "version": "0.2.0"
     }
   ],
   "base_image": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
@@ -29,40 +21,23 @@
     "arm64": "sha256:fcf02c9e248b995ae2ca9aac6fa24b489f34b589dbfdc44698ad245d2ad41d1e"
   },
   "source_date_epoch": 1759190400,
-  "python": "3.13.7",
-  "ansible_core": "2.20.1",
-  "python_requirements_sha256": "ce906204a3bd9ab77852886b623ce3e0af0ec643dffe57b2ccf8598d353f196c",
-  "python_sources_sha256": "cfc4326f12a6088c71d4a67c492b78346c830b27c02ea1f4e01fe2400feb81a3",
-  "opentofu": {
-    "version": "1.11.5",
-    "assets": {
-      "amd64": {
-        "url": "https://github.com/opentofu/opentofu/releases/download/v1.11.5/tofu_1.11.5_linux_amd64.zip",
-        "sha256": "901121681e751574d739de5208cad059eddf9bd739b575745cf9e3c961b28a13"
-      },
-      "arm64": {
-        "url": "https://github.com/opentofu/opentofu/releases/download/v1.11.5/tofu_1.11.5_linux_arm64.zip",
-        "sha256": "1b79f8fe3cbf7ac0540507bb6bd0ecab1675c78393bbf492867eaabb79840eec"
-      }
-    },
-    "source": {
-      "url": "https://codeload.github.com/opentofu/opentofu/tar.gz/refs/tags/v1.11.5",
-      "sha256": "450f962f262d9f484ad1fb73454650740cdce0d83a854ad8b6c183cc5822eb09"
-    }
-  },
   "go_version": "go1.27.0",
   "inframill": {
     "version": "0.0.0-dev",
-    "revision": "acb50af152b4412110639ffaf7de1779f97304aa",
+    "revision": "b7008f358d146d5b4f74f0f84865b80e18fdf8e5",
     "binaries": {
       "amd64": {
         "path": "0.0.0-dev/inframill_0.0.0-dev_linux_amd64",
-        "sha256": "de522f7ea6196328cee8c3751158d6dbbe2de8917baf8a1d0291d0ceb895d552"
+        "sha256": "35f8c4552add2973f2d2ea0b2b6270056667297a873d9ccf88694140080168f7"
       },
       "arm64": {
         "path": "0.0.0-dev/inframill_0.0.0-dev_linux_arm64",
-        "sha256": "6daddc20c5c6c7e044dba4e949eabe1d19bdf7db194b1e7a69990d4e52c7f678"
+        "sha256": "f7ba38b33c59415ca8562909ada0b75affcd4d0c9641e0bf7981958ba1f7e428"
       }
     }
+  },
+  "toolchain": {
+    "path": "runtime/tools.lock.json",
+    "sha256": "67f2b1f7d7efbdc8636b1f3c01b01913adbc6c76ee439016471d6f418e409f69"
   }
 }

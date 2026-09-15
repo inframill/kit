@@ -105,7 +105,7 @@ func run() error {
 		if !catalog.ValidVersion(iv) {
 			return errors.New("invalid Inframill release version")
 		}
-		relative := filepath.Join(iv, "inframill_"+iv+"_"+runtime.GOOS+"_"+runtime.GOARCH)
+		relative := "inframill"
 		if runtime.GOOS == "linux" {
 			entry, ok := lock.Inframill.Binaries[runtime.GOARCH]
 			if !ok || !filepath.IsLocal(entry.Path) {
@@ -113,7 +113,14 @@ func run() error {
 			}
 			relative = entry.Path
 		}
-		source := filepath.Join(env("INFRAMILL_DIST_DIR", filepath.Join(root, "..", "inframill", "dist")), relative)
+		source := env("INFRAMILL_NATIVE_BINARY", filepath.Join(env("INFRAMILL_DIST_DIR", filepath.Join(root, "..", "inframill", "dist")), relative))
+		output, err := exec.Command(source, "--version").Output()
+		if err != nil {
+			return fmt.Errorf("check prebuilt native Inframill binary: %w", err)
+		}
+		if strings.TrimSpace(string(output)) != iv {
+			return errors.New("native Inframill version differs from bundle lock")
+		}
 		data, err := os.ReadFile(source)
 		if err != nil {
 			return fmt.Errorf("read prebuilt native Inframill binary: %w", err)
@@ -127,22 +134,33 @@ func run() error {
 		}
 		return os.Chmod(destination, 0755)
 	case "config":
-		drivers := map[string]any{}
-		for _, r := range catalog.List() {
-			args := []string{"driver", r.Name, "--driver-version", r.Version}
-			tool := os.Getenv(strings.ToUpper(r.Name) + "_PATH")
-			if tool != "" {
-				abs, e := filepath.Abs(tool)
+		selected := catalog.List()
+		if input := os.Getenv("CONFIG_DRIVERS"); input != "" {
+			var requirements []catalog.Release
+			if e = json.Unmarshal([]byte(input), &requirements); e != nil {
+				return e
+			}
+			selected = nil
+			for _, requirement := range requirements {
+				r, err := catalog.Get(requirement.Name, requirement.Version)
+				if err != nil {
+					return err
+				}
+				selected = append(selected, r)
+			}
+		}
+		tools := map[string]string{}
+		for _, r := range selected {
+			if tool := os.Getenv(strings.ToUpper(r.Name) + "_PATH"); tool != "" {
+				tools[r.Name], e = filepath.Abs(tool)
 				if e != nil {
 					return e
 				}
-				args = append(args, "--tool", abs)
 			}
-			drivers[catalog.ConfiguredID(r.Name, r.Version)] = map[string]any{"path": filepath.Join(root, "bin/inframill-kit"), "args": args}
 		}
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{"engine": map[string]any{"dataDir": env("DATA_DIR", filepath.Join(root, ".inframill")), "drivers": drivers}, "handlers": []any{map[string]any{"type": "connect-engine", "settings": map[string]any{"path": "/inframill.v1.EngineService/"}}}})
+		return json.NewEncoder(os.Stdout).Encode(catalog.Configuration(env("KIT_EXECUTABLE", filepath.Join(root, "bin/inframill-kit")), env("DATA_DIR", filepath.Join(root, ".inframill")), selected, tools))
 	case "blueprint:requirements":
-		release, _, err := packaging.Blueprint(root, name, version)
+		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version)
 		if err != nil {
 			return err
 		}
@@ -151,14 +169,14 @@ func run() error {
 		if !catalog.ValidName(name) {
 			return errors.New("invalid blueprint name")
 		}
-		b, e := packaging.Archive(filepath.Join(root, "blueprints", name, "versions", version))
+		b, e := packaging.Archive(filepath.Join(blueprintRoot(root), "blueprints", name, "versions", version))
 		if e != nil {
 			return e
 		}
 		fmt.Println(digest.FromBytes(b))
 		return nil
 	case "blueprint:package":
-		d, e := packaging.Package(ctx, root, name, version)
+		d, e := packaging.Package(ctx, blueprintRoot(root), name, version)
 		if e != nil {
 			return e
 		}
@@ -169,14 +187,14 @@ func run() error {
 			return errors.New("invalid blueprint name")
 		}
 		repo := registry + "/" + ns + "/blueprints/" + name
-		d, e := packaging.Push(ctx, packaging.BlueprintLayout(root, name, version), version, repo, plain)
+		d, e := packaging.Push(ctx, packaging.BlueprintLayout(blueprintRoot(root), name, version), version, repo, plain)
 		if e != nil {
 			return e
 		}
 		fmt.Println(repo + "@" + d.Digest.String())
 		return nil
 	case "blueprints:package", "blueprints:push":
-		set := env("RELEASE_SET", "development")
+		set := env("RELEASE_SET", "default")
 		if !catalog.ValidName(set) {
 			return errors.New("invalid release set")
 		}
@@ -195,7 +213,7 @@ func run() error {
 				return errors.New("invalid release selection")
 			}
 			if action == "blueprints:package" {
-				d, e := packaging.Package(ctx, root, s.Name, s.Version)
+				d, e := packaging.Package(ctx, blueprintRoot(root), s.Name, s.Version)
 				if e != nil {
 					failures = append(failures, e)
 					fmt.Fprintln(os.Stderr, s.Name, s.Version, e)
@@ -204,7 +222,7 @@ func run() error {
 				}
 			} else {
 				repo := registry + "/" + ns + "/blueprints/" + s.Name
-				d, e := packaging.Push(ctx, packaging.BlueprintLayout(root, s.Name, s.Version), s.Version, repo, plain)
+				d, e := packaging.Push(ctx, packaging.BlueprintLayout(blueprintRoot(root), s.Name, s.Version), s.Version, repo, plain)
 				if e != nil {
 					failures = append(failures, e)
 					fmt.Fprintln(os.Stderr, s.Name, s.Version, e)
@@ -219,7 +237,7 @@ func run() error {
 		if e != nil {
 			return e
 		}
-		recordBytes, e := os.ReadFile(filepath.Join(root, "dist/bundles", version, "build.json"))
+		recordBytes, e := os.ReadFile(filepath.Join(env("KIT_DIST_DIR", filepath.Join(root, "dist")), "bundles", version, "build.json"))
 		if e != nil {
 			return e
 		}
@@ -234,14 +252,15 @@ func run() error {
 			return errors.New("bundle lock differs from build record; build the intended version before push")
 		}
 		repo := registry + "/" + ns + "/runtime"
-		d, e := packaging.Push(ctx, filepath.Join(root, "dist/bundles", version, "oci"), version, repo, plain)
+		d, e := packaging.Push(ctx, filepath.Join(env("KIT_DIST_DIR", filepath.Join(root, "dist")), "bundles", version, "oci"), version, repo, plain)
 		if e != nil {
 			return e
 		}
 		fmt.Println(repo + "@" + d.Digest.String())
 		return nil
-	case "blueprint:check", "driver:check", "blueprint:verify", "bundle:verify":
-		return command(root, "python3", "scripts/check.py", action)
 	}
 	return errors.New("unknown build action")
 }
+
+// Test fixtures use the same packaging contract with an explicit source root.
+func blueprintRoot(root string) string { return env("BLUEPRINT_ROOT", root) }

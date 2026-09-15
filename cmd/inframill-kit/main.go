@@ -10,13 +10,17 @@ import (
 
 	"github.com/inframill/kit/internal/catalog"
 	"github.com/inframill/kit/internal/driverkit"
+	wire "github.com/sir-hassan/inframill/pkg/driver"
 )
 
 var version = "0.1.0"
+var errServed = errors.New("driver invocation failed")
 
 func main() {
 	if e := run(os.Args[1:]); e != nil {
-		fmt.Fprintln(os.Stderr, e)
+		if !errors.Is(e, errServed) {
+			fmt.Fprintln(os.Stderr, e)
+		}
 		os.Exit(1)
 	}
 }
@@ -28,7 +32,7 @@ func run(args []string) error {
 		return json.NewEncoder(os.Stdout).Encode(catalog.List())
 	}
 	if len(args) < 3 || args[0] != "driver" {
-		return errors.New("usage: inframill-kit driver NAME --driver-version VERSION [--tool ABSOLUTE_PATH] info|validate|run [COMMAND]")
+		return errors.New("usage: inframill-kit driver NAME --driver-version VERSION [--tool ABSOLUTE_PATH] info | validate config|blueprint|instance|command | run COMMAND")
 	}
 	fs := flag.NewFlagSet("driver", flag.ContinueOnError)
 	v := fs.String("driver-version", "", "exact implementation version")
@@ -40,13 +44,10 @@ func run(args []string) error {
 	if e != nil {
 		return e
 	}
-	rest := fs.Args()
-	if len(rest) < 1 || len(rest) > 2 {
-		return errors.New("select protocol action and optional command")
+	if wire.Serve(context.Background(), driverkit.New(r, driverkit.Options{Tool: *tool}), wire.ServeOptions{
+		Version: r.Version, Args: fs.Args(), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
+	}) != 0 {
+		return errServed
 	}
-	command := ""
-	if len(rest) == 2 {
-		command = rest[1]
-	}
-	return driverkit.Execute(context.Background(), r, rest[0], command, os.Stdin, os.Stdout, driverkit.Options{Tool: *tool, Stderr: os.Stderr})
+	return nil
 }

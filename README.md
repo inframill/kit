@@ -7,10 +7,9 @@ as part of a build or routine check.
 | Component | Included versions | Distribution |
 | --- | --- | --- |
 | Kit | `0.1.0` | `bin/inframill-kit` |
-| OpenTofu driver | `0.1.0`, `0.2.0` | Explicitly selected in Kit |
-| Ansible driver | `0.1.0`, `0.2.0` | Explicitly selected in Kit |
+| OpenTofu driver | `0.1.0` | Explicitly selected in Kit |
+| Ansible driver | `0.1.0` | Explicitly selected in Kit |
 | pv-cloud blueprint | `0.1.0` | `ghcr.io/inframill/blueprints/pv-cloud` |
-| Local-resource blueprint | `0.1.0`, `0.2.0` | `ghcr.io/inframill/blueprints/local-resource` |
 | Runtime bundle | `0.1.0` | `ghcr.io/inframill/runtime` |
 
 Every blueprint version is one architecture-independent OCI source artifact. The
@@ -18,7 +17,7 @@ runtime is an OCI image index containing `linux/arm64` and `linux/amd64` images.
 pv-cloud supports ARM64, AMD64 and mixed node sets, independently of the runtime
 host architecture. Its initial supported guest image is Ubuntu 24.04.
 
-Implementation and verification status is recorded in [PLAN.md](PLAN.md).
+See [architecture](docs/architecture.md) and the [release acceptance checklist](docs/acceptance.md).
 
 ## Build and check locally
 
@@ -41,9 +40,10 @@ still checked against the selected driver's lock.
 
 Kit imports the public driver protocol from the sibling `../inframill` Go module.
 The local `third_party` snapshot has been removed. `task inframill:copy` copies
-the host-platform binary from the same versioned sibling release to `bin/inframill`
-for native local checks. On this macOS ARM64 host that input is
-`../inframill/dist/0.0.0-dev/inframill_0.0.0-dev_darwin_arm64`.
+the native binary to `bin/inframill` for local checks and verifies its version.
+On macOS the default input is `../inframill/dist/inframill`; Linux uses the
+matching release path from the bundle lock. Set `INFRAMILL_NATIVE_BINARY` to
+select an explicit host-platform binary.
 
 The bundle copies these existing Linux release binaries from the sibling project:
 
@@ -53,7 +53,9 @@ The bundle copies these existing Linux release binaries from the sibling project
 ```
 
 Their paths and SHA-256 checksums are pinned under `inframill.binaries` in
-`releases/bundles/0.1.0.lock.yaml`. Both must already exist. The bundle validates
+`releases/bundles/0.1.0.lock.yaml`. Both must already exist. Generate them separately when needed with
+`task --dir ../inframill release VERSION=0.0.0-dev`, then update the checksums
+in the bundle lock. The bundle validates
 the checksum and ELF architecture, copies the bytes, and sets executable mode.
 It never runs Inframill's build/release tasks or falls back to compiling Inframill.
 Kit itself is compiled for both architectures from this repository.
@@ -65,7 +67,6 @@ The sibling source checkout supplies the protocol dependency and dependency
 notices, but its source tree is not embedded in the runtime.
 
 ```sh
-task blueprint:check BLUEPRINT=local-resource VERSION=0.1.0
 task blueprint:check BLUEPRINT=pv-cloud VERSION=0.1.0
 task bundle VERSION=0.1.0
 task check-full
@@ -77,14 +78,17 @@ a disposable registry, render through real Inframill, run OpenTofu mock tests, a
 execute the local-resource workflow with real tools. They push only to that
 throwaway registry, then exercise the existing bundle on both Linux platforms.
 Run `task bundle` first. Emulated AMD64 success is recorded separately from native
-AMD64 release acceptance. Full checks never create Hetzner infrastructure.
+AMD64 release acceptance. Full checks never create Hetzner infrastructure. The two local-resource versions
+live under `tests/fixtures/` and are excluded from normal publication. Integration
+tests use `kit_testdrivers` only for their temporary multi-version executable.
 
 ## Manual package and push
 
 Versions use independent `MAJOR.MINOR.PATCH` release identities. A blueprint version
 pins exact driver implementations; the bundle lock selects its components. Driver
-`0.2.0` adds OpenTofu `refresh_only` plans and Ansible `tags`; `0.1.0` rejects those
-options. Driver versions are separate from upstream tool versions.
+`0.1.0` includes OpenTofu `refresh_only` plans and Ansible `tags`. Driver versions
+are separate from upstream tool versions. Multi-version behavior is exercised by
+synthetic test builds, without shipping demonstration driver releases.
 
 Authenticate locally using a GitHub PAT (classic) with `write:packages`; the push
 tooling uses the Docker credential store, including credential helpers:
@@ -112,18 +116,29 @@ Existing tags with different contents are rejected. Local publication locks
 serialize writers on one workstation; coordinate releases across workstations
 because GHCR does not provide this project's immutable-tag transaction.
 
+`KIT_DIST_DIR` selects the output directory for package, bundle, push and full checks.
+To verify an unpublished change while preserving earlier artifacts:
+
+```sh
+task bundle KIT_DIST_DIR=.cache/verification
+task check-full KIT_DIST_DIR=.cache/verification
+```
+
+Use that same output directory when explicitly publishing the new build.
+
 A built version is immutable locally too. To change an unpublished development
 build, explicitly move its output directory aside before rebuilding. Published
 changes require a new version. Never replace an earlier release to apply a fix.
 
 ```sh
-task blueprints:package RELEASE_SET=development
-task blueprints:push RELEASE_SET=development
+task blueprints:package RELEASE_SET=default
+task blueprints:push RELEASE_SET=default
 ```
 
 Release sets list exact name/version pairs and may include multiple versions of a
 blueprint. Bulk pushes report each outcome; a partial failure can be rerun safely.
-`REGISTRY=ghcr.io` and `NAMESPACE=inframill` are defaults and can be overridden.
+The default release set contains only pv-cloud. `REGISTRY=ghcr.io` and
+`NAMESPACE=inframill` are defaults and can be overridden.
 Link blueprint packages through GHCR package settings; the canonical Inframill
 blueprint envelope cannot carry additional OCI annotations. Runtime images carry
 source labels. All packages can link to `github.com/inframill/kit`; no separate `runtime` or
@@ -256,13 +271,14 @@ VERSION=...` prints the deterministic source-layer digest for `source_sha256` in
 the release descriptor. Packaging rejects source drift. Blueprint packaging and
 push logic is independent of the blueprint name.
 
-Driver releases have metadata in `drivers/<name>/versions/<version>/` and
-`releases/drivers/`. The implementation registry and command/config contracts are
-in `internal/catalog` and `internal/driverkit`. Kit release descriptors enumerate
+Driver releases have one metadata source: `releases/drivers/<name>/<version>.yaml`,
+embedded into the compiled catalog. The implementation registry and command/config
+contracts are in `internal/catalog` and `internal/driverkit`. Kit release descriptors enumerate
 included versions; bundle locks select the required implementations and toolchains.
 Adding a new driver requires implementing and registering its handlers and tests.
-Adding a new upstream tool version also requires its checksums, isolated runtime
-installation and compatibility evidence.
+Tool assets and Python pins live in `runtime/tools.lock.json`. Bundle locks pin
+that file by checksum. Setup and runtime builds use the same selection; updating
+a tool requires new checksums, isolated installation and compatibility evidence.
 
 Backport compatible fixes as a new patch version on the older maintained line.
 Breaking inputs, state identity, commands or architecture support require a major

@@ -1,9 +1,0 @@
-{
-  "name": "opentofu",
-  "version": "0.1.0",
-  "tool_version": "1.11.5",
-  "implementation": "internal/driverkit",
-  "features": [
-    "baseline"
-  ]
-}

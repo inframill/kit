@@ -88,10 +88,10 @@ func validateRef(r ValueRef) error {
 	}
 	return nil
 }
-func parse(r catalog.Release, req wire.Request) (Config, Arguments, error) {
+func parse(r catalog.Release, req invocation) (Config, Arguments, error) {
 	var c Config
 	var a Arguments
-	b, _ := json.Marshal(req.Config)
+	b, _ := json.Marshal(req.DriverConfig)
 	if e := decode(b, &c); e != nil {
 		return c, a, e
 	}
@@ -100,9 +100,6 @@ func parse(r catalog.Release, req wire.Request) (Config, Arguments, error) {
 		if e := decode(b, &a); e != nil {
 			return c, a, e
 		}
-	}
-	if req.Protocol != wire.Protocol {
-		return c, a, errors.New("unsupported protocol")
 	}
 	if c.RequiredVersion != r.Version {
 		return c, a, errors.New("required_driver_version does not match selected implementation")
@@ -188,9 +185,6 @@ func parse(r catalog.Release, req wire.Request) (Config, Arguments, error) {
 		if a.Destroy && a.RefreshOnly {
 			return c, a, errors.New("incompatible plan modes")
 		}
-		if r.Version == "0.1.0" && (a.RefreshOnly || len(a.Tags) > 0) {
-			return c, a, errors.New("option requires driver 0.2.0")
-		}
 		if r.Name == "ansible" && req.Command != "inventory" {
 			if _, ok := c.Playbooks[a.Playbook]; !ok {
 				return c, a, errors.New("select a declared playbook")
@@ -201,9 +195,6 @@ func parse(r catalog.Release, req wire.Request) (Config, Arguments, error) {
 				return c, a, errors.New("tags and hosts must be literal identifiers")
 			}
 		}
-	}
-	if req.Binding != nil && !uuid.MatchString(req.Binding.InstanceID) {
-		return c, a, errors.New("invalid Instance binding")
 	}
 	if req.Values != nil {
 		for _, v := range c.BackendConfig {
