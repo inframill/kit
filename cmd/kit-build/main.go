@@ -54,6 +54,9 @@ func run() error {
 	action := os.Args[1]
 	name := os.Getenv("BLUEPRINT")
 	version := env("VERSION", "0.1.0")
+	if action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
+		version = env("BUNDLE_VERSION", "0.2.0")
+	}
 	registry := env("REGISTRY", "ghcr.io")
 	ns := env("NAMESPACE", "inframill")
 	plain := os.Getenv("PLAIN_HTTP") == "true"
@@ -62,35 +65,16 @@ func run() error {
 	}
 	switch action {
 	case "build":
-		kv := env("KIT_VERSION", "0.1.0")
-		var release struct {
-			Version          string `yaml:"version"`
-			InframillVersion string `yaml:"inframill_version"`
-			Drivers          []struct {
-				Name    string `yaml:"name"`
-				Version string `yaml:"version"`
-			} `yaml:"drivers"`
-		}
-		if !catalog.ValidVersion(kv) {
-			return errors.New("invalid Kit version")
-		}
-		if e = packaging.ReadYAML(filepath.Join("releases/kits", kv+".yaml"), &release); e != nil {
+		kv := env("KIT_VERSION", "0.2.0")
+		if _, e = packaging.Kit(root, kv); e != nil {
 			return e
-		}
-		if release.InframillVersion != catalog.InframillVersion || release.Version != kv || len(release.Drivers) != len(catalog.List()) {
-			return errors.New("Kit descriptor differs from compiled catalog")
-		}
-		for _, d := range release.Drivers {
-			if _, e = catalog.Get(d.Name, d.Version); e != nil {
-				return e
-			}
 		}
 		if e = os.MkdirAll("bin", 0755); e != nil {
 			return e
 		}
 		return command(root, "go", "build", "-trimpath", "-ldflags=-X main.version="+kv, "-o", "bin/inframill-kit", "./cmd/inframill-kit")
 	case "inframill:copy":
-		lockBytes, err := os.ReadFile(filepath.Join(root, "releases/bundles", version+".lock.yaml"))
+		lockBytes, err := packaging.Bundle(root, version)
 		if err != nil {
 			return err
 		}
@@ -262,8 +246,11 @@ func run() error {
 			}
 		}
 		return errors.Join(failures...)
+	case "bundle:validate":
+		_, e := packaging.Bundle(root, version)
+		return e
 	case "bundle:push":
-		lock, e := os.ReadFile(filepath.Join(root, "releases/bundles", version+".lock.yaml"))
+		lock, e := packaging.Bundle(root, version)
 		if e != nil {
 			return e
 		}
@@ -281,7 +268,7 @@ func run() error {
 		if record.LockSHA256 != hex.EncodeToString(sum[:]) {
 			return errors.New("bundle lock differs from build record; build the intended version before push")
 		}
-		repo := registry + "/" + ns + "/runtime"
+		repo := registry + "/" + ns + "/kit"
 		d, e := packaging.Push(ctx, filepath.Join(env("KIT_DIST_DIR", filepath.Join(root, "dist")), "bundles", version, "oci"), version, repo, plain)
 		if e != nil {
 			return e

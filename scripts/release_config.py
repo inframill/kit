@@ -10,7 +10,7 @@ FIXTURES = ROOT / 'tests/fixtures'
 
 
 def bundle_lock(version=None):
-    version = version or os.environ.get('BUNDLE_VERSION', '0.1.0')
+    version = version or os.environ.get('BUNDLE_VERSION', '0.2.0')
     if '/' in version or version in ('', '.', '..'):
         raise ValueError('Invalid bundle version')
     lock = json.loads((ROOT / f'releases/bundles/{version}.lock.yaml').read_text())
@@ -75,4 +75,4 @@ def fixture_cases():
 
 
 def bundle_output():
-    return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / os.environ.get('VERSION', '0.1.0')
+    return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / os.environ.get('BUNDLE_VERSION', '0.2.0')

@@ -115,7 +115,7 @@ def registry_check():
         print('Offline cache reuse and consumer corruption rejection passed',flush=True)
         # Publish the existing bundle only to this disposable test registry.
         if not (bundle_output()/'build.json').is_file():raise RuntimeError('Run task bundle before check-full container verification')
-        run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(bundle_output().parent.parent),'VERSION':bundle_output().name})
+        run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(bundle_output().parent.parent),'BUNDLE_VERSION':bundle_output().name})
         # Import the exact OCI bytes for execution: Docker Desktop's daemon has a
         # different loopback interface from the workstation's registry port.
         image='docker.io/library/inframill-kit-test:'+uuid.uuid4().hex
@@ -140,7 +140,6 @@ def main():
     action=sys.argv[1]
     if action=='registry':registry_check();return
     if action=='full':
-        os.environ['BUNDLE_VERSION']=os.environ.get('VERSION','0.1.0')
         for case in fixture_cases()+json.loads((ROOT/'releases/sets/default.yaml').read_text())['blueprints']:blueprint_check(case['name'],case['version'])
         registry_check();return
     if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('VERSION','0.1.0'));return

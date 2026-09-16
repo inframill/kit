@@ -1,20 +1,22 @@
-# Rewrite acceptance — 2026-09-16
+# Local acceptance — 2026-09-16
 
-The local rewrite acceptance passed with Kit 0.1.0 and prebuilt Inframill 0.2.0.
+Local acceptance passed with Kit 0.2.0 and prebuilt Inframill 0.2.0.
 The public Go dependency was checked against sibling source revision
-`389ff39d87c66b4f7668ec231f0a20e4a5f5f494`. No sibling source or binaries were
-changed by this rewrite.
+`389ff39d87c66b4f7668ec231f0a20e4a5f5f494`. The checks used the supplied sibling
+source and prebuilt binaries.
 
-## Verified candidate
+## Recorded artifacts
 
 | Artifact | Digest |
 | --- | --- |
 | pv-cloud 0.1.0 | `sha256:29b994b89a66d8b663deb4706180659e4b0b1248ef6dc320a48eb95209dc440f` |
-| Runtime 0.1.0 index | `sha256:ddbdcc7241ba559a20fc804e9d9e235a21ec24afdd809adfb48f51facd6864e7` |
+| Kit image 0.2.0 index | `sha256:81c172555603d9e208de4cea62cae785532272c4c865e2a1ef6f41fba3ad55ab` |
 
-Outputs are in `dist/blueprints/pv-cloud/0.1.0/` and `dist/bundles/0.1.0/`.
+Outputs are in `dist/blueprints/pv-cloud/0.1.0/` and `dist/bundles/0.2.0/`.
 Their build records contain the component locks, source identity and checksums.
-The bundle source record was compared with the final implementation files.
+The image was built as `ghcr.io/inframill/kit:0.2.0`. Publication to the disposable
+registry used `/inframill/kit` and returned the same index digest. Both image variants
+reported Kit 0.2.0; blueprint and driver versions remain 0.1.0.
 
 Both image variants verify that `/usr/local/bin/inframill` is a byte-for-byte copy
 of the corresponding locked sibling input:
@@ -27,30 +29,35 @@ of the corresponding locked sibling input:
 ## Executed checks
 
 `task check-fast` passed: twelve Python tests, all Go packages/integration tests
-with vet disabled, and the Kit build. `task blueprints:package`, `task bundle` and
-`task check-full` passed for the final candidate. Python syntax and
-`git diff --check` also passed.
+with vet disabled, the Kit build and release validation. `task bundle` and
+`task check-full` passed for Kit 0.2.0, including blueprint packaging to the disposable
+registry. Python syntax, documentation links and `git diff --check` also passed.
+
+Version-policy tests reject mismatched major/minor versions, descriptor identities,
+image/Kit versions and core targets. Independent Kit patch releases and prereleases
+within the supported major/minor line pass. Image builds, pushes and native copies
+use the same release validation.
 
 | Acceptance area | Evidence |
 | --- | --- |
-| AC-01: Protocol | Real upstream Manager/Serve discovery and JSON dispatch; distinct version schemas; structured messages/results; rejection of protocol argv, missing/contradictory final replies and nonzero exit after success; process-group cancellation |
-| AC-02: Preparation | Manifest validation without files, command-specific file requirements, no preparation writes/tools/secrets, syntax checks without node inventory |
-| AC-03: Secrets | Required-secret errors before effects, restricted child environment, chunked/multiline/escaped output filtering, credential-bearing result rejection; daemon/local snapshot tests and checks for synthetic secrets in saved daemon files |
-| AC-04: Outcomes | Saved-plan source/reference/mode/integrity checks, failed-apply inventory invalidation and plan retirement; Ansible complete-host recap validation; real local tool lifecycles |
-| AC-05: Versions | Two production driver names, distinct test driver versions/contracts, multiple local-resource blueprint versions, generic packaging of pv-cloud and fixtures; exact selection and mismatches |
-| AC-06: Engine | Real daemon runs Kit init/plan/apply/Ansible/destroy; history and JSON reply logs; available/unavailable health; project isolation, replace/clear, running/queued snapshots, restart loss; timed-out remote wait leaves execution running; reused local Instance receives no previous invocation's secrets |
-| AC-07: Packages | Deterministic packaging and graph integrity tests; disposable registry tag/digest pulls, idempotent pushes and conflicting-tag rejection; new Instance initialization from cache without authorized network acquisition; tampered cached source rejected without creating an Instance |
-| AC-08: Architectures | Local-resource workflows and four pv-cloud provider mocks pass inside both Linux images; native ARM64 and emulated AMD64; core byte hashes match supplied inputs |
-| AC-09: Release | Manual-only publication, sealed production source and core requirements, sibling source pin and prebuilt binary verification, isolated tests, rebuilt initial artifacts; superseded drivers and legacy blueprint tree removed |
+| Protocol | Real upstream Manager/Serve discovery and JSON dispatch; distinct version schemas; structured messages/results; rejection of protocol argv, missing/contradictory final replies and nonzero exit after success; process-group cancellation |
+| Preparation | Manifest validation without files, command-specific file requirements, no preparation writes/tools/secrets, syntax checks without node inventory |
+| Secrets | Required-secret errors before effects, restricted child environment, chunked/multiline/escaped output filtering, credential-bearing result rejection; daemon/local snapshot tests and checks for synthetic secrets in saved daemon files |
+| Outcomes | Saved-plan source/reference/mode/integrity checks, failed-apply inventory invalidation and plan retirement; Ansible complete-host recap validation; real local tool lifecycles |
+| Versions | Two production driver names, distinct test driver versions/contracts, multiple local-resource blueprint versions, generic packaging of pv-cloud and fixtures; exact selection and mismatches |
+| Engine | Real daemon runs Kit init/plan/apply/Ansible/destroy; history and JSON reply logs; available/unavailable health; project isolation, replace/clear, running/queued snapshots, restart loss; timed-out remote wait leaves execution running; reused local Instance receives no previous invocation's secrets |
+| Packages | Deterministic packaging and graph integrity tests; disposable registry tag/digest pulls, idempotent pushes and conflicting-tag rejection; new Instance initialization from cache without authorized network acquisition; tampered cached source rejected without creating an Instance |
+| Architectures | Local-resource workflows and four pv-cloud provider mocks pass inside both Linux images; native ARM64 and emulated AMD64; core byte hashes match supplied inputs |
+| Release | Manual-only publication, sealed production source and core requirements, sibling source pin and prebuilt binary verification, isolated tests |
 
 Native pv-cloud checks rendered ARM64, AMD64 and mixed Values, ran Ansible syntax
 checks and passed four OpenTofu provider-mock cases. Container verification repeated
 real fixture workflows and provider mocks on both architectures. Test images,
 registry containers, networks and daemon processes were cleaned up.
 
-Logs: `.cache/rewrite-fast.log`, `.cache/rewrite-native.log`,
-`.cache/rewrite-daemon.log`, `.cache/rewrite-bundle.log` and `.cache/rewrite-full.log`.
-The [rewrite plan](inframill-0.2.0-rewrite-plan.md) records the intended contracts.
+Logs: `.cache/version-bundle.log` and `.cache/version-full.log`. This report was
+updated after verification; the image's source snapshot contains the earlier report.
+Current contracts are documented in [architecture](architecture.md) and [usage](usage.md).
 
 ## External release checks
 

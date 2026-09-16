@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE}
 ARG TARGETARCH
 ARG SOURCE_DATE_EPOCH=1759190400
 LABEL org.opencontainers.image.source="https://github.com/inframill/kit"
-LABEL org.opencontainers.image.description="Inframill runtime with versioned Kit drivers, OpenTofu and Ansible Core"
+LABEL org.opencontainers.image.description="Inframill Kit with the engine, versioned drivers, OpenTofu and Ansible Core"
 # Signed Debian snapshot metadata fixes the OS dependency resolution date.
 RUN printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260913T000000Z bookworm main\ndeb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20260913T000000Z bookworm-security main\n' > /etc/apt/sources.list \
     && rm -f /etc/apt/sources.list.d/debian.sources \

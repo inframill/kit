@@ -14,7 +14,7 @@ import (
 	wire "github.com/sir-hassan/inframill/pkg/driver"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 var errServed = errors.New("driver invocation failed")
 
 func main() {

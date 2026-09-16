@@ -1,4 +1,4 @@
-# Runtime distribution notices
+# Kit image distribution notices
 
 This image combines separately licensed programs. It is not an all-MIT product.
 
@@ -19,4 +19,4 @@ This image combines separately licensed programs. It is not an all-MIT product.
 
 The bundle lock and Python requirements record exact versions and checksums.
 Review changes to these materials and dependency license terms before distributing
-new versions. Guest packages installed by a blueprint are separate from the runtime.
+new versions. Guest packages installed by a blueprint are separate from the Kit image.

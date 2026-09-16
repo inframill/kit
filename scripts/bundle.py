@@ -5,8 +5,10 @@ from bundle_inputs import read_binary
 from release_config import bundle_lock, configuration
 from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
-version=os.environ.get('VERSION','0.1.0')
+version=os.environ.get('BUNDLE_VERSION','0.2.0')
+image_reference=os.environ.get('REGISTRY','ghcr.io')+'/'+os.environ.get('NAMESPACE','inframill')+'/kit:'+version
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
+subprocess.run(['go','run','./cmd/kit-build','bundle:validate'],cwd=ROOT,env={**os.environ,'BUNDLE_VERSION':version},check=True)
 lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=bundle_lock(version)
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
 source_revision=verify_source(ROOT,lock['inframill']['revision'])
@@ -41,7 +43,7 @@ def run(args,**kwargs):
     print('+',' '.join(map(str,args)),flush=True);subprocess.run(list(map(str,args)),check=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     stage=pathlib.Path(td);context=stage/'context';context.mkdir();sources=context/'sources';sources.mkdir()
-    for name in ['go.mod','go.sum','LICENSE','README.md','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
+    for name in ['go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
         p=ROOT/name
         if p.is_dir():shutil.copytree(p,sources/name,ignore=shutil.ignore_patterns('__pycache__'))
         else:shutil.copy2(p,sources/name)
@@ -68,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     for name in ['Dockerfile','requirements.lock','python-sources.lock.json','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
     shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');(context/'bundle.lock.json').write_text(json.dumps(lock,indent=2)+'\n')
     tar=stage/'image.tar'
-    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','OPENTOFU_VERSION='+lock['opentofu']['version'],'--build-arg','ANSIBLE_VERSION='+lock['ansible_core'],'--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag','inframill/runtime:'+version,context])
+    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','OPENTOFU_VERSION='+lock['opentofu']['version'],'--build-arg','ANSIBLE_VERSION='+lock['ansible_core'],'--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag',image_reference,context])
     layout=stage/'oci';layout.mkdir()
     with tarfile.open(tar) as archive:
         for item in archive:

@@ -1,8 +1,8 @@
 # Kit architecture
 
-Kit 0.1.0 targets the current Inframill 0.2.0 API. There is no legacy implementation,
-protocol shim, old input reader or migration. Blueprint, driver, Kit and bundle
-versions are independent full SemVer identities.
+Kit 0.2.0 targets the Inframill 0.2.0 API. The `inframill-kit` executable hosts
+drivers. The `ghcr.io/inframill/kit` image bundles that executable with the engine
+and tools; build tasks call this image a bundle. Blueprints are separate OCI packages.
 
 ## Ownership
 
@@ -16,7 +16,7 @@ versions are independent full SemVer identities.
   node record. `internal/toolrun` owns subprocesses, restricted environments,
   bounded machine output and filtered diagnostics.
 - `cmd/kit-build`, `internal/packaging` and `scripts/` own local configuration,
-  authoring, OCI packaging, runtime assembly and manual publication.
+  authoring, OCI packaging, Kit image assembly and manual publication.
 
 ## Command lifecycle
 
@@ -56,11 +56,14 @@ The default blueprint set contains pv-cloud; local-resource variants are fixture
 A blueprint release pins core version and exact configured driver requirements.
 Packaging validates upstream manifest structure and each implementation's manifest,
 required settings templates, Values schema and the sealed source layer. OCI sources
-are architecture-independent; runtime OCI indices contain both Linux architectures.
+are architecture-independent; Kit image indices contain both Linux architectures.
 
-Runtime assembly verifies the clean sibling source revision before compiling Kit,
+Image assembly verifies the clean sibling source revision before compiling Kit,
 then copies checksum/architecture-verified core binaries from the versioned sibling
 dist. Native copying verifies the corresponding host binary too. The bundle task
 never compiles Inframill. Build records capture source, dependency and binary hashes.
 Push verifies existing bytes and rejects conflicting version tags. Publication is
 manual; local acceptance uses a disposable registry.
+
+See [usage](usage.md) for command behavior and [releases](releases.md) for build and
+publication commands.

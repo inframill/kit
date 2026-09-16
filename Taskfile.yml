@@ -1,12 +1,14 @@
 version: '3'
 vars:
   VERSION: '{{default "0.1.0" .VERSION}}'
-  KIT_VERSION: '{{default "0.1.0" .KIT_VERSION}}'
+  KIT_VERSION: '{{default "0.2.0" .KIT_VERSION}}'
+  BUNDLE_VERSION: '{{default "0.2.0" .BUNDLE_VERSION}}'
   REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
   NAMESPACE: '{{default "inframill" .NAMESPACE}}'
 env:
   VERSION: '{{.VERSION}}'
   KIT_VERSION: '{{.KIT_VERSION}}'
+  BUNDLE_VERSION: '{{.BUNDLE_VERSION}}'
   REGISTRY: '{{.REGISTRY}}'
   NAMESPACE: '{{.NAMESPACE}}'
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
@@ -31,6 +33,7 @@ tasks:
       - python3 -m unittest discover -s scripts -p "test_*.py"
       - go test -vet=off ./...
       - task: build
+      - task: release:check
   check-full:
     cmds:
       - task: check-fast
@@ -52,6 +55,8 @@ tasks:
     cmds: ['go run ./cmd/kit-build blueprints:package']
   blueprints:push:
     cmds: ['go run ./cmd/kit-build blueprints:push']
+  release:check:
+    cmds: ['go run ./cmd/kit-build bundle:validate']
   bundle:
     cmds: ['python3 scripts/bundle.py']
   bundle:push:
