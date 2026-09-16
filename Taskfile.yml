@@ -1,69 +1,141 @@
 version: '3'
-vars:
-  VERSION: '{{default "0.1.0" .VERSION}}'
-  KIT_VERSION: '{{default "0.2.0" .KIT_VERSION}}'
-  BUNDLE_VERSION: '{{default "0.2.0" .BUNDLE_VERSION}}'
-  REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
-  NAMESPACE: '{{default "inframill" .NAMESPACE}}'
+
+# Pass overrides as task arguments, for example: task bundle BUNDLE_VERSION=0.2.0.
 env:
-  VERSION: '{{.VERSION}}'
-  KIT_VERSION: '{{.KIT_VERSION}}'
-  BUNDLE_VERSION: '{{.BUNDLE_VERSION}}'
-  REGISTRY: '{{.REGISTRY}}'
-  NAMESPACE: '{{.NAMESPACE}}'
+  VERSION: '{{default "0.1.0" .VERSION}}' # Blueprint version; independent of Kit.
+  DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
+  KIT_VERSION: '{{default "0.2.0" .KIT_VERSION}}'
+  BUNDLE_VERSION: '{{default "0.2.0" .BUNDLE_VERSION}}' # Image version; must match Kit.
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
   KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
+  REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
+  NAMESPACE: '{{default "inframill" .NAMESPACE}}'
+  PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}' # Local test registries only.
   BLUEPRINT: '{{default "" .BLUEPRINT}}'
   DRIVER: '{{default "" .DRIVER}}'
-  DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
   RELEASE_SET: '{{default "default" .RELEASE_SET}}'
   REFERENCE: '{{default "" .REFERENCE}}'
-  PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}'
+
 tasks:
+  default:
+    aliases: [help]
+    desc: Show tasks, examples and version selectors
+    silent: true
+    cmds:
+      - task --list --sort none
+      - |
+        printf '%s\n' \
+          '' \
+          'Start:     task setup && task build && task inframill:copy' \
+          'Check:     task check-fast' \
+          'Image:     task bundle && task check-full' \
+          'Publish:   docker login ghcr.io && task bundle:push' \
+          'Blueprint: task blueprint:package BLUEPRINT=pv-cloud VERSION=0.1.0' \
+          '' \
+          'Versions: VERSION=blueprint, DRIVER_VERSION=driver, KIT_VERSION=executable,' \
+          '          BUNDLE_VERSION=image, native engine copy and full checks.' \
+          'Registry: REGISTRY=ghcr.io NAMESPACE=inframill; image repository is /kit.' \
+          'Builds stay local. Push tasks upload existing artifacts.' \
+          '' \
+          'Details: task --summary TASK; docs/usage.md; docs/releases.md'
+
+  # Local development.
   setup:
+    desc: Install pinned OpenTofu and Ansible in .cache (PYTHON selects Python)
     cmds: ['python3 scripts/setup-dev.py']
   build:
+    desc: Build bin/inframill-kit (KIT_VERSION)
     cmds: ['go run ./cmd/kit-build build']
   inframill:copy:
+    desc: Verify and copy the prebuilt host engine from the sibling dist (BUNDLE_VERSION)
     cmds: ['go run ./cmd/kit-build inframill:copy']
   config:
+    desc: Print local engine configuration as JSON
+    summary: |
+      Generate configuration with absolute tool paths, for example:
+        OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
+        ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
+          task --silent config > /tmp/kit-config.json
     cmds: ['go run ./cmd/kit-build config']
+
+  # Verification: full checks require an already-built image.
   check-fast:
+    desc: Run Python/Go tests, build Kit and validate release versions
     cmds:
       - python3 -m unittest discover -s scripts -p "test_*.py"
       - go test -vet=off ./...
       - task: build
       - task: release:check
   check-full:
+    desc: Run fast checks, native workflows and both Linux images in a disposable registry
+    summary: |
+      Prerequisites: task setup, Docker, and task bundle for BUNDLE_VERSION.
+      Runs local resources, provider mocks, daemon and registry checks, then
+      ARM64/AMD64 image workflows. Creates no cloud resources or GHCR packages.
     cmds:
       - task: check-fast
       - task: inframill:copy
       - python3 scripts/check.py full
+  release:check:
+    desc: Enforce Kit/core major-minor alignment and exact Kit/image version matching
+    cmds: ['go run ./cmd/kit-build bundle:validate']
   driver:check:
+    desc: Check discovery and tests for DRIVER=opentofu|ansible (DRIVER_VERSION)
     cmds: ['python3 scripts/check.py driver:check']
   blueprint:check:
+    desc: Check a blueprint locally (BLUEPRINT=pv-cloud VERSION=0.1.0)
     cmds: ['python3 scripts/check.py blueprint:check']
+
+  # Blueprint packages are architecture-independent OCI sources.
   blueprint:source-digest:
+    desc: Print the source digest to seal in a release descriptor (BLUEPRINT, VERSION)
     cmds: ['go run ./cmd/kit-build blueprint:source-digest']
   blueprint:package:
+    desc: Package one sealed blueprint locally (BLUEPRINT, VERSION)
     cmds: ['go run ./cmd/kit-build blueprint:package']
-  blueprint:push:
-    cmds: ['go run ./cmd/kit-build blueprint:push']
-  blueprint:verify:
-    cmds: ['python3 scripts/check.py blueprint:verify']
   blueprints:package:
+    desc: Package every blueprint selected by RELEASE_SET
     cmds: ['go run ./cmd/kit-build blueprints:package']
+  blueprint:push:
+    desc: Push one existing package to REGISTRY/NAMESPACE/blueprints/BLUEPRINT
+    cmds: ['go run ./cmd/kit-build blueprint:push']
   blueprints:push:
+    desc: Push existing packages selected by RELEASE_SET
     cmds: ['go run ./cmd/kit-build blueprints:push']
-  release:check:
-    cmds: ['go run ./cmd/kit-build bundle:validate']
+  blueprint:verify:
+    desc: Fetch and check a published blueprint (BLUEPRINT, VERSION, REFERENCE)
+    summary: |
+      REFERENCE must be digest-pinned, for example:
+        task blueprint:verify BLUEPRINT=pv-cloud VERSION=0.1.0 \
+          REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
+    cmds: ['python3 scripts/check.py blueprint:verify']
+
+  # The bundle is the Kit image: engine, drivers and pinned tools for both platforms.
   bundle:
+    desc: Build the local Linux AMD64/ARM64 Kit image (BUNDLE_VERSION)
+    summary: |
+      Requires Docker Buildx, the pinned sibling source revision and both prebuilt
+      Linux engine binaries under INFRAMILL_DIST_DIR. Builds Kit and copies the engine.
+      Writes KIT_DIST_DIR/bundles/BUNDLE_VERSION; never pushes or replaces an output.
     cmds: ['python3 scripts/bundle.py']
   bundle:push:
+    desc: Push the existing Kit image to REGISTRY/NAMESPACE/kit (BUNDLE_VERSION)
+    summary: |
+      Authenticate first with docker login REGISTRY, then run task bundle:push.
+      Validates release versions and the build lock, uploads existing OCI bytes,
+      and rejects a version tag that already points to different content.
     cmds: ['go run ./cmd/kit-build bundle:push']
   bundle:verify:
+    desc: Check published image platforms and driver discovery (REFERENCE)
+    summary: |
+      Uses Docker to inspect and run the published image. REFERENCE must be pinned:
+        task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
     cmds: ['python3 scripts/check.py bundle:verify']
+
+  # Optional persistent registry for manual experiments; full checks create their own.
   registry:up:
+    desc: Start the local registry for manual package/push experiments
     cmds: ['docker compose -f runtime/registry.compose.yaml up -d']
   registry:down:
+    desc: Stop the local registry started by registry:up
     cmds: ['docker compose -f runtime/registry.compose.yaml down']

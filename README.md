@@ -28,6 +28,9 @@ drivers support multiple names and versions, with explicit implementation select
 
 ## Development setup
 
+Run `task` or `task help` for commands and examples. Use `task --summary <name>`
+for a task's prerequisites, options and behavior.
+
 Install Go 1.27.0, Task and Python 3.12–3.14. Image builds and full verification also
 require Docker Buildx with Linux AMD64 and ARM64 support.
 
