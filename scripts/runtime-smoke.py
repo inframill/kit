@@ -21,9 +21,9 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
             return json.loads(result.read_text())['result']
         prefix=case['drivers']['opentofu'];ap=case['drivers']['ansible']
         execute(prefix+'.init');plan=execute(prefix+'.plan');execute(prefix+'.apply',{'plan_id':plan['plan_id']});execute(ap+'.apply',{'playbook':'site'});plan=execute(prefix+'.plan',{'destroy':True});execute(prefix+'.destroy',{'plan_id':plan['plan_id']})
-    version='0.1.0';fixture_name='smoke/pv-cloud';instance=tmp/'pv.json'
-    data=json.loads(pathlib.Path('/pv-example.json').read_text());reference=registry+'/inframill/blueprints/pv-cloud:0.1.0';instance.write_text(json.dumps(data))
-    release=json.loads(pathlib.Path('/usr/share/inframill/sources/kit/releases/blueprints/pv-cloud/0.1.0.yaml').read_text());ids={d['name']:d['id'] for d in release['drivers']}
+    version='0.2.0';fixture_name='smoke/pv-cloud';instance=tmp/'pv.json'
+    data=json.loads(pathlib.Path('/pv-example.json').read_text());reference=registry+'/inframill/blueprints/pv-cloud:0.2.0';instance.write_text(json.dumps(data))
+    release=json.loads(pathlib.Path('/usr/share/inframill/sources/kit/releases/blueprints/pv-cloud/0.2.0.yaml').read_text());ids={d['name']:d['id'] for d in release['drivers']}
     execute(ids['ansible']+'.syntax-check',{'playbook':'site'})
     work=next(p.parent for p in (tmp/'data').glob('instances/*/workspace/'+ids['opentofu']+'/main.tf') if 'hcloud' in p.read_text())
     lock=json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())

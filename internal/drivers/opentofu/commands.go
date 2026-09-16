@@ -40,11 +40,11 @@ type OutputResult struct {
 
 func (p *prepared) configHash() string {
 	return artifacts.JSONHash(struct {
-		Manifest Manifest
-		Settings Settings
-	}{p.manifest, p.settings})
+		StaticSettings StaticSettings
+		Settings       Settings
+	}{p.static, p.settings})
 }
-func (p *prepared) planName(id string) string { return p.manifest.ID + "-plan-" + id }
+func (p *prepared) planName(id string) string { return p.static.ID + "-plan-" + id }
 func (p *prepared) savedPlan() (Plan, []byte, error) {
 	var rec Plan
 	name := p.planName(p.arguments.PlanID)
@@ -60,7 +60,7 @@ func (p *prepared) savedPlan() (Plan, []byte, error) {
 		return rec, nil, err
 	}
 	modeOK := p.command == "destroy" && rec.Mode == "destroy" || p.command == "apply" && (rec.Mode == "apply" || rec.Mode == "refresh-only")
-	if rec.Schema != 1 || rec.Binding != p.scope.Binding || rec.ProducerID != p.manifest.ID || rec.CommandID != p.arguments.PlanID || rec.DriverVersion != p.driver.Version || rec.ToolVersion != p.driver.ToolVersion || rec.ConfigHash != p.configHash() || rec.SourceHash != source || !modeOK {
+	if rec.Schema != 1 || rec.Binding != p.scope.Binding || rec.ProducerID != p.static.ID || rec.CommandID != p.arguments.PlanID || rec.DriverVersion != p.driver.Version || rec.ToolVersion != p.driver.ToolVersion || rec.ConfigHash != p.configHash() || rec.SourceHash != source || !modeOK {
 		return rec, nil, &driver.Error{Code: "INCOMPATIBLE_PLAN", Message: "saved plan no longer matches this command; create a fresh plan"}
 	}
 	data, err = artifacts.Read(p.scope.ArtifactDirectory, name+".bin", artifacts.Limit)
@@ -73,13 +73,13 @@ func (p *prepared) savedPlan() (Plan, []byte, error) {
 	return rec, data, nil
 }
 func (p *prepared) invalidate() error {
-	return artifacts.Write(p.scope.ArtifactDirectory, p.manifest.Artifact, artifacts.Nodes{Schema: 1, Valid: false, Binding: p.scope.Binding, ProducerID: p.manifest.ID, ProducerVersion: p.driver.Version, CommandID: p.scope.CommandID})
+	return artifacts.Write(p.scope.ArtifactDirectory, p.static.Artifact, artifacts.Nodes{Schema: 1, Valid: false, Binding: p.scope.Binding, ProducerID: p.static.ID, ProducerVersion: p.driver.Version, CommandID: p.scope.CommandID})
 }
 func (p *prepared) execute(ctx context.Context, run toolrun.Runner) (any, error) {
 	switch p.command {
 	case "init":
 		args := []string{"init", "-input=false", "-no-color", "-lockfile=readonly"}
-		if p.manifest.Backend == "s3" {
+		if p.static.Backend == "s3" {
 			args = append(args, "-backend-config=key=instances/"+p.scope.Binding.InstanceID+"/terraform.tfstate")
 		}
 		keys := []string{}
@@ -145,7 +145,7 @@ func (p *prepared) plan(ctx context.Context, run toolrun.Runner) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rec := Plan{Schema: 1, Binding: p.scope.Binding, ProducerID: p.manifest.ID, DriverVersion: p.driver.Version, ToolVersion: p.driver.ToolVersion, ConfigHash: p.configHash(), SourceHash: source, Digest: artifacts.Hash(data), CommandID: p.scope.CommandID, Mode: mode}
+	rec := Plan{Schema: 1, Binding: p.scope.Binding, ProducerID: p.static.ID, DriverVersion: p.driver.Version, ToolVersion: p.driver.ToolVersion, ConfigHash: p.configHash(), SourceHash: source, Digest: artifacts.Hash(data), CommandID: p.scope.CommandID, Mode: mode}
 	if err = toolrun.Public(rec, run.Secrets); err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func managed(m module) int {
 	return n
 }
 func (p *prepared) publish(ctx context.Context, run toolrun.Runner) (any, error) {
-	data, code, err := run.Call(ctx, true, "output", "-json", p.manifest.NodeOutput)
+	data, code, err := run.Call(ctx, true, "output", "-json", p.static.NodeOutput)
 	if err = toolrun.Success(code, err); err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (p *prepared) publish(ctx context.Context, run toolrun.Runner) (any, error)
 	if len(nodes) == 0 || len(nodes) > 1000 {
 		return nil, errors.New("node output must contain 1..1000 nodes")
 	}
-	record := artifacts.Nodes{Schema: 1, Valid: true, Binding: p.scope.Binding, ProducerID: p.manifest.ID, ProducerVersion: p.driver.Version, CommandID: p.scope.CommandID}
+	record := artifacts.Nodes{Schema: 1, Valid: true, Binding: p.scope.Binding, ProducerID: p.static.ID, ProducerVersion: p.driver.Version, CommandID: p.scope.CommandID}
 	keys := []string{}
 	for key := range nodes {
 		keys = append(keys, key)
@@ -261,8 +261,8 @@ func (p *prepared) publish(ctx context.Context, run toolrun.Runner) (any, error)
 	if err = toolrun.Public(record, run.Secrets); err != nil {
 		return nil, err
 	}
-	if err = artifacts.Write(p.scope.ArtifactDirectory, p.manifest.Artifact, record); err != nil {
+	if err = artifacts.Write(p.scope.ArtifactDirectory, p.static.Artifact, record); err != nil {
 		return nil, err
 	}
-	return OutputResult{p.manifest.Artifact, len(nodes), true}, nil
+	return OutputResult{p.static.Artifact, len(nodes), true}, nil
 }

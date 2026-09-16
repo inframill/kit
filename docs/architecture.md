@@ -48,6 +48,11 @@ not require node artifacts; check mode reports prediction.
 
 ## Versions and publication
 
+The root `VERSION` selects the Kit release descriptor, which declares the exact
+Inframill target. Kit and engine must share major/minor; patches and prereleases
+can differ. The image shares Kit's exact version and its lock must pin the declared
+engine target. The sibling checkout does not select either release version.
+
 The current catalog contains OpenTofu and Ansible 0.2.0. Explicit factories select
 code; embedded release descriptors supply versions/tool pins. Synthetic test factories
 have different settings and argument contracts to exercise future version coexistence.

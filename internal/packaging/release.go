@@ -13,7 +13,6 @@ import (
 	"github.com/inframill/kit/internal/artifacts"
 	"github.com/inframill/kit/internal/catalog"
 	"github.com/opencontainers/go-digest"
-	wire "github.com/sir-hassan/inframill/pkg/driver"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,7 +48,7 @@ func ReadYAML(path string, v any) error {
 	}
 	return nil
 }
-func Blueprint(root, name, version string) (BlueprintRelease, string, error) {
+func Blueprint(root, name, version, engineVersion string) (BlueprintRelease, string, error) {
 	var r BlueprintRelease
 	if !catalog.ValidName(name) || !catalog.ValidVersion(version) {
 		return r, "", errors.New("exact blueprint name and SemVer required")
@@ -57,8 +56,11 @@ func Blueprint(root, name, version string) (BlueprintRelease, string, error) {
 	if e := ReadYAML(filepath.Join(root, "releases", "blueprints", name, version+".yaml"), &r); e != nil {
 		return r, "", e
 	}
-	if r.Name != name || r.Version != version || r.Protocol != 1 || r.InframillVersion != catalog.InframillVersion {
+	if r.Name != name || r.Version != version || r.Protocol != 1 {
 		return r, "", errors.New("release identity or protocol mismatch")
+	}
+	if !catalog.ValidVersion(engineVersion) || r.InframillVersion != engineVersion {
+		return r, "", errors.New("blueprint Inframill version differs from selected Kit target")
 	}
 	sort.Strings(r.Platforms)
 	sort.Strings(r.Architectures)
@@ -66,32 +68,33 @@ func Blueprint(root, name, version string) (BlueprintRelease, string, error) {
 		return r, "", errors.New("release must support ARM64 and AMD64")
 	}
 	src := filepath.Join(root, "blueprints", name, "versions", version)
-	if e := validateSchema(filepath.Join(src, "schema.json")); e != nil {
+	data, e := artifacts.Read(src, Filename, MaxBytes)
+	if e != nil {
 		return r, "", e
 	}
-	var manifest wire.BlueprintManifest
-	if e := ReadYAML(filepath.Join(src, "manifest.yaml"), &manifest); e != nil {
+	definition, e := parseDefinition(data)
+	if e != nil {
 		return r, "", e
 	}
-	if e := manifest.Validate(); e != nil {
+	if e = validateSchema(definition.ValuesSchema); e != nil {
 		return r, "", e
 	}
-	if len(manifest.Drivers) != len(r.Drivers) {
-		return r, "", errors.New("manifest and release driver count differs")
+	if len(definition.DriverSettings) != len(r.Drivers) {
+		return r, "", errors.New("blueprint settings and release driver count differs")
 	}
 	for _, d := range r.Drivers {
 		if _, e := catalog.Get(d.Name, d.Version); e != nil {
 			return r, "", e
 		}
-		c, ok := manifest.Drivers[d.ID]
+		c, ok := definition.DriverSettings[d.ID]
 		if !ok || c["id"] != d.ID || c["required_driver_version"] != d.Version {
-			return r, "", errors.New("manifest and release driver requirements disagree")
+			return r, "", errors.New("blueprint settings and release driver requirements disagree")
 		}
 		implementation, e := catalog.New(d.Name, d.Version, "")
 		if e != nil {
 			return r, "", e
 		}
-		if e = implementation.ValidateManifest(context.Background(), c); e != nil {
+		if e = implementation.ValidateSettings(context.Background(), c); e != nil {
 			return r, "", e
 		}
 		if raw, exists := c["settings_file"]; exists {

@@ -34,7 +34,7 @@ func Archive(directory string) ([]byte, error) {
 		if !fs.ValidPath(relative) || strings.ContainsAny(relative, "\\\x00") {
 			return errors.New("invalid blueprint source path")
 		}
-		if relative != "manifest.yaml" && relative != "schema.json" && relative != "template" && !strings.HasPrefix(relative, "template/") {
+		if relative != "blueprint.yaml" && relative != "template" && !strings.HasPrefix(relative, "template/") {
 			return errors.New("blueprint contains files outside its source contract")
 		}
 		for _, part := range strings.Split(relative, "/") {

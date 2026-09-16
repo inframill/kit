@@ -14,7 +14,7 @@ import (
 )
 
 type Driver struct{ Version, ToolVersion, Tool string }
-type Manifest struct {
+type StaticSettings struct {
 	Version      string `json:"required_driver_version"`
 	ID           string `json:"id"`
 	SettingsFile string `json:"settings_file"`
@@ -35,7 +35,7 @@ type Arguments struct {
 type prepared struct {
 	driver    Driver
 	scope     driver.ExecutionContext
-	manifest  Manifest
+	static    StaticSettings
 	settings  Settings
 	arguments Arguments
 	command   string
@@ -64,28 +64,28 @@ func (d Driver) Definition() (driver.Definition, error) {
 	}
 	return driver.Definition{Name: "opentofu", Commands: commands}, nil
 }
-func (d Driver) manifest(config driver.Config) (Manifest, error) {
-	var m Manifest
+func (d Driver) parseSettings(config driver.Settings) (StaticSettings, error) {
+	var m StaticSettings
 	b, err := json.Marshal(config)
 	if err != nil {
-		return m, errors.New("invalid manifest")
+		return m, errors.New("invalid static settings")
 	}
 	if err = artifacts.Decode(b, &m); err != nil {
 		return m, err
 	}
 	if m.Version != d.Version || !driver.ValidID(m.ID) || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ID+"-nodes-") || !artifacts.Identifier.MatchString(m.NodeOutput) || m.Backend != "local" && m.Backend != "s3" {
-		return m, errors.New("invalid OpenTofu manifest or implementation version")
+		return m, errors.New("invalid OpenTofu settings or implementation version")
 	}
 	return m, nil
 }
-func (d Driver) ValidateManifest(ctx context.Context, config driver.Config) error {
-	_, err := d.manifest(config)
+func (d Driver) ValidateSettings(ctx context.Context, config driver.Settings) error {
+	_, err := d.parseSettings(config)
 	return errors.Join(ctx.Err(), err)
 }
 
 var secretName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,127}$`)
 
-func readSettings(scope driver.ExecutionContext, m Manifest) (Settings, error) {
+func readSettings(scope driver.ExecutionContext, m StaticSettings) (Settings, error) {
 	var s Settings
 	b, err := artifacts.Read(scope.WorkspaceDirectory, m.SettingsFile, artifacts.SettingsLimit)
 	if err != nil {
@@ -131,12 +131,12 @@ func (d Driver) Prepare(ctx context.Context, scope driver.ExecutionContext, comm
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	m, err := d.manifest(scope.DriverConfig)
+	m, err := d.parseSettings(scope.DriverSettings)
 	if err != nil {
 		return nil, err
 	}
 	if filepath.Base(scope.WorkspaceDirectory) != m.ID {
-		return nil, errors.New("manifest id must match workspace driver id")
+		return nil, errors.New("static id must match workspace driver id")
 	}
 	var a Arguments
 	data, err := json.Marshal(args)
@@ -193,7 +193,7 @@ func (p *prepared) credentials() map[string]string {
 		case "TF_ENCRYPTION":
 			needed = p.command != "validate"
 		default:
-			needed = p.manifest.Backend == "s3" && p.command != "validate"
+			needed = p.static.Backend == "s3" && p.command != "validate"
 		}
 		if needed {
 			out[key] = ref

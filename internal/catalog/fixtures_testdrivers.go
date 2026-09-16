@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Synthetic implementations have distinct schemas and manifest contracts.
+// Synthetic implementations have distinct schemas and settings contracts.
 // No production driver version is registered by changing its version string.
 func init() {
 	for _, version := range []string{"0.1.0", "0.2.0"} {
@@ -33,19 +33,19 @@ func (d fixtureDriver) Definition() (driver.Definition, error) {
 	schema := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{key: map[string]any{"type": "string"}, "wait": map[string]any{"type": "boolean"}}, "required": []string{key}}
 	return driver.Definition{Name: "fixture", Commands: map[string]driver.CommandDefinition{"probe": {Description: "Test secret snapshots without emitting credentials", ArgumentsSchema: schema}}}, nil
 }
-func (d fixtureDriver) ValidateManifest(ctx context.Context, c driver.Config) error {
+func (d fixtureDriver) ValidateSettings(ctx context.Context, c driver.Settings) error {
 	if c["contract"] != d.version {
 		return errors.New("fixture contract mismatch")
 	}
 	for key := range c {
 		if key != "contract" && key != "id" && key != "required_driver_version" {
-			return errors.New("unexpected fixture manifest field")
+			return errors.New("unexpected fixture settings field")
 		}
 	}
 	return ctx.Err()
 }
 func (d fixtureDriver) Prepare(ctx context.Context, s driver.ExecutionContext, command string, args map[string]any) (driver.PreparedCommand, error) {
-	if err := d.ValidateManifest(ctx, s.DriverConfig); err != nil {
+	if err := d.ValidateSettings(ctx, s.DriverSettings); err != nil {
 		return nil, err
 	}
 	key := "text"

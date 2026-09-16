@@ -21,8 +21,8 @@ const LayerType = "application/vnd.inframill.blueprint.layer.v1.tar+gzip"
 func Descriptor(media string, b []byte) v1.Descriptor {
 	return v1.Descriptor{MediaType: media, Digest: digest.FromBytes(b), Size: int64(len(b))}
 }
-func Package(ctx context.Context, root, name, version string) (v1.Descriptor, error) {
-	release, src, e := Blueprint(root, name, version)
+func Package(ctx context.Context, root, name, version, engineVersion string) (v1.Descriptor, error) {
+	release, src, e := Blueprint(root, name, version, engineVersion)
 	if e != nil {
 		return v1.Descriptor{}, e
 	}

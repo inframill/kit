@@ -11,7 +11,7 @@ import time
 import urllib.error
 import urllib.request
 
-from release_config import ROOT, configuration, local_tools
+from release_config import ROOT, configuration, local_tools, bundle_lock
 
 
 def daemon_check(tmp, registry, env):
@@ -23,14 +23,13 @@ def daemon_check(tmp, registry, env):
     source = tmp / 'blueprints/protocol-fixture/versions/0.1.0'
     (source / 'template/fixture').mkdir(parents=True)
     (source / 'template/fixture/readme.txt').write_text('secret snapshot test\n')
-    (source / 'schema.json').write_text('{"type":"object","additionalProperties":false}')
-    (source / 'manifest.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'drivers': {'fixture': {'id': 'fixture', 'required_driver_version': '0.1.0', 'contract': '0.1.0'}}}))
+    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'driver_settings': {'fixture': {'id': 'fixture', 'required_driver_version': '0.1.0', 'contract': '0.1.0'}}}))
     selection = {**env, 'BLUEPRINT_ROOT': str(tmp), 'BLUEPRINT': 'protocol-fixture', 'BLUEPRINT_VERSION': '0.1.0', 'KIT_DIST_DIR': str(tmp / 'dist')}
     prefix = ['go', 'run', '-tags=kit_testdrivers', './cmd/kit-build']
     digest = subprocess.check_output(prefix + ['blueprint:source-digest'], cwd=ROOT, env=selection, text=True).strip()
     release = tmp / 'releases/blueprints/protocol-fixture/0.1.0.yaml'
     release.parent.mkdir(parents=True)
-    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': '0.5.0-dev', 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
+    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': bundle_lock()['inframill']['version'], 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
     for action in ['blueprint:package', 'blueprint:push']:
         subprocess.run(prefix + [action], cwd=ROOT, env=selection, check=True)
     tofu, ansible = local_tools()
@@ -113,16 +112,16 @@ def daemon_check(tmp, registry, env):
     try:
         start()
         statuses = {d['id']: d['status'] for d in rpc('ListDrivers')['drivers']}
-        assert statuses['opentofu-0-1-0'] == 'DRIVER_STATUS_AVAILABLE', statuses
-        assert statuses['ansible-0-1-0'] == 'DRIVER_STATUS_AVAILABLE', statuses
+        assert statuses['opentofu-0-2-0'] == 'DRIVER_STATUS_AVAILABLE', statuses
+        assert statuses['ansible-0-2-0'] == 'DRIVER_STATUS_AVAILABLE', statuses
         assert statuses['unavailable'] == 'DRIVER_STATUS_UNAVAILABLE', statuses
         iid = initialize('acceptance/local', registry + '/inframill/blueprints/local-resource:0.1.0', {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
-        run(iid, 'opentofu-0-1-0.init')
-        plan = run(iid, 'opentofu-0-1-0.plan')
-        run(iid, 'opentofu-0-1-0.apply', {'plan_id': plan['plan_id']})
-        run(iid, 'ansible-0-1-0.apply', {'playbook': 'site'})
-        plan = run(iid, 'opentofu-0-1-0.plan', {'destroy': True})
-        run(iid, 'opentofu-0-1-0.destroy', {'plan_id': plan['plan_id']})
+        run(iid, 'opentofu-0-2-0.init')
+        plan = run(iid, 'opentofu-0-2-0.plan')
+        run(iid, 'opentofu-0-2-0.apply', {'plan_id': plan['plan_id']})
+        run(iid, 'ansible-0-2-0.apply', {'playbook': 'site'})
+        plan = run(iid, 'opentofu-0-2-0.plan', {'destroy': True})
+        run(iid, 'opentofu-0-2-0.destroy', {'plan_id': plan['plan_id']})
         assert len(rpc('ListCommandExecutions', {'instance_id': iid})['executions']) == 6
         ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
         # Local exec uses a new Backend per invocation, including reused Instances.

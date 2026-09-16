@@ -15,8 +15,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const InframillVersion = "0.5.0-dev"
-
 type Release struct {
 	Name        string `json:"name" yaml:"name"`
 	Version     string `json:"version" yaml:"version"`
@@ -91,10 +89,10 @@ func List() []Release {
 }
 func init() {
 	implementations := map[string]Factory{
-		"opentofu@0.1.0": func(r Release, tool string) driver.Driver {
+		"opentofu@0.2.0": func(r Release, tool string) driver.Driver {
 			return opentofu.Driver{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
-		"ansible@0.1.0": func(r Release, tool string) driver.Driver {
+		"ansible@0.2.0": func(r Release, tool string) driver.Driver {
 			return ansible.Driver{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
 	}

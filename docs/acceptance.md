@@ -34,9 +34,15 @@ with vet disabled, the Kit build and release validation. `task bundle` and
 registry. Python syntax, documentation links and `git diff --check` also passed.
 
 Version-policy tests reject mismatched major/minor versions, descriptor identities,
-image/Kit versions and core targets. Independent Kit patch releases and prereleases
-within the supported major/minor line pass. Image builds, pushes and native copies
-use the same release validation.
+image/Kit versions and core targets. Independent Kit and engine patches/prereleases
+within the same major/minor line pass. The selected Kit descriptor supplies the
+engine target; no Go version constant is required. Command tests reject mismatched
+lines before builds, pushes, packaging or native copying can proceed.
+
+After that version-selection change, `task check-fast`, `task blueprints:package`
+and `task inframill:copy` passed again (fast-check log: `.cache/alignment-fast.log`).
+The blueprint digest stayed unchanged. The image and full runtime checks recorded
+here precede this tooling change; the image was not rebuilt for it.
 
 | Acceptance area | Evidence |
 | --- | --- |

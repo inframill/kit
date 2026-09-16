@@ -82,7 +82,7 @@ func (p *prepared) Execute(ctx context.Context, secrets driver.Secrets) (any, er
 	if err = artifacts.Write(tmp, "inventory.json", inventory); err != nil {
 		return nil, err
 	}
-	args := []string{"-i", filepath.Join(tmp, "inventory.json"), p.manifest.Playbooks[p.args.Playbook]}
+	args := []string{"-i", filepath.Join(tmp, "inventory.json"), p.static.Playbooks[p.args.Playbook]}
 	if p.command == "syntax-check" {
 		args = append(args, "--syntax-check")
 	}
@@ -96,11 +96,11 @@ func (p *prepared) Execute(ctx context.Context, secrets driver.Secrets) (any, er
 		args = append(args, "--tags", strings.Join(p.args.Tags, ","))
 	}
 	policy := "yes"
-	if p.manifest.HostKeyPolicy == "accept-new" {
+	if p.static.HostKeyPolicy == "accept-new" {
 		policy = "accept-new"
 	}
 	run.Environment = append(run.Environment, "ANSIBLE_CONFIG="+filepath.Join(tmp, "ansible.cfg"), "ANSIBLE_CALLBACK_PLUGINS="+tmp, "ANSIBLE_STDOUT_CALLBACK=callback", "ANSIBLE_HOST_KEY_CHECKING=True", "ANSIBLE_RETRY_FILES_ENABLED=False", "ANSIBLE_ROLES_PATH="+filepath.Join(p.scope.WorkspaceDirectory, "roles"), "ANSIBLE_SSH_ARGS=-o BatchMode=yes -o StrictHostKeyChecking="+policy)
-	if p.manifest.Connection == "local" {
+	if p.static.Connection == "local" {
 		run.Environment = append(run.Environment, "ANSIBLE_PYTHON_INTERPRETER="+filepath.Join(filepath.Dir(tool), "python3"))
 	}
 	if err = run.Verify(ctx, "ansible", p.driver.ToolVersion); err != nil {

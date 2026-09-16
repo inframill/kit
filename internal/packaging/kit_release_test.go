@@ -12,16 +12,19 @@ func TestKitAndBundleVersionPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name, selected, kit, core, bundle, bundledKit, bundledCore, want string
 	}{
-		{"aligned", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", ""},
-		{"independent patch", "0.5.7", "0.5.7", "0.5.0-dev", "0.5.7", "0.5.7", "0.5.0-dev", ""},
-		{"prerelease", "0.5.1-rc.1", "0.5.1-rc.1", "0.5.0-dev", "0.5.1-rc.1", "0.5.1-rc.1", "0.5.0-dev", ""},
-		{"wrong minor", "0.6.0", "0.6.0", "0.5.0-dev", "0.6.0", "0.6.0", "0.5.0-dev", "major/minor"},
-		{"wrong major", "1.5.0", "1.5.0", "0.5.0-dev", "1.5.0", "1.5.0", "0.5.0-dev", "major/minor"},
-		{"wrong descriptor identity", "0.5.0-dev", "0.5.1", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "compiled target"},
-		{"unsupported core", "0.5.0-dev", "0.5.0-dev", "0.5.1", "0.5.0-dev", "0.5.0-dev", "0.5.1", "compiled target"},
-		{"wrong image identity", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.1", "0.5.0-dev", "0.5.0-dev", "match exactly"},
-		{"wrong Kit in image", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.1", "0.5.0-dev", "match exactly"},
-		{"wrong core in image", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.0-dev", "0.5.1", "differs from Kit target"},
+		{"aligned", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", ""},
+		{"independent patch", "0.6.7", "0.6.7", "0.6.0-dev", "0.6.7", "0.6.7", "0.6.0-dev", ""},
+		{"prerelease", "0.6.1-rc.1", "0.6.1-rc.1", "0.6.0-dev", "0.6.1-rc.1", "0.6.1-rc.1", "0.6.0-dev", ""},
+		{"future release line", "2.9.3", "2.9.3", "2.9.7-rc.1", "2.9.3", "2.9.3", "2.9.7-rc.1", ""},
+		{"missing core", "0.6.0", "0.6.0", "", "0.6.0", "0.6.0", "", "exact Inframill SemVer"},
+		{"invalid core", "0.6.0", "0.6.0", "0.6", "0.6.0", "0.6.0", "0.6", "exact Inframill SemVer"},
+		{"wrong minor", "0.7.0", "0.7.0", "0.6.0-dev", "0.7.0", "0.7.0", "0.6.0-dev", "major/minor"},
+		{"wrong major", "1.6.0", "1.6.0", "0.6.0-dev", "1.6.0", "1.6.0", "0.6.0-dev", "major/minor"},
+		{"wrong descriptor identity", "0.6.0-dev", "0.6.1", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "identity differs"},
+		{"independent engine patch", "0.6.0-dev", "0.6.0-dev", "0.6.1", "0.6.0-dev", "0.6.0-dev", "0.6.1", ""},
+		{"wrong image identity", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.1", "0.6.0-dev", "0.6.0-dev", "match exactly"},
+		{"wrong Kit in image", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.1", "0.6.0-dev", "match exactly"},
+		{"wrong core in image", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.0-dev", "0.6.1", "differs from Kit target"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -42,7 +45,7 @@ func TestKitAndBundleVersionPolicy(t *testing.T) {
 			// Driver versions deliberately differ from Kit and remain independent.
 			write("releases/kits/"+tc.selected+".yaml", map[string]any{
 				"version": tc.kit, "inframill_version": tc.core,
-				"drivers": []map[string]string{{"name": "opentofu", "version": "0.1.0"}, {"name": "ansible", "version": "0.1.0"}},
+				"drivers": []map[string]string{{"name": "opentofu", "version": "0.2.0"}, {"name": "ansible", "version": "0.2.0"}},
 			})
 			write("releases/bundles/"+tc.selected+".lock.yaml", map[string]any{
 				"version": tc.bundle, "kit_version": tc.bundledKit,

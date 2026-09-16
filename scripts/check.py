@@ -45,9 +45,9 @@ def blueprint_check(name,version):
     with tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp=pathlib.Path(td);conf=tmp/'config.json';config(conf,tmp/'data',tofu,ansible)
         if name=='local-resource':local_flow(tmp,conf,version);return
-        if name!='pv-cloud' or version!='0.1.0':raise RuntimeError('No declared integration fixture for this blueprint version')
+        if name!='pv-cloud' or version!='0.2.0':raise RuntimeError('No declared integration fixture for this blueprint version')
         # Syntax-check initializes/render-validates the Instance, without cloud access.
-        instance=ROOT/'examples/pv-cloud-0.1.0.json';source=ROOT/'blueprints/pv-cloud/versions/0.1.0';ids=driver_ids(name,version)
+        instance=ROOT/'examples/pv-cloud-0.2.0.json';source=ROOT/'blueprints/pv-cloud/versions/0.2.0';ids=driver_ids(name,version)
         for architecture in ['arm64','amd64']:
             execute(tmp,conf,ROOT/f'examples/pv-cloud-{architecture}.json','test/pv-'+architecture,ids['ansible']+'.syntax-check',{'playbook':'site'},source)
         execute(tmp,conf,instance,'test/pv-cloud',ids['ansible']+'.syntax-check',{'playbook':'site'},source)
@@ -106,7 +106,7 @@ def registry_check():
         ids=driver_ids('local-resource','0.1.0')
         execute(tmp,conf,tmp/'local-0.1.0.json','test/offline',ids['ansible']+'.syntax-check',{'playbook':'site'},env=offline)
         cache=tmp/'fresh-data/blueprints'
-        cached_schema=next(cache.rglob('schema.json'))
+        cached_schema=next(cache.rglob('blueprint.yaml'))
         cached_schema.write_bytes(cached_schema.read_bytes()+b'\n')
         before=set((tmp/'fresh-data/instances').iterdir())
         args_file=tmp/'tampered-args.json';args_file.write_text('{"playbook":"site"}')
@@ -135,7 +135,7 @@ def registry_check():
             python='/opt/inframill/tools/ansible/'+bundle_lock()['ansible_core']+'/bin/python3'
             for arch in ['arm64','amd64']:
                 image_check(tmp,image,arch,network)
-                run(['docker','run','--rm','--pull=never','--platform','linux/'+arch,'--network',network,'-e','KIT_TEST_REGISTRY=registry:5000','-e','KIT_TEST_FIXTURES='+json.dumps([{**case,'drivers':driver_ids(case['name'],case['version'])} for case in fixture_cases()]),'--mount','type=bind,src='+str(ROOT/'scripts/runtime-smoke.py')+',dst=/verify.py,readonly','--mount','type=bind,src='+str(ROOT/'examples/pv-cloud-0.1.0.json')+',dst=/pv-example.json,readonly','--entrypoint',python,image,'/verify.py'])
+                run(['docker','run','--rm','--pull=never','--platform','linux/'+arch,'--network',network,'-e','KIT_TEST_REGISTRY=registry:5000','-e','KIT_TEST_FIXTURES='+json.dumps([{**case,'drivers':driver_ids(case['name'],case['version'])} for case in fixture_cases()]),'--mount','type=bind,src='+str(ROOT/'scripts/runtime-smoke.py')+',dst=/verify.py,readonly','--mount','type=bind,src='+str(ROOT/'examples/pv-cloud-0.2.0.json')+',dst=/pv-example.json,readonly','--entrypoint',python,image,'/verify.py'])
         finally:subprocess.run(['docker','image','rm',image],stdout=subprocess.DEVNULL,check=False)
 
 
@@ -145,9 +145,9 @@ def main():
     if action=='full':
         for case in fixture_cases()+json.loads((ROOT/'releases/sets/default.yaml').read_text())['blueprints']:blueprint_check(case['name'],case['version'])
         registry_check();return
-    if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('BLUEPRINT_VERSION','0.1.0'));return
+    if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('BLUEPRINT_VERSION','0.2.0'));return
     if action=='driver:check':
-        name=os.environ['DRIVER'];version=os.environ.get('DRIVER_VERSION','0.1.0')
+        name=os.environ['DRIVER'];version=os.environ.get('DRIVER_VERSION','0.2.0')
         run([ROOT/'bin/inframill-kit','driver',name,'--driver-version',version],input=json.dumps({'protocol':1,'method':'info','params':{}}));run(['go','test','-vet=off','./internal/drivers/'+name]);return
     if action=='blueprint:verify':
         reference=os.environ['REFERENCE']
@@ -155,7 +155,7 @@ def main():
         tofu,ansible=tools()
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             tmp=pathlib.Path(td);conf=tmp/'config.json';config(conf,tmp/'data',tofu,ansible)
-            name=os.environ.get('BLUEPRINT','');version=os.environ.get('BLUEPRINT_VERSION','0.1.0');example=blueprint_root(name)/f'examples/{name}-{version}.json'
+            name=os.environ.get('BLUEPRINT','');version=os.environ.get('BLUEPRINT_VERSION','0.2.0');example=blueprint_root(name)/f'examples/{name}-{version}.json'
             data=json.loads(example.read_text());instance=tmp/'values.json';instance.write_text(json.dumps(data))
             # Blueprint and driver versions are independent release identities.
             release=json.loads(run(['go','run','./cmd/kit-build','blueprint:requirements'],cwd=ROOT,env={**os.environ,'BLUEPRINT_ROOT':str(blueprint_root(name))},capture_output=True).stdout)

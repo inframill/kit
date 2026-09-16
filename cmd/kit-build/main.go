@@ -55,7 +55,7 @@ func run() error {
 	ctx := context.Background()
 	action := os.Args[1]
 	name := os.Getenv("BLUEPRINT")
-	version := env("BLUEPRINT_VERSION", "0.1.0")
+	version := env("BLUEPRINT_VERSION", "0.2.0")
 	if action == "build" || action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
 		version, e = packaging.ProjectVersion(root)
 		if e != nil {
@@ -67,6 +67,13 @@ func run() error {
 	plain := os.Getenv("PLAIN_HTTP") == "true"
 	if !catalog.ValidVersion(version) || !catalog.ValidName(ns) {
 		return errors.New("invalid exact version or namespace")
+	}
+	var engineVersion string
+	if action == "blueprint:requirements" || action == "blueprint:package" || action == "blueprints:package" || action == "blueprint:push" || action == "blueprints:push" {
+		engineVersion, e = packaging.EngineVersion(root)
+		if e != nil {
+			return e
+		}
 	}
 	switch action {
 	case "build":
@@ -100,7 +107,7 @@ func run() error {
 			return errors.New("invalid Inframill release version")
 		}
 		entry, ok := lock.Inframill.Binaries[runtime.GOOS+"/"+runtime.GOARCH]
-		if !ok || !filepath.IsLocal(entry.Path) || iv != catalog.InframillVersion {
+		if !ok || !filepath.IsLocal(entry.Path) {
 			return errors.New("unsupported native release")
 		}
 		source := filepath.Join(env("INFRAMILL_DIST_DIR", filepath.Join(root, "..", "inframill", "dist")), entry.Path)
@@ -189,7 +196,7 @@ func run() error {
 			return errors.New("CONFIG_FORMAT must be json or yaml")
 		}
 	case "blueprint:requirements":
-		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version)
+		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version, engineVersion)
 		if err != nil {
 			return err
 		}
@@ -205,7 +212,7 @@ func run() error {
 		fmt.Println(digest.FromBytes(b))
 		return nil
 	case "blueprint:package":
-		d, e := packaging.Package(ctx, blueprintRoot(root), name, version)
+		d, e := packaging.Package(ctx, blueprintRoot(root), name, version, engineVersion)
 		if e != nil {
 			return e
 		}
@@ -242,7 +249,7 @@ func run() error {
 				return errors.New("invalid release selection")
 			}
 			if action == "blueprints:package" {
-				d, e := packaging.Package(ctx, blueprintRoot(root), s.Name, s.Version)
+				d, e := packaging.Package(ctx, blueprintRoot(root), s.Name, s.Version, engineVersion)
 				if e != nil {
 					failures = append(failures, e)
 					fmt.Fprintln(os.Stderr, s.Name, s.Version, e)

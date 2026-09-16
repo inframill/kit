@@ -30,9 +30,8 @@ func ProjectVersion(root string) (string, error) {
 	return strings.TrimSuffix(string(output), "\n"), nil
 }
 
-// Kit validates the release against the compiled core target and driver catalog.
-// Kit patch releases are independent; major and minor must match the core.
-func Kit(root, version string) (KitRelease, error) {
+// readKitRelease validates identity and the explicitly declared engine target.
+func readKitRelease(root, version string) (KitRelease, error) {
 	var release KitRelease
 	if !catalog.ValidVersion(version) {
 		return release, errors.New("exact Kit SemVer required")
@@ -40,13 +39,36 @@ func Kit(root, version string) (KitRelease, error) {
 	if err := ReadYAML(filepath.Join(root, "releases/kits", version+".yaml"), &release); err != nil {
 		return release, err
 	}
-	if release.Version != version || release.InframillVersion != catalog.InframillVersion {
-		return release, errors.New("Kit release identity or Inframill target differs from compiled target")
+	if release.Version != version {
+		return release, errors.New("Kit release identity differs from selected version")
+	}
+	if !catalog.ValidVersion(release.InframillVersion) {
+		return release, errors.New("exact Inframill SemVer required in Kit release")
 	}
 	kitParts := strings.Split(version, ".")
-	coreParts := strings.Split(catalog.InframillVersion, ".")
+	coreParts := strings.Split(release.InframillVersion, ".")
 	if kitParts[0] != coreParts[0] || kitParts[1] != coreParts[1] {
-		return release, fmt.Errorf("Kit %s must match Inframill %s major/minor version", version, catalog.InframillVersion)
+		return release, fmt.Errorf("Kit %s must match Inframill %s major/minor version", version, release.InframillVersion)
+	}
+	return release, nil
+}
+
+// EngineVersion uses the Kit release selected by VERSION, never the sibling checkout.
+// Blueprint fixtures may have their own source root and extra test drivers.
+func EngineVersion(root string) (string, error) {
+	version, err := ProjectVersion(root)
+	if err != nil {
+		return "", err
+	}
+	release, err := readKitRelease(root, version)
+	return release.InframillVersion, err
+}
+
+// Kit validates the declared engine target and compiled driver catalog.
+func Kit(root, version string) (KitRelease, error) {
+	release, err := readKitRelease(root, version)
+	if err != nil {
+		return release, err
 	}
 	if len(release.Drivers) != len(catalog.List()) {
 		return release, errors.New("Kit descriptor differs from compiled driver catalog")

@@ -1,0 +1,48 @@
+{
+  "cloud_secret_ref": "hetzner",
+  "instance_name": "example",
+  "network_zone": "eu-central",
+  "ssh_user": "deploy",
+  "ssh_public_keys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMOCKexampleKeyReplaceBeforeDeployment"
+  ],
+  "ssh_source_ips": [
+    "192.0.2.10/32"
+  ],
+  "private_networks": [],
+  "ansible": {
+    "address_mode": "public_ipv4"
+  },
+  "infra_state_bucket": {
+    "bucket": "replace-me",
+    "access_key_ref": "s3_access",
+    "secret_key_ref": "s3_secret",
+    "host": "fsn1.your-objectstorage.com",
+    "region": "fsn1",
+    "use_path_style": true
+  },
+  "nodes": {
+    "web-arm": {
+      "architecture": "arm64",
+      "image": "ubuntu-24.04",
+      "server_type": "cax11",
+      "location": "fsn1",
+      "roles": [
+        "common",
+        "web"
+      ],
+      "private_networks": []
+    },
+    "data-amd": {
+      "architecture": "amd64",
+      "image": "ubuntu-24.04",
+      "server_type": "cpx22",
+      "location": "fsn1",
+      "roles": [
+        "common",
+        "data"
+      ],
+      "private_networks": []
+    }
+  }
+}

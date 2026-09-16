@@ -2,8 +2,8 @@ package packaging
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
-	"os"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -13,8 +13,8 @@ type offlineLoader struct{}
 func (offlineLoader) Load(string) (any, error) {
 	return nil, errors.New("external schema resources are not allowed")
 }
-func validateSchema(path string) error {
-	b, e := os.ReadFile(path)
+func validateSchema(schema map[string]any) error {
+	b, e := json.Marshal(schema)
 	if e != nil {
 		return e
 	}

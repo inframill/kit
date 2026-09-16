@@ -1,10 +1,48 @@
 package packaging
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestEngineVersionUsesSelectedDescriptor(t *testing.T) {
+	root := t.TempDir()
+	script, err := os.ReadFile("../../scripts/read-version.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, data := range map[string]string{
+		"scripts/read-version.sh":  string(script),
+		"releases/kits/2.9.3.yaml": `{"version":"2.9.3","inframill_version":"2.9.7-rc.1"}`,
+		"releases/kits/3.1.2.yaml": `{"version":"3.1.2","inframill_version":"3.1.0"}`,
+	} {
+		path = filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, key := range []string{"VERSION", "KIT_VERSION", "BUNDLE_VERSION", "INFRAMILL_VERSION"} {
+		t.Setenv(key, "9.9.9")
+	}
+	for kit, engine := range map[string]string{"2.9.3": "2.9.7-rc.1", "3.1.2": "3.1.0", "4.0.0": ""} {
+		if err := os.WriteFile(filepath.Join(root, "VERSION"), fmt.Appendf(nil, "%s\n", kit), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := EngineVersion(root)
+		if engine == "" {
+			if err == nil {
+				t.Fatal("missing selected descriptor accepted")
+			}
+		} else if err != nil || got != engine {
+			t.Fatalf("EngineVersion = %q, %v; want %q", got, err, engine)
+		}
+	}
+}
 
 func TestProjectVersionUsesFileOnly(t *testing.T) {
 	root := t.TempDir()

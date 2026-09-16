@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -18,12 +19,11 @@ func fixture(t *testing.T) string {
 	root := t.TempDir()
 	t.Setenv("KIT_DIST_DIR", filepath.Join(root, "dist"))
 	src := filepath.Join(root, "blueprints/test/versions/0.1.0")
-	os.MkdirAll(filepath.Join(src, "template/opentofu-0-1-0"), 0755)
+	os.MkdirAll(filepath.Join(src, "template/opentofu-0-2-0"), 0755)
 	os.MkdirAll(filepath.Join(root, "releases/blueprints/test"), 0755)
-	os.WriteFile(filepath.Join(src, "manifest.yaml"), []byte("api_version: inframill.dev/blueprint/v1\ndescription: fixture\ndrivers:\n  opentofu-0-1-0:\n    id: opentofu-0-1-0\n    required_driver_version: 0.1.0\n    settings_file: kit-driver.json\n    backend: local\n    node_output: nodes\n    artifact: opentofu-0-1-0-nodes-v1.json\n"), 0644)
-	os.WriteFile(filepath.Join(src, "schema.json"), []byte(`{"type":"object"}`), 0644)
-	os.WriteFile(filepath.Join(src, "template/opentofu-0-1-0/kit-driver.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0644)
-	r := BlueprintRelease{InframillVersion: "0.5.0-dev", Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-1-0", "opentofu", "0.1.0"}}, Status: "supported"}
+	os.WriteFile(filepath.Join(src, "blueprint.yaml"), []byte("api_version: inframill.dev/blueprint/v1\ndescription: fixture\nvalues_schema: {type: object}\ndriver_settings:\n  opentofu-0-2-0:\n    id: opentofu-0-2-0\n    required_driver_version: 0.2.0\n    settings_file: kit-driver.json\n    backend: local\n    node_output: nodes\n    artifact: opentofu-0-2-0-nodes-v1.json\n"), 0644)
+	os.WriteFile(filepath.Join(src, "template/opentofu-0-2-0/kit-driver.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0644)
+	r := BlueprintRelease{InframillVersion: "0.6.0-dev", Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-2-0", "opentofu", "0.2.0"}}, Status: "supported"}
 	layer, e := Archive(src)
 	if e != nil {
 		t.Fatal(e)
@@ -36,11 +36,11 @@ func fixture(t *testing.T) string {
 func TestDeterministicPackageAndImmutableBuild(t *testing.T) {
 	ctx := context.Background()
 	root := fixture(t)
-	a, e := Package(ctx, root, "test", "0.1.0")
+	a, e := Package(ctx, root, "test", "0.1.0", "0.6.0-dev")
 	if e != nil {
 		t.Fatal(e)
 	}
-	b, e := Package(ctx, root, "test", "0.1.0")
+	b, e := Package(ctx, root, "test", "0.1.0", "0.6.0-dev")
 	if e != nil || a.Digest != b.Digest {
 		t.Fatalf("not deterministic: %v", e)
 	}
@@ -51,8 +51,8 @@ func TestDeterministicPackageAndImmutableBuild(t *testing.T) {
 	if e = verifyGraph(ctx, store, a); e != nil {
 		t.Fatal(e)
 	}
-	os.WriteFile(filepath.Join(root, "blueprints/test/versions/0.1.0/template/opentofu-0-1-0/main.tf"), []byte("changed"), 0644)
-	if _, e = Package(ctx, root, "test", "0.1.0"); e == nil {
+	os.WriteFile(filepath.Join(root, "blueprints/test/versions/0.1.0/template/opentofu-0-2-0/main.tf"), []byte("changed"), 0644)
+	if _, e = Package(ctx, root, "test", "0.1.0", "0.6.0-dev"); e == nil {
 		t.Fatal("replaced immutable build")
 	}
 	blob := filepath.Join(BlueprintLayout(root, "test", "0.1.0"), "blobs/sha256", a.Digest.Encoded())
@@ -64,8 +64,24 @@ func TestDeterministicPackageAndImmutableBuild(t *testing.T) {
 		t.Fatal("corruption accepted")
 	}
 }
+
+func TestBlueprintRequiresExactSelectedEngine(t *testing.T) {
+	root := fixture(t)
+	for _, target := range []string{"0.6.0-dev", "0.6.0", "0.6.1", "0.7.0", "", "0.6"} {
+		t.Run(target, func(t *testing.T) {
+			_, _, err := Blueprint(root, "test", "0.1.0", target)
+			if target == "0.6.0-dev" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "differs from selected Kit target") {
+				t.Fatalf("got %v, want exact engine target rejection", err)
+			}
+		})
+	}
+}
 func TestUnsafeAndRuntimeSourceRejected(t *testing.T) {
-	for _, name := range []string{"template/secret.pem", "template/terraform.tfstate", "unexpected.txt"} {
+	for _, name := range []string{"template/secret.pem", "template/terraform.tfstate", "unexpected.txt", "manifest.yaml", "schema.json"} {
 		root := fixture(t)
 		src := filepath.Join(root, "blueprints/test/versions/0.1.0")
 		os.WriteFile(filepath.Join(src, name), []byte("secret"), 0644)
@@ -83,7 +99,7 @@ func TestUnsafeAndRuntimeSourceRejected(t *testing.T) {
 func TestCorruptChildBlobRejected(t *testing.T) {
 	root := fixture(t)
 	ctx := context.Background()
-	d, e := Package(ctx, root, "test", "0.1.0")
+	d, e := Package(ctx, root, "test", "0.1.0", "0.6.0-dev")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -102,13 +118,8 @@ func TestCorruptChildBlobRejected(t *testing.T) {
 }
 
 func TestInvalidOrRemoteSchemaRejectedOffline(t *testing.T) {
-	for _, schema := range []string{`{"type":42}`, `{"$ref":"https://example.invalid/remote.json"}`, `{} {}`} {
-		root := fixture(t)
-		p := filepath.Join(root, "blueprints/test/versions/0.1.0/schema.json")
-		if e := os.WriteFile(p, []byte(schema), 0644); e != nil {
-			t.Fatal(e)
-		}
-		if e := validateSchema(p); e == nil {
+	for _, schema := range []map[string]any{{"type": 42}, {"$ref": "https://example.invalid/remote.json"}} {
+		if e := validateSchema(schema); e == nil {
 			t.Fatal("accepted invalid/external schema")
 		}
 	}

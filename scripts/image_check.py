@@ -78,6 +78,7 @@ def image_check(tmp, image, arch, network):
         }})['instance']['id']
         command = rpc(endpoint, 'SubmitCommand', {'instance_id': instance,
                       'command': ids['ansible'] + '.syntax-check', 'args': {'playbook': 'site'}})['commandId']
+        assert uuid.UUID(instance).version == 7 and uuid.UUID(command).version == 7
 
         def completed():
             result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'command_id': command})['execution']

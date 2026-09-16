@@ -24,12 +24,12 @@ type host struct {
 
 func (p *prepared) inventory() (inventoryDocument, artifacts.Nodes, error) {
 	result := inventoryDocument{All: inventoryGroup{Hosts: map[string]host{}, Children: map[string]inventoryGroup{}}}
-	nodes, err := artifacts.ReadNodes(p.scope.ArtifactDirectory, p.manifest.Artifact, p.scope.Binding, p.manifest.ProducerID, p.manifest.ProducerVersion)
+	nodes, err := artifacts.ReadNodes(p.scope.ArtifactDirectory, p.static.Artifact, p.scope.Binding, p.static.ProducerID, p.static.ProducerVersion)
 	if err != nil {
 		return result, nodes, err
 	}
 	roles := map[string]bool{}
-	for _, role := range p.manifest.Roles {
+	for _, role := range p.static.Roles {
 		roles[role] = true
 	}
 	addresses := map[string]bool{}
@@ -47,10 +47,10 @@ func (p *prepared) inventory() (inventoryDocument, artifacts.Nodes, error) {
 			return result, nodes, errors.New("missing or duplicate selected address")
 		}
 		addresses[address] = true
-		if p.manifest.Connection == "local" && !net.ParseIP(address).IsLoopback() {
+		if p.static.Connection == "local" && !net.ParseIP(address).IsLoopback() {
 			return result, nodes, errors.New("local connections require loopback addresses")
 		}
-		result.All.Hosts[node.Name] = host{address, p.settings.SSHUser, p.manifest.Connection, node.Architecture}
+		result.All.Hosts[node.Name] = host{address, p.settings.SSHUser, p.static.Connection, node.Architecture}
 		for _, role := range node.Roles {
 			if !roles[role] {
 				return result, nodes, errors.New("undeclared node role")

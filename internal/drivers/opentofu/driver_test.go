@@ -18,12 +18,12 @@ func fixture(t *testing.T) (Driver, driver.ExecutionContext) {
 	work := filepath.Join(t.TempDir(), "tofu")
 	os.Mkdir(work, 0700)
 	artifacts.Write(work, "kit-driver.json", Settings{Schema: 1, Backend: map[string]any{}, Environment: map[string]string{}})
-	return Driver{Version: "0.1.0", ToolVersion: "1.11.5", Tool: "/missing"}, driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/demo", BlueprintReference: "local@sha256:" + strings.Repeat("a", 64)}, DriverConfig: driver.Config{"required_driver_version": "0.1.0", "id": "tofu", "settings_file": "kit-driver.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
+	return Driver{Version: "0.2.0", ToolVersion: "1.11.5", Tool: "/missing"}, driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/demo", BlueprintReference: "local@sha256:" + strings.Repeat("a", 64)}, DriverSettings: driver.Settings{"required_driver_version": "0.2.0", "id": "tofu", "settings_file": "kit-driver.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
 }
 func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 	d, s := fixture(t)
 	artifacts.Write(s.WorkspaceDirectory, "kit-driver.json", Settings{Schema: 1, Environment: map[string]string{"HCLOUD_TOKEN": "cloud-token"}})
-	if e := d.ValidateManifest(t.Context(), s.DriverConfig); e != nil {
+	if e := d.ValidateSettings(t.Context(), s.DriverSettings); e != nil {
 		t.Fatal(e)
 	}
 	p, e := d.Prepare(t.Context(), s, "plan", nil)
@@ -48,10 +48,10 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 			t.Fatal("invalid arguments accepted")
 		}
 	}
-	for _, method := range []string{"info", "validate_manifest", "validate_command"} {
+	for _, method := range []string{"info", "validate_settings", "validate_command"} {
 		params := map[string]any{}
 		if method != "info" {
-			params["config"] = s.DriverConfig
+			params["settings"] = s.DriverSettings
 		}
 		if method == "validate_command" {
 			params["binding"] = s.Binding
