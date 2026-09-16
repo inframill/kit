@@ -14,8 +14,8 @@ task blueprints:push
 task bundle:push
 ```
 
-To package one blueprint, use `task blueprint:package BLUEPRINT=pv-cloud VERSION=0.1.0`.
-Publish it with `task blueprint:push BLUEPRINT=pv-cloud VERSION=0.1.0`.
+To package one blueprint, use `task blueprint:package BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0`.
+Publish it with `task blueprint:push BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0`.
 
 Builds never push. Push uploads the existing verified OCI bytes and rejects a tag
 pointing to different content. `REGISTRY` and `NAMESPACE` override the defaults;
@@ -40,9 +40,9 @@ task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
-The current baseline is Kit `0.3.0` with Inframill `0.3.0`. A Kit-only fix can ship as
-`0.3.1` while still using Inframill `0.3.0`. Moving to Inframill `0.4.x` requires a
-Kit `0.4.x` release after compatibility checks. The bundle lock always pins the exact
+The current baseline is Kit `0.4.0` with Inframill `0.4.0`. A Kit-only fix can ship as
+`0.4.1` while still using Inframill `0.4.0`. Moving to Inframill `0.5.x` requires a
+Kit `0.5.x` release after compatibility checks. The bundle lock always pins the exact
 engine version and binary checksums.
 
 The build tooling enforces this policy. Standalone Kit builds reject a different
@@ -64,16 +64,28 @@ files declare core/driver requirements and a sealed source digest, obtained with
 metadata; a YAML file alone never registers code. Locks and deterministic source
 hashes prevent accidental content replacement.
 
+The root [`VERSION`](../VERSION) file is authoritative for Kit builds, image builds
+and pushes, native engine copies and full checks. It contains one SemVer value with
+an optional final newline. Missing/invalid content, whitespace and a `v` prefix
+reject before building. `VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` task arguments
+or environment values cannot override it. Direct `go build` uses `0.0.0-dev`;
+`task build` embeds the file's value.
+
+To prepare a Kit release, edit `VERSION` and add matching
+`releases/kits/<version>.yaml` and `releases/bundles/<version>.lock.yaml` files.
+Keep the declared core target aligned, then run `task release:check`, `task build`
+and `task bundle`. Commit the release inputs before publishing with
+`task bundle:push`. Builds never rewrite `VERSION`, infer a Git version or publish.
+The file does not automatically track the sibling project's development version.
+Release descriptors and OCI tags retain their exact version constraints (no build
+metadata suffix).
+
 | Variable | Selects | Default |
 | --- | --- | --- |
-| `VERSION` | Blueprint release | `0.1.0` |
+| `BLUEPRINT_VERSION` | Blueprint release | `0.1.0` |
 | `DRIVER_VERSION` | Driver for `task driver:check` | `0.1.0` |
-| `KIT_VERSION` | Executable release for `task build` | `0.3.0` |
-| `BUNDLE_VERSION` | Image build, push, full checks and native engine copy | `0.3.0` |
 
-For example, `task bundle BUNDLE_VERSION=0.3.0` and
-`task bundle:push BUNDLE_VERSION=0.3.0` select the same image release. The bundle lock
-pins the Kit executable version; `KIT_VERSION` applies to the standalone build.
+`task bundle` and `task bundle:push` use the same release from `VERSION`.
 
 `KIT_DIST_DIR` changes the output root for packaging, image builds, pushes and checks.
 Outputs are immutable: remove an unpublished development output explicitly before

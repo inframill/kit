@@ -25,12 +25,12 @@ def daemon_check(tmp, registry, env):
     (source / 'template/fixture/readme.txt').write_text('secret snapshot test\n')
     (source / 'schema.json').write_text('{"type":"object","additionalProperties":false}')
     (source / 'manifest.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'drivers': {'fixture': {'id': 'fixture', 'required_driver_version': '0.1.0', 'contract': '0.1.0'}}}))
-    selection = {**env, 'BLUEPRINT_ROOT': str(tmp), 'BLUEPRINT': 'protocol-fixture', 'VERSION': '0.1.0', 'KIT_DIST_DIR': str(tmp / 'dist')}
+    selection = {**env, 'BLUEPRINT_ROOT': str(tmp), 'BLUEPRINT': 'protocol-fixture', 'BLUEPRINT_VERSION': '0.1.0', 'KIT_DIST_DIR': str(tmp / 'dist')}
     prefix = ['go', 'run', '-tags=kit_testdrivers', './cmd/kit-build']
     digest = subprocess.check_output(prefix + ['blueprint:source-digest'], cwd=ROOT, env=selection, text=True).strip()
     release = tmp / 'releases/blueprints/protocol-fixture/0.1.0.yaml'
     release.parent.mkdir(parents=True)
-    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': '0.3.0', 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
+    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': '0.4.0', 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
     for action in ['blueprint:package', 'blueprint:push']:
         subprocess.run(prefix + [action], cwd=ROOT, env=selection, check=True)
     tofu, ansible = local_tools()
@@ -64,7 +64,7 @@ def daemon_check(tmp, registry, env):
 
     def start():
         nonlocal process
-        process = subprocess.Popen([str(ROOT / 'bin/inframill'), 'server', '--config', str(config_path)], env=env, stdout=log, stderr=log)
+        process = subprocess.Popen([str(ROOT / 'bin/inframill'), 'server', 'start', '--config', str(config_path)], env=env, stdout=log, stderr=log)
         def ready():
             if process.poll() is not None:
                 log.flush()
@@ -139,7 +139,7 @@ def daemon_check(tmp, registry, env):
         ids = []
         for index in range(2):
             result_path = tmp / f'local-result-{index}.json'
-            argv = [str(ROOT / 'bin/inframill'), 'exec', 'fixture.probe', '--config', str(local_path), '--blueprint-dir', str(source), '--values-file', str(values_path), '--args-file', str(args_path), '--name', 'local/demo', '--result-file', str(result_path)]
+            argv = [str(ROOT / 'bin/inframill'), 'local', 'exec', 'fixture.probe', '--config', str(local_path), '--blueprint-dir', str(source), '--values-file', str(values_path), '--args-file', str(args_path), '--name', 'local/demo', '--result-file', str(result_path)]
             if index == 0:
                 argv += ['--secrets-file', str(secrets_path)]
             subprocess.run(argv, env=env, check=True, stdout=subprocess.DEVNULL)
@@ -159,7 +159,7 @@ def daemon_check(tmp, registry, env):
         queued = submit(first, 'fixture.probe', {'text': 'next snapshot'})
         assert execution(first, queued)['status'] == 'COMMAND_STATUS_QUEUED'
         # A timed-out CLI wait must not cancel accepted work.
-        result = subprocess.run([str(ROOT / 'bin/inframill'), 'command', 'execution', 'wait', first, waiting, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
+        result = subprocess.run([str(ROOT / 'bin/inframill'), 'server', 'command', 'execution', 'wait', first, waiting, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
         assert result.returncode != 0
         assert execution(first, waiting)['status'] == 'COMMAND_STATUS_RUNNING'
         replace('alpha', {'token': 'synthetic-second'})

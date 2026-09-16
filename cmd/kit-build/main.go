@@ -55,9 +55,12 @@ func run() error {
 	ctx := context.Background()
 	action := os.Args[1]
 	name := os.Getenv("BLUEPRINT")
-	version := env("VERSION", "0.1.0")
-	if action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
-		version = env("BUNDLE_VERSION", "0.3.0")
+	version := env("BLUEPRINT_VERSION", "0.1.0")
+	if action == "build" || action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
+		version, e = packaging.ProjectVersion(root)
+		if e != nil {
+			return e
+		}
 	}
 	registry := env("REGISTRY", "ghcr.io")
 	ns := env("NAMESPACE", "inframill")
@@ -67,7 +70,7 @@ func run() error {
 	}
 	switch action {
 	case "build":
-		kv := env("KIT_VERSION", "0.3.0")
+		kv := version
 		if _, e = packaging.Kit(root, kv); e != nil {
 			return e
 		}

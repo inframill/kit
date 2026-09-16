@@ -24,5 +24,5 @@
   ],
   "status": "supported",
   "source_sha256": "sha256:34ce544ae0516e2efeda1d84a658044399f2375e34b5ecae5d805361b53e9583",
-  "inframill_version": "0.3.0"
+  "inframill_version": "0.4.0"
 }

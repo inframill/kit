@@ -19,7 +19,7 @@ def config(path,workspace,tofu,ansible):
 
 def execute(tmp,conf,instance,name,command,args=None,source=None,env=None):
     token=uuid.uuid4().hex;result=tmp/(token+'-result.json')
-    cmd=[ROOT/'bin/inframill','exec',command,'--config',conf,'--values-file',instance,'--name',name,'--result-file',result]
+    cmd=[ROOT/'bin/inframill','local','exec',command,'--config',conf,'--values-file',instance,'--name',name,'--result-file',result]
     if source:cmd+=['--blueprint-dir',source]
     else:cmd+=['--blueprint',(env or os.environ)['VERIFY_BLUEPRINT_REFERENCE']]
     if args is not None:
@@ -79,7 +79,7 @@ def registry_check():
         run(['go','run','./cmd/kit-build','blueprints:push'],cwd=ROOT,env=env)
         run(['go','run','./cmd/kit-build','blueprints:push'],cwd=ROOT,env=env)
         for case in fixture_cases():
-            selection={**env,'BLUEPRINT_ROOT':str(FIXTURES),'BLUEPRINT':case['name'],'VERSION':case['version']}
+            selection={**env,'BLUEPRINT_ROOT':str(FIXTURES),'BLUEPRINT':case['name'],'BLUEPRINT_VERSION':case['version']}
             for action in ['blueprint:package','blueprint:push','blueprint:push']:
                 run(['go','run','./cmd/kit-build',action],cwd=ROOT,env=selection)
         daemon_check(tmp,address,env)
@@ -93,7 +93,7 @@ def registry_check():
         for descriptor in index['manifests']:
             descriptor.setdefault('annotations',{})['org.opencontainers.image.ref.name']='0.1.0'
         index_path.write_text(json.dumps(index))
-        rejected=subprocess.run(['go','run','./cmd/kit-build','blueprint:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(tmp/'conflict'),'BLUEPRINT':'local-resource','VERSION':'0.1.0'},text=True,capture_output=True)
+        rejected=subprocess.run(['go','run','./cmd/kit-build','blueprint:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(tmp/'conflict'),'BLUEPRINT':'local-resource','BLUEPRINT_VERSION':'0.1.0'},text=True,capture_output=True)
         if rejected.returncode==0 or 'release tag already points to different content' not in rejected.stderr:raise RuntimeError('Conflicting release tag was not rejected: '+rejected.stderr)
         print('Conflicting release tag rejected',flush=True)
         # Independent empty cache verifies immutable digest acquisition.
@@ -110,13 +110,13 @@ def registry_check():
         cached_schema.write_bytes(cached_schema.read_bytes()+b'\n')
         before=set((tmp/'fresh-data/instances').iterdir())
         args_file=tmp/'tampered-args.json';args_file.write_text('{"playbook":"site"}')
-        rejected=subprocess.run([str(ROOT/'bin/inframill'),'exec',ids['ansible']+'.syntax-check','--config',str(conf),'--values-file',str(tmp/'local-0.1.0.json'),'--name','test/tampered','--blueprint',offline['VERIFY_BLUEPRINT_REFERENCE'],'--args-file',str(args_file)],env=offline,text=True,capture_output=True)
+        rejected=subprocess.run([str(ROOT/'bin/inframill'),'local','exec',ids['ansible']+'.syntax-check','--config',str(conf),'--values-file',str(tmp/'local-0.1.0.json'),'--name','test/tampered','--blueprint',offline['VERIFY_BLUEPRINT_REFERENCE'],'--args-file',str(args_file)],env=offline,text=True,capture_output=True)
         if rejected.returncode==0:raise RuntimeError('Corrupted cached source was accepted')
         if set((tmp/'fresh-data/instances').iterdir())!=before:raise RuntimeError('Corrupt source created an Instance')
         print('Offline cache reuse and consumer corruption rejection passed',flush=True)
         # Publish the existing bundle only to this disposable test registry.
         if not (bundle_output()/'build.json').is_file():raise RuntimeError('Run task bundle before check-full container verification')
-        run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(bundle_output().parent.parent),'BUNDLE_VERSION':bundle_output().name})
+        run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(bundle_output().parent.parent)})
         # Import the exact OCI bytes for execution: Docker Desktop's daemon has a
         # different loopback interface from the workstation's registry port.
         image='docker.io/library/inframill-kit-test:'+uuid.uuid4().hex
@@ -145,7 +145,7 @@ def main():
     if action=='full':
         for case in fixture_cases()+json.loads((ROOT/'releases/sets/default.yaml').read_text())['blueprints']:blueprint_check(case['name'],case['version'])
         registry_check();return
-    if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('VERSION','0.1.0'));return
+    if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('BLUEPRINT_VERSION','0.1.0'));return
     if action=='driver:check':
         name=os.environ['DRIVER'];version=os.environ.get('DRIVER_VERSION','0.1.0')
         run([ROOT/'bin/inframill-kit','driver',name,'--driver-version',version],input=json.dumps({'protocol':1,'method':'info','params':{}}));run(['go','test','-vet=off','./internal/drivers/'+name]);return
@@ -155,7 +155,7 @@ def main():
         tofu,ansible=tools()
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             tmp=pathlib.Path(td);conf=tmp/'config.json';config(conf,tmp/'data',tofu,ansible)
-            name=os.environ.get('BLUEPRINT','');version=os.environ.get('VERSION','0.1.0');example=blueprint_root(name)/f'examples/{name}-{version}.json'
+            name=os.environ.get('BLUEPRINT','');version=os.environ.get('BLUEPRINT_VERSION','0.1.0');example=blueprint_root(name)/f'examples/{name}-{version}.json'
             data=json.loads(example.read_text());instance=tmp/'values.json';instance.write_text(json.dumps(data))
             # Blueprint and driver versions are independent release identities.
             release=json.loads(run(['go','run','./cmd/kit-build','blueprint:requirements'],cwd=ROOT,env={**os.environ,'BLUEPRINT_ROOT':str(blueprint_root(name))},capture_output=True).stdout)
@@ -170,6 +170,6 @@ def main():
         platforms={(m.get('platform',{}).get('os'),m.get('platform',{}).get('architecture')) for m in data.get('manifests',[])}
         if not {('linux','amd64'),('linux','arm64')}<=platforms:raise RuntimeError('Missing runtime architecture')
         run(['docker','run','--rm','--entrypoint','inframill-kit',reference,'version'])
-        run(['docker','run','--rm',reference,'driver','list','--config','/etc/inframill/inframill.yaml','-o','json']);return
+        run(['docker','run','--rm',reference,'local','driver','list','--config','/etc/inframill/inframill.yaml','-o','json']);return
     raise RuntimeError('Unknown check')
 if __name__=='__main__':main()

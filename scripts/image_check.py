@@ -91,6 +91,16 @@ def image_check(tmp, image, arch, network):
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
         assert len(history) == 1 and history[0]['status'] == 'COMMAND_STATUS_SUCCEEDED', history
+        # 0.4.0 CLI roots: local inspection can read a running daemon's storage.
+        cli = ['docker', 'exec', name, 'inframill']
+        local = json.loads(docker(cli + ['local', 'history', '--config', CONFIG,
+                           '--name', 'image/persistence', '-o', 'json']).stdout)['executions']
+        assert len(local) == 1 and local[0]['command_id'] == command and local[0]['status'] == 'succeeded', local
+        drivers = json.loads(docker(cli + ['local', 'driver', 'list', '--config', CONFIG, '-o', 'json']).stdout)['drivers']
+        assert {d['id'] for d in drivers} == set(ids.values()), drivers
+        remote = json.loads(docker(cli + ['server', 'instance', 'list', '--endpoint',
+                            'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['instances']
+        assert any(i['id'] == instance for i in remote), remote
         stop(name)
         return instance, mounts_state
 
@@ -129,7 +139,7 @@ def image_check(tmp, image, arch, network):
                           '--mount', 'type=volume,src=' + volume + ',dst=' + DATA + ',readonly',
                           '--mount', 'type=bind,src=' + str(values) + ',dst=/values.json,readonly',
                           '--mount', 'type=bind,src=' + str(args) + ',dst=/args.json,readonly', image,
-                          'exec', ids['ansible'] + '.syntax-check', '--config', CONFIG,
+                          'local', 'exec', ids['ansible'] + '.syntax-check', '--config', CONFIG,
                           '--blueprint', reference, '--values-file', '/values.json', '--args-file', '/args.json', '--name', 'image/readonly'], check=False)
         assert rejected.returncode != 0 and any(message in rejected.stderr.lower() for message in
                ('read-only', 'permission denied', 'cannot be locked')), rejected.stderr

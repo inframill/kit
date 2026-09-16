@@ -2,13 +2,13 @@
 """Build both platforms to a local OCI layout. Never authenticate or push."""
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
 from bundle_inputs import read_binary
-from release_config import bundle_lock, configuration
+from release_config import bundle_lock, configuration, project_version
 from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
-version=os.environ.get('BUNDLE_VERSION','0.3.0')
+version=project_version()
 image_reference=os.environ.get('REGISTRY','ghcr.io')+'/'+os.environ.get('NAMESPACE','inframill')+'/kit:'+version
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
-subprocess.run(['go','run','./cmd/kit-build','bundle:validate'],cwd=ROOT,env={**os.environ,'BUNDLE_VERSION':version},check=True)
+subprocess.run(['go','run','./cmd/kit-build','bundle:validate'],cwd=ROOT,check=True)
 lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=bundle_lock(version)
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
 source_revision=verify_source(ROOT,lock['inframill']['revision'])
@@ -43,7 +43,7 @@ def run(args,**kwargs):
     print('+',' '.join(map(str,args)),flush=True);subprocess.run(list(map(str,args)),check=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     stage=pathlib.Path(td);context=stage/'context';context.mkdir();sources=context/'sources';sources.mkdir()
-    for name in ['go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
+    for name in ['VERSION','go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
         p=ROOT/name
         if p.is_dir():shutil.copytree(p,sources/name,ignore=shutil.ignore_patterns('__pycache__'))
         else:shutil.copy2(p,sources/name)

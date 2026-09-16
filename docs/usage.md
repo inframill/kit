@@ -1,5 +1,18 @@
 # Using Kit
 
+## Inframill 0.4.0 CLI
+
+`inframill local` operates on this machine using application configuration;
+`inframill server start` starts the daemon; other `inframill server` commands send
+requests to a daemon. Utilities live under `inframill other`. These replace the old
+command paths without aliases. Kit's own `inframill-kit driver` prefix is unchanged.
+
+Local operations and server startup accept `--config` (default `.inframill.yaml`).
+Relative data and driver paths resolve beside that file. Server requests accept
+`--endpoint` and `--timeout`, falling back to `INFRAMILL_ENDPOINT` and
+`INFRAMILL_TIMEOUT`, then `http://127.0.0.1:8080` and `2m`. They reject `--config`
+and never load YAML; the application config no longer accepts a `cli` section.
+
 ## Local execution and secrets
 
 Run these commands from the repository root. Files under `examples/` contain plain Values JSON. Generate
@@ -15,7 +28,7 @@ A pv-cloud invocation has this form; commands such as init/plan/apply contact re
 services and require your chosen credentials and infrastructure inputs:
 
 ```sh
-bin/inframill exec opentofu-0-1-0.init \
+bin/inframill local exec opentofu-0-1-0.init \
   --config /tmp/kit-config.json \
   --blueprint-dir blueprints/pv-cloud/versions/0.1.0 \
   --values-file examples/pv-cloud-0.1.0.json \
@@ -29,6 +42,18 @@ locations for machine results. Stdout is a stream of JSON reply records; tool
 diagnostics go to stderr. A result record's status, not mere file existence, decides
 success. Cancellation does not roll back tool effects.
 
+Inspect the configured drivers or an existing Instance's history with:
+
+```sh
+bin/inframill local driver list --config /tmp/kit-config.json
+bin/inframill local history --config /tmp/kit-config.json --name production/example -o json
+```
+
+History uses the configured `engine.dataDir`; it no longer accepts `--workspace`.
+It reads existing records without probing drivers or changing execution state,
+including while a daemon uses the same data directory. Local execution requires
+exclusive storage access; use a separate data directory from a running daemon.
+
 Secret files are JSON maps of local names to strings. The example's names are
 `hetzner`, `s3_access` and `s3_secret`. Values select these names, never credential
 values. Inframill supplies a project snapshot only to driver Execute; Kit does not
@@ -38,8 +63,8 @@ reach the tool environment. Known injected values are filtered from tool diagnos
 Kit results and shared artifacts contain only verified projections. Arbitrary
 provider/playbook output must not intentionally emit transformed secrets.
 
-For daemon use, manage the in-memory project set with Inframill's `secret replace`,
-`secret list` and `secret clear`. Restart discards sets. Running commands retain their
+For daemon use, manage the in-memory project set with Inframill's `server secret replace`,
+`server secret list` and `server secret clear`. Restart discards sets. Running commands retain their
 snapshot; queued commands obtain the set current when they start. Local exec needs
 `--secrets-file` on each invocation; omission means an empty set.
 
@@ -87,4 +112,3 @@ For a manual discovery probe, pipe this JSON to that prefix:
 ```json
 {"protocol":1,"method":"info","params":{}}
 ```
-

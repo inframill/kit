@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -15,6 +16,18 @@ type KitRelease struct {
 	Version          string            `yaml:"version"`
 	InframillVersion string            `yaml:"inframill_version"`
 	Drivers          []catalog.Release `yaml:"drivers"`
+}
+
+// ProjectVersion reads the authoritative VERSION file using the shared validator.
+// Build selectors and environment variables never override the file.
+func ProjectVersion(root string) (string, error) {
+	cmd := exec.Command("sh", "scripts/read-version.sh")
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("read Kit VERSION: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return strings.TrimSuffix(string(output), "\n"), nil
 }
 
 // Kit validates the release against the compiled core target and driver catalog.

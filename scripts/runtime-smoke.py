@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
         fixture_name='smoke/v'+version.replace('.','-');reference=f'{registry}/inframill/blueprints/local-resource:{version}'
         instance=tmp/f'instance-{version}.json';instance.write_text(json.dumps({'architecture':arch}))
         def execute(command,args=None):
-            token=uuid.uuid4().hex;result=tmp/(token+'.json');cmd=['inframill','exec',command,'--config',str(config),'--values-file',str(instance),'--blueprint',reference,'--name',fixture_name,'--result-file',str(result)]
+            token=uuid.uuid4().hex;result=tmp/(token+'.json');cmd=['inframill','local','exec',command,'--config',str(config),'--values-file',str(instance),'--blueprint',reference,'--name',fixture_name,'--result-file',str(result)]
             if args is not None:
                 argfile=tmp/(token+'-args.json');argfile.write_text(json.dumps(args));cmd+=['--args-file',str(argfile)]
             subprocess.run(cmd,check=True,stdout=subprocess.DEVNULL)

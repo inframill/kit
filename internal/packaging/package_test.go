@@ -23,7 +23,7 @@ func fixture(t *testing.T) string {
 	os.WriteFile(filepath.Join(src, "manifest.yaml"), []byte("api_version: inframill.dev/blueprint/v1\ndescription: fixture\ndrivers:\n  opentofu-0-1-0:\n    id: opentofu-0-1-0\n    required_driver_version: 0.1.0\n    settings_file: kit-driver.json\n    backend: local\n    node_output: nodes\n    artifact: opentofu-0-1-0-nodes-v1.json\n"), 0644)
 	os.WriteFile(filepath.Join(src, "schema.json"), []byte(`{"type":"object"}`), 0644)
 	os.WriteFile(filepath.Join(src, "template/opentofu-0-1-0/kit-driver.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0644)
-	r := BlueprintRelease{InframillVersion: "0.3.0", Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-1-0", "opentofu", "0.1.0"}}, Status: "supported"}
+	r := BlueprintRelease{InframillVersion: "0.4.0", Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-1-0", "opentofu", "0.1.0"}}, Status: "supported"}
 	layer, e := Archive(src)
 	if e != nil {
 		t.Fatal(e)

@@ -9,8 +9,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / 'tests/fixtures'
 
 
+def project_version():
+    return subprocess.check_output(['sh', str(ROOT / 'scripts/read-version.sh')], cwd=ROOT, text=True).removesuffix('\n')
+
+
 def bundle_lock(version=None):
-    version = version or os.environ.get('BUNDLE_VERSION', '0.3.0')
+    version = version or project_version()
     if '/' in version or version in ('', '.', '..'):
         raise ValueError('Invalid bundle version')
     lock = json.loads((ROOT / f'releases/bundles/{version}.lock.yaml').read_text())
@@ -75,4 +79,4 @@ def fixture_cases():
 
 
 def bundle_output():
-    return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / os.environ.get('BUNDLE_VERSION', '0.3.0')
+    return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / project_version()

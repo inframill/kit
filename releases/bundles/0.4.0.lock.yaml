@@ -1,0 +1,61 @@
+{
+  "version": "0.4.0",
+  "kit_version": "0.4.0",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "drivers": [
+    {
+      "name": "opentofu",
+      "version": "0.1.0"
+    },
+    {
+      "name": "ansible",
+      "version": "0.1.0"
+    }
+  ],
+  "base_image": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
+  "base_platform_digests": {
+    "amd64": "sha256:781449467ffb6f04218f09b1ecdcdc7d22b289ee5da9ec498b024e24ad7a6db7",
+    "arm64": "sha256:fcf02c9e248b995ae2ca9aac6fa24b489f34b589dbfdc44698ad245d2ad41d1e"
+  },
+  "source_date_epoch": 1759190400,
+  "go_version": "go1.27.0",
+  "inframill": {
+    "version": "0.4.0",
+    "revision": "97f414cb2e7eb1738c7b3d9519a9ca99b9f29d6a",
+    "binaries": {
+      "amd64": {
+        "path": "0.4.0/inframill_0.4.0_linux_amd64",
+        "sha256": "77824aadb1a216bd7f1da15df4a4e0c9b3f5c58404dfde33a85beafb8e8d0b66"
+      },
+      "arm64": {
+        "path": "0.4.0/inframill_0.4.0_linux_arm64",
+        "sha256": "f3500f78f4ddec30bf5faf49218a3cdef619abd26c623b4d7fe017204b5ccf0c"
+      }
+    },
+    "native_binaries": {
+      "darwin/amd64": {
+        "path": "0.4.0/inframill_0.4.0_darwin_amd64",
+        "sha256": "2cd891bad01fa4976f8f935050a7e5f84d9e8a5a20919b3df8594203c6ff7de1"
+      },
+      "darwin/arm64": {
+        "path": "0.4.0/inframill_0.4.0_darwin_arm64",
+        "sha256": "ef8fd323506b470b98449d9fb581cac08d84b5540ae3313cf474d86b9865a199"
+      },
+      "linux/amd64": {
+        "path": "0.4.0/inframill_0.4.0_linux_amd64",
+        "sha256": "77824aadb1a216bd7f1da15df4a4e0c9b3f5c58404dfde33a85beafb8e8d0b66"
+      },
+      "linux/arm64": {
+        "path": "0.4.0/inframill_0.4.0_linux_arm64",
+        "sha256": "f3500f78f4ddec30bf5faf49218a3cdef619abd26c623b4d7fe017204b5ccf0c"
+      }
+    }
+  },
+  "toolchain": {
+    "path": "runtime/tools.lock.json",
+    "sha256": "67f2b1f7d7efbdc8636b1f3c01b01913adbc6c76ee439016471d6f418e409f69"
+  }
+}

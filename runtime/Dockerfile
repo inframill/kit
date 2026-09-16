@@ -31,4 +31,4 @@ RUN mkdir -p /var/lib/inframill \
 WORKDIR /var/lib/inframill
 EXPOSE 8080
 ENTRYPOINT ["inframill"]
-CMD ["server", "--config", "/etc/inframill/inframill.yaml"]
+CMD ["server", "start", "--config", "/etc/inframill/inframill.yaml"]
