@@ -101,6 +101,10 @@ def image_check(tmp, image, arch, network):
         remote = json.loads(docker(cli + ['server', 'instance', 'list', '--endpoint',
                             'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['instances']
         assert any(i['id'] == instance for i in remote), remote
+        remote_drivers = json.loads(docker(cli + ['server', 'driver', 'list', '--endpoint',
+                                    'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['drivers']
+        assert {d['id'] for d in remote_drivers} == set(ids.values()), remote_drivers
+        assert all(d['status'] == 'DRIVER_STATUS_AVAILABLE' for d in remote_drivers), remote_drivers
         stop(name)
         return instance, mounts_state
 

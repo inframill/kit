@@ -1,6 +1,6 @@
 # Using Kit
 
-## Inframill 0.4.0 CLI
+## Inframill CLI
 
 `inframill local` operates on this machine using application configuration;
 `inframill server start` starts the daemon; other `inframill server` commands send
@@ -12,6 +12,10 @@ Relative data and driver paths resolve beside that file. Server requests accept
 `--endpoint` and `--timeout`, falling back to `INFRAMILL_ENDPOINT` and
 `INFRAMILL_TIMEOUT`, then `http://127.0.0.1:8080` and `2m`. They reject `--config`
 and never load YAML; the application config no longer accepts a `cli` section.
+
+With Inframill 0.5.0-dev, `inframill server driver list` reports the selected
+daemon's cached driver availability without loading local configuration or probing
+drivers again. `inframill local driver list` performs fresh local probes instead.
 
 ## Local execution and secrets
 

@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit 0.4.0 targets the Inframill 0.4.0 API. The `inframill-kit` executable hosts
+Kit 0.5.0-dev targets the Inframill 0.5.0-dev API. The `inframill-kit` executable hosts
 drivers. The `ghcr.io/inframill/kit` image bundles that executable with the engine
 and tools; build tasks call this image a bundle. Blueprints are separate OCI packages.
 
@@ -74,7 +74,7 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.4.0
+directory. Users explicitly select a named volume or bind mount. Inframill 0.5.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while project secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).

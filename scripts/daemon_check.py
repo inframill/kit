@@ -30,7 +30,7 @@ def daemon_check(tmp, registry, env):
     digest = subprocess.check_output(prefix + ['blueprint:source-digest'], cwd=ROOT, env=selection, text=True).strip()
     release = tmp / 'releases/blueprints/protocol-fixture/0.1.0.yaml'
     release.parent.mkdir(parents=True)
-    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': '0.4.0', 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
+    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': '0.5.0-dev', 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
     for action in ['blueprint:package', 'blueprint:push']:
         subprocess.run(prefix + [action], cwd=ROOT, env=selection, check=True)
     tofu, ansible = local_tools()

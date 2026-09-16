@@ -14,8 +14,8 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
 | Component | Version |
 | --- | --- |
-| Kit executable and image | 0.4.0 |
-| Inframill engine | 0.4.0 |
+| Kit executable and image | 0.5.0-dev |
+| Inframill engine | 0.5.0-dev |
 | OpenTofu driver / tool | 0.1.0 / 1.11.5 |
 | Ansible driver / Ansible Core | 0.1.0 / 2.20.1 |
 | pv-cloud blueprint | 0.1.0 |
@@ -39,7 +39,7 @@ needed to use the image.
 docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  ghcr.io/inframill/kit:0.4.0
+  ghcr.io/inframill/kit:0.5.0-dev
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -48,7 +48,7 @@ published on loopback because the engine has no built-in authentication; remote
 access requires an authenticated gateway or private tunnel.
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
-With the Inframill 0.4.0 CLI installed locally, query the running server with:
+With the Inframill 0.5.0-dev CLI installed locally, query the running server with:
 
 ```sh
 inframill server instance list --endpoint http://localhost:8080
@@ -58,11 +58,14 @@ You can also use the CLI inside the container:
 
 ```sh
 docker exec inframill inframill server instance list
+docker exec inframill inframill server driver list
 docker exec inframill inframill local driver list --config /etc/inframill/inframill.yaml
 ```
 
 Server requests use `--endpoint` or `INFRAMILL_ENDPOINT`, not the YAML configuration.
 If you change the server port, update both the published port and client endpoint.
+`server driver list` reports the daemon's cached startup availability;
+`local driver list` probes the drivers configured in the selected local file.
 
 | Container path | Purpose |
 | --- | --- |
@@ -75,7 +78,7 @@ If you change the server port, update both the published port and client endpoin
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.4.0 \
+docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.5.0-dev \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
@@ -92,7 +95,7 @@ docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
   --mount type=bind,src="$PWD/inframill.yaml",dst=/etc/inframill/inframill.yaml,readonly \
-  ghcr.io/inframill/kit:0.4.0
+  ghcr.io/inframill/kit:0.5.0-dev
 ```
 
 The existing named volume is reused. To keep data in a host directory instead,
@@ -103,7 +106,7 @@ create it with `mkdir -p data` and replace the data mount with:
 ```
 
 Changing mount sources selects different storage; it does not copy existing data.
-Inframill 0.4.0 resolves relative YAML paths from the configuration file's directory
+Inframill 0.5.0-dev resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
 ### Logs, restarts and upgrades
@@ -133,7 +136,7 @@ require Docker Buildx with Linux AMD64 and ARM64 support.
 
 Keep the Inframill checkout alongside this repository at `../inframill`. Kit imports
 its public driver package through a local Go replacement. Image builds require the
-clean source revision pinned in [the bundle lock](releases/bundles/0.4.0.lock.yaml).
+clean source revision pinned in [the bundle lock](releases/bundles/0.5.0-dev.lock.yaml).
 
 ```sh
 task setup
@@ -147,8 +150,8 @@ task check-fast
 alongside the system Python if needed, or select one with `PYTHON=/path/to/python3.14`.
 Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides must match the pinned tool versions.
 
-Prebuilt engine binaries must exist in `../inframill/dist/0.4.0/`, named
-`inframill_0.4.0_<os>_<arch>`. Image builds need both `linux_amd64` and `linux_arm64`;
+Prebuilt engine binaries must exist in `../inframill/dist/0.5.0-dev/`, named
+`inframill_0.5.0-dev_<os>_<arch>`. Image builds need both `linux_amd64` and `linux_arm64`;
 `inframill:copy` needs the host binary, such as `darwin_arm64`. Set
 `INFRAMILL_DIST_DIR` to override the parent `dist` directory. Kit verifies these
 binaries and copies them directly; it compiles only its own driver executable.
@@ -165,7 +168,7 @@ task bundle:push
 ```
 
 These publish pv-cloud to `ghcr.io/inframill/blueprints/pv-cloud:0.1.0` and the Kit
-image to `ghcr.io/inframill/kit:0.4.0`. Builds never push automatically.
+image to `ghcr.io/inframill/kit:0.5.0-dev`. Builds never push automatically.
 See [releases](docs/releases.md) for individual packages, registry overrides,
 verification and adding versions.
 

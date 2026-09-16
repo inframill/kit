@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const InframillVersion = "0.4.0"
+const InframillVersion = "0.5.0-dev"
 
 type Release struct {
 	Name        string `json:"name" yaml:"name"`

@@ -40,10 +40,12 @@ task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
-The current baseline is Kit `0.4.0` with Inframill `0.4.0`. A Kit-only fix can ship as
-`0.4.1` while still using Inframill `0.4.0`. Moving to Inframill `0.5.x` requires a
-Kit `0.5.x` release after compatibility checks. The bundle lock always pins the exact
-engine version and binary checksums.
+The current development baseline is Kit `0.5.0-dev` with Inframill `0.5.0-dev`.
+Kit patch releases may differ from the engine within the same major/minor line.
+Moving to Inframill `0.6.x` requires a Kit `0.6.x` release after compatibility checks.
+The bundle lock always pins the exact engine version and binary checksums.
+Development tags are also immutable here: changed binary bytes require a new
+version/tag, such as `0.5.0-dev.1`, rather than overwriting a published `0.5.0-dev`.
 
 The build tooling enforces this policy. Standalone Kit builds reject a different
 major/minor version from the compiled Inframill target. Image builds, pushes and
