@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Executed inside the built runtime against disposable built-in OpenTofu resources."""
 import hashlib,json,os,pathlib,platform,subprocess,tempfile,uuid
+import yaml
 registry=os.environ['KIT_TEST_REGISTRY'];os.environ['INFRAMILL_HTTP_REGISTRIES']=registry
 arch='arm64' if platform.machine() in ('arm64','aarch64') else 'amd64'
 lock=json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
 assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest()==lock['inframill']['binaries'][arch]['sha256']
+assert json.loads(subprocess.check_output(['inframill-kit','version']))['version']==lock['kit_version']==lock['version']
 with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
-    tmp=pathlib.Path(td);conf=json.loads(pathlib.Path('/etc/inframill/config.json').read_text());conf['engine']['dataDir']=str(tmp/'data');config=tmp/'config.json';config.write_text(json.dumps(conf))
+    tmp=pathlib.Path(td);conf=yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text());conf['engine']['dataDir']=str(tmp/'data');config=tmp/'config.json';config.write_text(json.dumps(conf))
     for case in json.loads(os.environ['KIT_TEST_FIXTURES']):
         version=case['version']
         fixture_name='smoke/v'+version.replace('.','-');reference=f'{registry}/inframill/blueprints/local-resource:{version}'

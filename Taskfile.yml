@@ -1,11 +1,11 @@
 version: '3'
 
-# Pass overrides as task arguments, for example: task bundle BUNDLE_VERSION=0.2.0.
+# Pass overrides as task arguments, for example: task bundle BUNDLE_VERSION=0.3.0.
 env:
   VERSION: '{{default "0.1.0" .VERSION}}' # Blueprint version; independent of Kit.
   DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
-  KIT_VERSION: '{{default "0.2.0" .KIT_VERSION}}'
-  BUNDLE_VERSION: '{{default "0.2.0" .BUNDLE_VERSION}}' # Image version; must match Kit.
+  KIT_VERSION: '{{default "0.3.0" .KIT_VERSION}}'
+  BUNDLE_VERSION: '{{default "0.3.0" .BUNDLE_VERSION}}' # Image version; must match Kit.
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
   KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
   REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
@@ -55,7 +55,9 @@ tasks:
     desc: Verify and copy the prebuilt host engine from the sibling dist (BUNDLE_VERSION)
     cmds: ['go run ./cmd/kit-build inframill:copy']
   config:
-    desc: Print local engine configuration as JSON
+    desc: Print local engine configuration (CONFIG_FORMAT=json|yaml)
+    env:
+      CONFIG_FORMAT: '{{default "json" .CONFIG_FORMAT}}'
     summary: |
       Generate configuration with absolute tool paths, for example:
         OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
@@ -121,6 +123,7 @@ tasks:
     summary: |
       Requires Docker Buildx, the pinned sibling source revision and both prebuilt
       Linux engine binaries under INFRAMILL_DIST_DIR. Builds Kit and copies the engine.
+      Includes /etc/inframill/inframill.yaml; mount data at /var/lib/inframill.
       Writes KIT_DIST_DIR/bundles/BUNDLE_VERSION; never pushes or replaces an output.
     cmds: ['python3 scripts/bundle.py']
   bundle:push:

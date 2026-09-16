@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/inframill/kit/internal/catalog"
 	"github.com/inframill/kit/internal/packaging"
 	"github.com/opencontainers/go-digest"
@@ -55,7 +57,7 @@ func run() error {
 	name := os.Getenv("BLUEPRINT")
 	version := env("VERSION", "0.1.0")
 	if action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
-		version = env("BUNDLE_VERSION", "0.2.0")
+		version = env("BUNDLE_VERSION", "0.3.0")
 	}
 	registry := env("REGISTRY", "ghcr.io")
 	ns := env("NAMESPACE", "inframill")
@@ -65,7 +67,7 @@ func run() error {
 	}
 	switch action {
 	case "build":
-		kv := env("KIT_VERSION", "0.2.0")
+		kv := env("KIT_VERSION", "0.3.0")
 		if _, e = packaging.Kit(root, kv); e != nil {
 			return e
 		}
@@ -172,7 +174,17 @@ func run() error {
 				}
 			}
 		}
-		return json.NewEncoder(os.Stdout).Encode(catalog.Configuration(env("KIT_EXECUTABLE", filepath.Join(root, "bin/inframill-kit")), env("DATA_DIR", filepath.Join(root, ".inframill")), selected, tools))
+		config := catalog.Configuration(env("KIT_EXECUTABLE", filepath.Join(root, "bin/inframill-kit")), env("DATA_DIR", filepath.Join(root, ".inframill")), selected, tools)
+		switch env("CONFIG_FORMAT", "json") {
+		case "json":
+			return json.NewEncoder(os.Stdout).Encode(config)
+		case "yaml":
+			encoder := yaml.NewEncoder(os.Stdout)
+			encoder.SetIndent(2)
+			return encoder.Encode(config)
+		default:
+			return errors.New("CONFIG_FORMAT must be json or yaml")
+		}
 	case "blueprint:requirements":
 		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version)
 		if err != nil {

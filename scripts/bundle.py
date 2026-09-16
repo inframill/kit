@@ -5,7 +5,7 @@ from bundle_inputs import read_binary
 from release_config import bundle_lock, configuration
 from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
-version=os.environ.get('BUNDLE_VERSION','0.2.0')
+version=os.environ.get('BUNDLE_VERSION','0.3.0')
 image_reference=os.environ.get('REGISTRY','ghcr.io')+'/'+os.environ.get('NAMESPACE','inframill')+'/kit:'+version
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
 subprocess.run(['go','run','./cmd/kit-build','bundle:validate'],cwd=ROOT,env={**os.environ,'BUNDLE_VERSION':version},check=True)
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
         run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['kit_version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
         (bindir/'inframill').write_bytes(inframill_binaries[arch])
         (bindir/'inframill').chmod(0o755)
-    (context/'config.json').write_text(json.dumps(configuration('/usr/local/bin/inframill-kit','/var/lib/inframill',drivers=lock['drivers'])))
+    (context/'inframill.yaml').write_text(configuration('/usr/local/bin/inframill-kit','/var/lib/inframill',drivers=lock['drivers'],format='yaml'))
     for name in ['Dockerfile','requirements.lock','python-sources.lock.json','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
     shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');(context/'bundle.lock.json').write_text(json.dumps(lock,indent=2)+'\n')
     tar=stage/'image.tar'

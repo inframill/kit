@@ -12,16 +12,16 @@ func TestKitAndBundleVersionPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name, selected, kit, core, bundle, bundledKit, bundledCore, want string
 	}{
-		{"aligned", "0.2.0", "0.2.0", "0.2.0", "0.2.0", "0.2.0", "0.2.0", ""},
-		{"independent patch", "0.2.7", "0.2.7", "0.2.0", "0.2.7", "0.2.7", "0.2.0", ""},
-		{"prerelease", "0.2.1-rc.1", "0.2.1-rc.1", "0.2.0", "0.2.1-rc.1", "0.2.1-rc.1", "0.2.0", ""},
-		{"wrong minor", "0.3.0", "0.3.0", "0.2.0", "0.3.0", "0.3.0", "0.2.0", "major/minor"},
-		{"wrong major", "1.2.0", "1.2.0", "0.2.0", "1.2.0", "1.2.0", "0.2.0", "major/minor"},
-		{"wrong descriptor identity", "0.2.0", "0.2.1", "0.2.0", "0.2.0", "0.2.0", "0.2.0", "compiled target"},
-		{"unsupported core", "0.2.0", "0.2.0", "0.2.1", "0.2.0", "0.2.0", "0.2.1", "compiled target"},
-		{"wrong image identity", "0.2.0", "0.2.0", "0.2.0", "0.2.1", "0.2.0", "0.2.0", "match exactly"},
-		{"wrong Kit in image", "0.2.0", "0.2.0", "0.2.0", "0.2.0", "0.2.1", "0.2.0", "match exactly"},
-		{"wrong core in image", "0.2.0", "0.2.0", "0.2.0", "0.2.0", "0.2.0", "0.2.1", "differs from Kit target"},
+		{"aligned", "0.3.0", "0.3.0", "0.3.0", "0.3.0", "0.3.0", "0.3.0", ""},
+		{"independent patch", "0.3.7", "0.3.7", "0.3.0", "0.3.7", "0.3.7", "0.3.0", ""},
+		{"prerelease", "0.3.1-rc.1", "0.3.1-rc.1", "0.3.0", "0.3.1-rc.1", "0.3.1-rc.1", "0.3.0", ""},
+		{"wrong minor", "0.4.0", "0.4.0", "0.3.0", "0.4.0", "0.4.0", "0.3.0", "major/minor"},
+		{"wrong major", "1.3.0", "1.3.0", "0.3.0", "1.3.0", "1.3.0", "0.3.0", "major/minor"},
+		{"wrong descriptor identity", "0.3.0", "0.3.1", "0.3.0", "0.3.0", "0.3.0", "0.3.0", "compiled target"},
+		{"unsupported core", "0.3.0", "0.3.0", "0.3.1", "0.3.0", "0.3.0", "0.3.1", "compiled target"},
+		{"wrong image identity", "0.3.0", "0.3.0", "0.3.0", "0.3.1", "0.3.0", "0.3.0", "match exactly"},
+		{"wrong Kit in image", "0.3.0", "0.3.0", "0.3.0", "0.3.0", "0.3.1", "0.3.0", "match exactly"},
+		{"wrong core in image", "0.3.0", "0.3.0", "0.3.0", "0.3.0", "0.3.0", "0.3.1", "differs from Kit target"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()

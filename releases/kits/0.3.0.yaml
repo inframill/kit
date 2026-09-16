@@ -1,0 +1,14 @@
+{
+  "version": "0.3.0",
+  "drivers": [
+    {
+      "name": "opentofu",
+      "version": "0.1.0"
+    },
+    {
+      "name": "ansible",
+      "version": "0.1.0"
+    }
+  ],
+  "inframill_version": "0.3.0"
+}

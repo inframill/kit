@@ -10,7 +10,7 @@ FIXTURES = ROOT / 'tests/fixtures'
 
 
 def bundle_lock(version=None):
-    version = version or os.environ.get('BUNDLE_VERSION', '0.2.0')
+    version = version or os.environ.get('BUNDLE_VERSION', '0.3.0')
     if '/' in version or version in ('', '.', '..'):
         raise ValueError('Invalid bundle version')
     lock = json.loads((ROOT / f'releases/bundles/{version}.lock.yaml').read_text())
@@ -29,15 +29,15 @@ def bundle_lock(version=None):
     return {**lock, **tools}
 
 
-def configuration(executable, workspace, tools=None, drivers=None):
-    env = {**os.environ, 'KIT_EXECUTABLE': str(executable), 'DATA_DIR': str(workspace)}
+def configuration(executable, workspace, tools=None, drivers=None, format='json'):
+    env = {**os.environ, 'KIT_EXECUTABLE': str(executable), 'DATA_DIR': str(workspace), 'CONFIG_FORMAT': format}
     for name in ('opentofu', 'ansible'):
         env.pop(name.upper() + '_PATH', None)
     for name, path in (tools or {}).items():
         env[name.upper() + '_PATH'] = str(path)
     env['CONFIG_DRIVERS'] = json.dumps(drivers or bundle_lock()['drivers'])
     result = subprocess.check_output(['go', 'run', './cmd/kit-build', 'config'], cwd=ROOT, env=env, text=True)
-    return json.loads(result)
+    return json.loads(result) if format == 'json' else result
 
 
 def blueprint_root(name):
@@ -75,4 +75,4 @@ def fixture_cases():
 
 
 def bundle_output():
-    return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / os.environ.get('BUNDLE_VERSION', '0.2.0')
+    return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / os.environ.get('BUNDLE_VERSION', '0.3.0')

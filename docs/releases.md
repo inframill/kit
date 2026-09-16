@@ -40,9 +40,9 @@ task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
-The current baseline is Kit `0.2.0` with Inframill `0.2.0`. A Kit-only fix can ship as
-`0.2.1` while still using Inframill `0.2.0`. Moving to Inframill `0.3.x` requires a
-Kit `0.3.x` release after compatibility checks. The bundle lock always pins the exact
+The current baseline is Kit `0.3.0` with Inframill `0.3.0`. A Kit-only fix can ship as
+`0.3.1` while still using Inframill `0.3.0`. Moving to Inframill `0.4.x` requires a
+Kit `0.4.x` release after compatibility checks. The bundle lock always pins the exact
 engine version and binary checksums.
 
 The build tooling enforces this policy. Standalone Kit builds reject a different
@@ -68,11 +68,11 @@ hashes prevent accidental content replacement.
 | --- | --- | --- |
 | `VERSION` | Blueprint release | `0.1.0` |
 | `DRIVER_VERSION` | Driver for `task driver:check` | `0.1.0` |
-| `KIT_VERSION` | Executable release for `task build` | `0.2.0` |
-| `BUNDLE_VERSION` | Image build, push, full checks and native engine copy | `0.2.0` |
+| `KIT_VERSION` | Executable release for `task build` | `0.3.0` |
+| `BUNDLE_VERSION` | Image build, push, full checks and native engine copy | `0.3.0` |
 
-For example, `task bundle BUNDLE_VERSION=0.2.0` and
-`task bundle:push BUNDLE_VERSION=0.2.0` select the same image release. The bundle lock
+For example, `task bundle BUNDLE_VERSION=0.3.0` and
+`task bundle:push BUNDLE_VERSION=0.3.0` select the same image release. The bundle lock
 pins the Kit executable version; `KIT_VERSION` applies to the standalone build.
 
 `KIT_DIST_DIR` changes the output root for packaging, image builds, pushes and checks.

@@ -2,7 +2,8 @@
 """Manual verification. Infrastructure effects are limited to disposable local fixtures."""
 import contextlib, io, tarfile, json, os, pathlib, platform, shutil, subprocess, sys, tempfile, time, uuid
 from daemon_check import daemon_check
-from release_config import ROOT, FIXTURES, local_tools, configuration, blueprint_root, driver_ids, fixture_cases, registry_image, bundle_output
+from image_check import image_check
+from release_config import ROOT, FIXTURES, local_tools, configuration, blueprint_root, driver_ids, fixture_cases, registry_image, bundle_output, bundle_lock
 
 def run(args, **kwargs):
     print('+', ' '.join(map(str,args)),file=sys.stderr,flush=True)
@@ -131,8 +132,10 @@ def registry_check():
             data=json.dumps(index).encode();header=tarfile.TarInfo('index.json');header.size=len(data);tar.addfile(header,io.BytesIO(data))
         run(['docker','load','-i',archive])
         try:
+            python='/opt/inframill/tools/ansible/'+bundle_lock()['ansible_core']+'/bin/python3'
             for arch in ['arm64','amd64']:
-                run(['docker','run','--rm','--pull=never','--platform','linux/'+arch,'--network',network,'-e','KIT_TEST_REGISTRY=registry:5000','-e','KIT_TEST_FIXTURES='+json.dumps([{**case,'drivers':driver_ids(case['name'],case['version'])} for case in fixture_cases()]),'--mount','type=bind,src='+str(ROOT/'scripts/runtime-smoke.py')+',dst=/verify.py,readonly','--mount','type=bind,src='+str(ROOT/'examples/pv-cloud-0.1.0.json')+',dst=/pv-example.json,readonly','--entrypoint','python3',image,'/verify.py'])
+                image_check(tmp,image,arch,network)
+                run(['docker','run','--rm','--pull=never','--platform','linux/'+arch,'--network',network,'-e','KIT_TEST_REGISTRY=registry:5000','-e','KIT_TEST_FIXTURES='+json.dumps([{**case,'drivers':driver_ids(case['name'],case['version'])} for case in fixture_cases()]),'--mount','type=bind,src='+str(ROOT/'scripts/runtime-smoke.py')+',dst=/verify.py,readonly','--mount','type=bind,src='+str(ROOT/'examples/pv-cloud-0.1.0.json')+',dst=/pv-example.json,readonly','--entrypoint',python,image,'/verify.py'])
         finally:subprocess.run(['docker','image','rm',image],stdout=subprocess.DEVNULL,check=False)
 
 
@@ -167,6 +170,6 @@ def main():
         platforms={(m.get('platform',{}).get('os'),m.get('platform',{}).get('architecture')) for m in data.get('manifests',[])}
         if not {('linux','amd64'),('linux','arm64')}<=platforms:raise RuntimeError('Missing runtime architecture')
         run(['docker','run','--rm','--entrypoint','inframill-kit',reference,'version'])
-        run(['docker','run','--rm',reference,'driver','list','--config','/etc/inframill/config.json','-o','json']);return
+        run(['docker','run','--rm',reference,'driver','list','--config','/etc/inframill/inframill.yaml','-o','json']);return
     raise RuntimeError('Unknown check')
 if __name__=='__main__':main()

@@ -17,7 +17,7 @@ RUN python3 -m venv /opt/inframill/tools/ansible/${ANSIBLE_VERSION} \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/pip install --no-cache-dir --require-hashes -r /build/requirements.lock \
     && python3 /build/fetch-runtime.py ${TARGETARCH}
 COPY bin/linux/${TARGETARCH}/ /usr/local/bin/
-COPY config.json /etc/inframill/config.json
+COPY inframill.yaml /etc/inframill/inframill.yaml
 COPY sources/ /usr/share/inframill/sources/kit/
 COPY NOTICES.md /usr/share/inframill/NOTICES.md
 ARG INFRAMILL_VERSION
@@ -31,4 +31,4 @@ RUN mkdir -p /var/lib/inframill \
 WORKDIR /var/lib/inframill
 EXPOSE 8080
 ENTRYPOINT ["inframill"]
-CMD ["server", "--config", "/etc/inframill/config.json"]
+CMD ["server", "--config", "/etc/inframill/inframill.yaml"]
