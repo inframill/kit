@@ -45,9 +45,10 @@ task inframill:copy
 task check-fast
 ```
 
-`task setup` installs pinned tools into `.cache`. Set `PYTHON=/path/to/python3.13`
-if needed. Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides must match the pinned
-tool versions.
+`task setup` installs pinned tools into `.cache` and automatically finds Python
+3.12–3.14, even when `python3` is Apple's Python 3.9. Install a supported interpreter
+alongside the system Python if needed, or select one with `PYTHON=/path/to/python3.14`.
+Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides must match the pinned tool versions.
 
 Prebuilt engine binaries must exist in `../inframill/dist/0.2.0/`, named
 `inframill_0.2.0_<os>_<arch>`. Image builds need both `linux_amd64` and `linux_arm64`;

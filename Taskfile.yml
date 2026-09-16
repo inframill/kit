@@ -41,7 +41,12 @@ tasks:
 
   # Local development.
   setup:
-    desc: Install pinned OpenTofu and Ansible in .cache (PYTHON selects Python)
+    desc: Install pinned tools in .cache; automatically find Python 3.12–3.14
+    summary: |
+      Finds a supported Python for Ansible even if python3 is the system Python 3.9.
+      Uses the current interpreter when supported, otherwise tries python3.14,
+      python3.13 and python3.12 on PATH. Set PYTHON=/path/to/python to override.
+      Installs tools locally in .cache; leaves the system Python unchanged.
     cmds: ['python3 scripts/setup-dev.py']
   build:
     desc: Build bin/inframill-kit (KIT_VERSION)
