@@ -7,9 +7,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/inframill/kit/internal/catalog"
-	"github.com/inframill/kit/internal/driverkit"
 	wire "github.com/sir-hassan/inframill/pkg/driver"
 )
 
@@ -32,7 +33,7 @@ func run(args []string) error {
 		return json.NewEncoder(os.Stdout).Encode(catalog.List())
 	}
 	if len(args) < 3 || args[0] != "driver" {
-		return errors.New("usage: inframill-kit driver NAME --driver-version VERSION [--tool ABSOLUTE_PATH] info | validate config|blueprint|instance|command | run COMMAND")
+		return errors.New("usage: inframill-kit driver NAME --driver-version VERSION [--tool ABSOLUTE_PATH] (JSON request on stdin)")
 	}
 	fs := flag.NewFlagSet("driver", flag.ContinueOnError)
 	v := fs.String("driver-version", "", "exact implementation version")
@@ -40,12 +41,14 @@ func run(args []string) error {
 	if e := fs.Parse(args[2:]); e != nil {
 		return e
 	}
-	r, e := catalog.Get(args[1], *v)
+	implementation, e := catalog.New(args[1], *v, *tool)
 	if e != nil {
 		return e
 	}
-	if wire.Serve(context.Background(), driverkit.New(r, driverkit.Options{Tool: *tool}), wire.ServeOptions{
-		Version: r.Version, Args: fs.Args(), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if wire.Serve(ctx, implementation, wire.ServeOptions{
+		Version: *v, Args: fs.Args(), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
 	}) != 0 {
 		return errServed
 	}

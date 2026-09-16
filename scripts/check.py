@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Manual verification. Infrastructure effects are limited to disposable local fixtures."""
 import contextlib, io, tarfile, json, os, pathlib, platform, shutil, subprocess, sys, tempfile, time, uuid
+from daemon_check import daemon_check
 from release_config import ROOT, FIXTURES, local_tools, configuration, blueprint_root, driver_ids, fixture_cases, registry_image, bundle_output
 
 def run(args, **kwargs):
@@ -17,8 +18,9 @@ def config(path,workspace,tofu,ansible):
 
 def execute(tmp,conf,instance,name,command,args=None,source=None,env=None):
     token=uuid.uuid4().hex;result=tmp/(token+'-result.json')
-    cmd=[ROOT/'bin/inframill','exec',command,'--config',conf,'--instance',instance,'--name',name,'--result-file',result]
+    cmd=[ROOT/'bin/inframill','exec',command,'--config',conf,'--values-file',instance,'--name',name,'--result-file',result]
     if source:cmd+=['--blueprint-dir',source]
+    else:cmd+=['--blueprint',(env or os.environ)['VERIFY_BLUEPRINT_REFERENCE']]
     if args is not None:
         argfile=tmp/(token+'-args.json');argfile.write_text(json.dumps(args));cmd+=['--args-file',argfile]
     run(cmd,env=env,stdout=subprocess.DEVNULL)
@@ -28,8 +30,8 @@ def execute(tmp,conf,instance,name,command,args=None,source=None,env=None):
 
 def local_flow(tmp,conf,version,reference=None,env=None):
     iid=tmp/('local-'+version+'.json');data=json.loads((FIXTURES/f'examples/local-resource-{version}.json').read_text())
-    data['values']['architecture']='arm64' if platform.machine() in ('arm64','aarch64') else 'amd64'
-    if reference:data['blueprint']=reference
+    data['architecture']='arm64' if platform.machine() in ('arm64','aarch64') else 'amd64'
+    if reference:env={**(env or os.environ),'VERIFY_BLUEPRINT_REFERENCE':reference}
     iid.write_text(json.dumps(data));src=None if reference else FIXTURES/f'blueprints/local-resource/versions/{version}'
     ids=driver_ids('local-resource',version);prefix=ids['opentofu'];ap=ids['ansible'];name='test/local-'+version.replace('.','-')
     def do(command,args=None):return execute(tmp,conf,iid,name,command,args,src,env)
@@ -79,6 +81,7 @@ def registry_check():
             selection={**env,'BLUEPRINT_ROOT':str(FIXTURES),'BLUEPRINT':case['name'],'VERSION':case['version']}
             for action in ['blueprint:package','blueprint:push','blueprint:push']:
                 run(['go','run','./cmd/kit-build',action],cwd=ROOT,env=selection)
+        daemon_check(tmp,address,env)
         for v in [case['version'] for case in fixture_cases()]:
             local_flow(tmp,conf,v,f'{address}/inframill/blueprints/local-resource:{v}',env)
         # Attempt to publish newer content under the older tag, without touching
@@ -96,6 +99,20 @@ def registry_check():
         record=json.loads((tmp/'dist/blueprints/local-resource/0.1.0/build.json').read_text())
         config(conf,tmp/'fresh-data',tofu,ansible)
         local_flow(tmp,conf,'0.1.0',address+'/inframill/blueprints/local-resource@'+record['descriptor']['digest'],env)
+        # New Instances must initialize from the verified cache without acquisition.
+        # No plain-HTTP registry is authorized, so an attempted fetch would fail.
+        offline={**env,'INFRAMILL_HTTP_REGISTRIES':'' ,'VERIFY_BLUEPRINT_REFERENCE':address+'/inframill/blueprints/local-resource@'+record['descriptor']['digest']}
+        ids=driver_ids('local-resource','0.1.0')
+        execute(tmp,conf,tmp/'local-0.1.0.json','test/offline',ids['ansible']+'.syntax-check',{'playbook':'site'},env=offline)
+        cache=tmp/'fresh-data/blueprints'
+        cached_schema=next(cache.rglob('schema.json'))
+        cached_schema.write_bytes(cached_schema.read_bytes()+b'\n')
+        before=set((tmp/'fresh-data/instances').iterdir())
+        args_file=tmp/'tampered-args.json';args_file.write_text('{"playbook":"site"}')
+        rejected=subprocess.run([str(ROOT/'bin/inframill'),'exec',ids['ansible']+'.syntax-check','--config',str(conf),'--values-file',str(tmp/'local-0.1.0.json'),'--name','test/tampered','--blueprint',offline['VERIFY_BLUEPRINT_REFERENCE'],'--args-file',str(args_file)],env=offline,text=True,capture_output=True)
+        if rejected.returncode==0:raise RuntimeError('Corrupted cached source was accepted')
+        if set((tmp/'fresh-data/instances').iterdir())!=before:raise RuntimeError('Corrupt source created an Instance')
+        print('Offline cache reuse and consumer corruption rejection passed',flush=True)
         # Publish the existing bundle only to this disposable test registry.
         if not (bundle_output()/'build.json').is_file():raise RuntimeError('Run task bundle before check-full container verification')
         run(['go','run','./cmd/kit-build','bundle:push'],cwd=ROOT,env={**env,'KIT_DIST_DIR':str(bundle_output().parent.parent),'VERSION':bundle_output().name})
@@ -129,7 +146,7 @@ def main():
     if action=='blueprint:check':blueprint_check(os.environ['BLUEPRINT'],os.environ.get('VERSION','0.1.0'));return
     if action=='driver:check':
         name=os.environ['DRIVER'];version=os.environ.get('DRIVER_VERSION','0.1.0')
-        run([ROOT/'bin/inframill-kit','driver',name,'--driver-version',version,'info']);run(['go','test','-vet=off','./internal/driverkit']);return
+        run([ROOT/'bin/inframill-kit','driver',name,'--driver-version',version],input=json.dumps({'protocol':1,'method':'info','params':{}}));run(['go','test','-vet=off','./internal/drivers/'+name]);return
     if action=='blueprint:verify':
         reference=os.environ['REFERENCE']
         if '@sha256:' not in reference:raise RuntimeError('REFERENCE must be digest-pinned')
@@ -137,12 +154,12 @@ def main():
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             tmp=pathlib.Path(td);conf=tmp/'config.json';config(conf,tmp/'data',tofu,ansible)
             name=os.environ.get('BLUEPRINT','');version=os.environ.get('VERSION','0.1.0');example=blueprint_root(name)/f'examples/{name}-{version}.json'
-            data=json.loads(example.read_text());data['blueprint']=reference;instance=tmp/'instance.json';instance.write_text(json.dumps(data))
+            data=json.loads(example.read_text());instance=tmp/'values.json';instance.write_text(json.dumps(data))
             # Blueprint and driver versions are independent release identities.
             release=json.loads(run(['go','run','./cmd/kit-build','blueprint:requirements'],cwd=ROOT,env={**os.environ,'BLUEPRINT_ROOT':str(blueprint_root(name))},capture_output=True).stdout)
             candidates=[d['id'] for d in release['drivers'] if d['name']=='ansible']
             if len(candidates)!=1:raise RuntimeError('Verification requires a fixture selecting one Ansible driver')
-            execute(tmp,conf,instance,'verify/blueprint',candidates[0]+'.syntax-check',{'playbook':'site'})
+            execute(tmp,conf,instance,'verify/blueprint',candidates[0]+'.syntax-check',{'playbook':'site'},env={**os.environ,'VERIFY_BLUEPRINT_REFERENCE':reference})
         return
     if action=='bundle:verify':
         reference=os.environ['REFERENCE']

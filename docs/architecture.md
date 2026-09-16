@@ -1,97 +1,66 @@
-# Inframill Kit architecture
+# Kit architecture
 
-Inframill is the control plane: it manages Instances, resolves and renders
-blueprints, invokes external drivers, and records execution history. Kit provides
-OpenTofu and Ansible drivers through Inframill's public protocol 1.
+Kit 0.1.0 targets the current Inframill 0.2.0 API. There is no legacy implementation,
+protocol shim, old input reader or migration. Blueprint, driver, Kit and bundle
+versions are independent full SemVer identities.
 
-## Programs and ownership
+## Ownership
 
-| Program | Responsibility | Distribution |
-| --- | --- | --- |
-| `inframill` | Control plane | Prebuilt binary copied from sibling `../inframill/dist` |
-| `inframill-kit` | Versioned driver execution and verification | Built here and installed in the runtime |
-| `kit-build` | Local build, configuration and OCI packaging/push tools | Invoked by Task; not installed in the runtime |
+- Inframill owns Instances, Values validation/rendering, project secret snapshots,
+  queues, persistence, history and the external driver transport.
+- `cmd/inframill-kit` consumes the configured prefix and calls upstream `driver.Serve`.
+  `internal/catalog` selects explicit implementation factories by exact name/version.
+- `internal/drivers/opentofu` and `internal/drivers/ansible` own separate typed
+  manifests, rendered settings, arguments, prepared commands and typed outcomes.
+- `internal/artifacts` owns bounded rooted file access, source hashes and the shared
+  node record. `internal/toolrun` owns subprocesses, restricted environments,
+  bounded machine output and filtered diagnostics.
+- `cmd/kit-build`, `internal/packaging` and `scripts/` own local configuration,
+  authoring, OCI packaging, runtime assembly and manual publication.
 
-Kit imports the public `pkg/driver` protocol from the sibling Go module. No
-Inframill source snapshot is kept here or embedded in the image. Bundle creation
-never invokes the sibling's build or release tasks.
+## Command lifecycle
 
-## Versions and metadata
+`ValidateManifest` examines only the driver's static manifest section. Engine
+renders Values into each configured driver's workspace, including a strict
+`kit-driver.json`. `Prepare` validates arguments/settings and reads required files
+without effects or credentials. For run, the fresh driver process prepares again,
+then Execute receives the project's secret snapshot.
 
-Blueprint, driver, Kit and bundle versions are independent full SemVer identities.
-The initial production catalog contains `opentofu@0.1.0` and `ansible@0.1.0`, with
-refresh-only planning and Ansible tag selection included. A second version should
-represent an actual maintained release, not an example of version support.
+Only Execute can create artifacts or launch tools. Known required credentials are
+resolved before effects and passed through a selected child environment. No secrets
+are read from inherited `INFRAMILL_SECRET_*`, Values, Args or Engine storage. Tool
+logs are bounded and filtered for known injected values, including chunked and
+JSON-escaped forms. Machine output is parsed privately and projected into stable
+results; credential-bearing projections reject. Transport remains upstream-owned.
 
-`releases/drivers/<name>/<version>.yaml` is embedded by `releases/catalog.go` and
-read by the compiled catalog. `internal/catalog` owns exact selection and driver
-ID/configuration generation. `releases/kits` declares the included versions;
-bundle locks select the versions to configure. Missing versions never fall back.
+## Identity and verification
 
-`blueprints/<name>/versions/<version>` contains immutable source packages.
-`releases/blueprints` seals each source layer and pins exact driver requirements.
-`releases/sets/default.yaml` is the explicit normal publication set. Currently it
-contains only pv-cloud; adding other real blueprints needs no packaging changes.
+Every saved plan binds InstanceID, immutable Name, pinned BlueprintReference,
+producer ID, implementation/tool versions, configuration/settings/source hashes,
+mode and plan bytes. Apply/destroy recheck this before effects. Admission retires
+the plan; failures require new planning. Node inventory is invalidated before tool
+mutation and republished only after verified outputs. Destroy checks managed state.
 
-Tests keep two local-resource blueprint versions under `tests/fixtures`, separate
-from production release sets. They both use the initial production drivers.
-Integration tests compile an executable with the `kit_testdrivers` build tag to
-exercise two driver versions at once. Synthetic versions are absent from normal
-builds. Tests still cover missing/version mismatches and saved-plan isolation.
+Ansible validates node schema, identity, producer, host uniqueness and exact address
+selection. Its private configuration and callback prevent user environment overrides.
+A successful process exit needs a complete successful host recap. Syntax-check does
+not require node artifacts; check mode reports prediction.
 
-## Toolchains and runtime
+## Versions and publication
 
-`runtime/tools.lock.json` records OpenTofu assets for supported development/runtime
-platforms, Python and Ansible versions, and hashes of the Python distribution and
-source locks. A bundle lock pins this toolchain file by SHA-256, along with base
-image digests, Inframill binary paths/checksums, Go version and driver selection.
-`release_config.py` resolves that lock for setup, bundle creation and checks.
-Registry setup and tests share the image pin in `runtime/registry.compose.yaml`.
+The initial catalog contains OpenTofu and Ansible 0.1.0. Explicit factories select
+code; embedded release descriptors supply versions/tool pins. Synthetic test factories
+have different manifest and argument contracts to exercise future version coexistence.
+The default blueprint set contains pv-cloud; local-resource variants are fixtures.
 
-Blueprints are deterministic architecture-independent OCI source artifacts. The
-runtime is an OCI image index with Linux AMD64 and ARM64 children. Each child
-contains both Inframill and Kit, with matching tool dependencies. Its Inframill
-binary must match the expected checksum, ELF architecture and executable version.
+A blueprint release pins core version and exact configured driver requirements.
+Packaging validates upstream manifest structure and each implementation's manifest,
+required settings templates, Values schema and the sealed source layer. OCI sources
+are architecture-independent; runtime OCI indices contain both Linux architectures.
 
-Both local and runtime configuration use the Go configuration generator. Blueprint
-execution tests read actual driver IDs from release requirements, independently
-of blueprint version numbers. Tool paths are isolated by upstream tool version.
-
-## Driver execution
-
-Kit implements the public `driver.Driver` interface and delegates transport to
-`driver.Serve`. Config, blueprint, instance and command validation use separate
-phases. `Prepare` validates inputs without executing tools or resolving secrets;
-the returned command performs effects only when `Execute` is called.
-
-OpenTofu initializes with readonly provider locks and Instance-scoped backend
-keys. Saved plans are private and bound to the Instance, blueprint digest,
-driver/tool versions, configuration and source hash. Apply/destroy require a saved
-plan and invalidate node artifacts before effects. Successful apply publishes
-allowlisted nodes; destroy verifies managed state is empty. There is no automatic
-migration, retry or rollback.
-
-Ansible derives inventory from the bound node artifact and uses the explicitly
-selected address. SSH is noninteractive. Execution requires a complete structured
-recap without failed, unreachable, ignored or rescued failures. Check mode is a
-prediction. Blueprint assertions provide guest architecture/service verification.
-
-Secret references resolve only during execution. Cloud/backend credentials are
-passed through a restricted environment, not rendered into input variables or
-arguments. Saved plans may contain infrastructure metadata and public keys; use
-native OpenTofu encryption for blueprints with confidential resource values.
-
-## Publication and verification
-
-Task invokes build/check scripts directly. Packaging/push operations stay in
-`kit-build` and `internal/packaging`. Builds write OCI layouts and digest records;
-push verifies and uploads those existing bytes. Changed existing tags are rejected.
-Publication is manual, primarily to GHCR; no automatic workflows are installed.
-
-Fast checks cover protocol, configuration, plan/artifact binding, package integrity
-and binary inputs. Full checks add actual Inframill/tool execution, provider mocks,
-a disposable registry and both runtime platforms. Native and emulated coverage
-are reported separately in [acceptance.md](acceptance.md).
-
-`old-blueprints/` remains migration reference material. Adopting legacy state is
-outside the initial fresh-deployment scope.
+Runtime assembly verifies the clean sibling source revision before compiling Kit,
+then copies checksum/architecture-verified core binaries from the versioned sibling
+dist. Native copying verifies the corresponding host binary too. The bundle task
+never compiles Inframill. Build records capture source, dependency and binary hashes.
+Push verifies existing bytes and rejects conflicting version tags. Publication is
+manual; local acceptance uses a disposable registry.

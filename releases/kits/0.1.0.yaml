@@ -9,5 +9,6 @@
       "name": "ansible",
       "version": "0.1.0"
     }
-  ]
+  ],
+  "inframill_version": "0.2.0"
 }

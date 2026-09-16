@@ -1,68 +1,61 @@
-# Release acceptance
+# Rewrite acceptance — 2026-09-16
 
-## Local checks
+The local rewrite acceptance passed with Kit 0.1.0 and prebuilt Inframill 0.2.0.
+The public Go dependency was checked against sibling source revision
+`389ff39d87c66b4f7668ec231f0a20e4a5f5f494`. No sibling source or binaries were
+changed by this rewrite.
 
-Run `task check-fast`, then build a bundle and run `task check-full` with the same
-`KIT_DIST_DIR`. Full verification publishes only to a disposable local registry.
-It never creates real Hetzner resources or pushes to GHCR.
+## Verified candidate
 
-Required coverage:
-
-- Production driver catalog and synthetic multi-version protocol integration.
-- Saved-plan and node-artifact isolation, cancellation and failure handling.
-- Deterministic packages, tamper rejection and conflicting-tag rejection.
-- Multiple fixture blueprint versions fetched by tag and digest from fresh caches.
-- pv-cloud ARM64, AMD64 and mixed rendering, syntax checks and provider mocks.
-- Real local-resource OpenTofu/Ansible workflows in both runtime architectures.
-- Prebuilt Inframill checksum, architecture and executable-version verification.
-
-## External release checks still required
-
-- Native Linux AMD64 execution and independent native architecture package builds;
-  emulated AMD64 is useful evidence but does not satisfy native acceptance.
-- Disposable ARM64/AMD64 SSH guests, including cross-architecture execution and
-  Docker/Nginx/PostgreSQL service checks.
-- GHCR publication, package visibility/linking and fresh-cache anonymous blueprint
-  pulls plus runtime digest pulls on both native architectures.
-- A separately authorized Hetzner/S3 deployment for provider/backend locking,
-  SSH and service interoperability. No live cloud effects are part of local checks.
-
-The pinned Inframill consumer supports anonymous/public blueprint pulls. Docker
-login authenticates publication, not private blueprint consumption.
-
-## Cleanup verification — 2026-09-15
-
-- `task check-full KIT_DIST_DIR=.cache/verification` passed, using the native
-  release binary selected with `INFRAMILL_NATIVE_BINARY`. This includes all ten
-  Python tests, Go tests and the Kit build.
-- Kit uses the updated public `driver.Driver`/`driver.Serve` API. Tests cover all
-  four validation phases without tool execution or secret resolution, exact
-  version selection, saved-plan isolation and child-process cancellation.
-- Both moved local-resource fixture versions completed real OpenTofu/Ansible
-  lifecycles through the new Inframill release, by tag and from a fresh digest cache.
-- pv-cloud passed ARM64, AMD64 and mixed rendering/syntax checks and four
-  OpenTofu provider-mock tests. Both runtime architectures completed fixture
-  workflows and provider mocks: ARM64 natively in Docker, AMD64 under emulation.
-- Disposable registry publication, idempotent pushes and conflicting-tag
-  rejection passed. The test image, registry container and network were removed.
-- `git diff --check` and Python syntax checks passed. Existing `dist/` artifacts
-  and `old-blueprints/` were preserved; verification output is separate.
-
-The sibling release task was run with user authorization; no sibling source was
-changed. Inframill `0.0.0-dev` was built from revision
-`b7008f358d146d5b4f74f0f84865b80e18fdf8e5`. The bundle copies the locked Linux
-binaries from `../inframill/dist/0.0.0-dev/`; it never invokes that release task.
-Inspection of both OCI image layers confirmed the installed Inframill binaries
-match their sibling inputs byte for byte:
-
-| Architecture | SHA-256 |
+| Artifact | Digest |
 | --- | --- |
-| AMD64 | `35f8c4552add2973f2d2ea0b2b6270056667297a873d9ccf88694140080168f7` |
-| ARM64 | `f7ba38b33c59415ca8562909ada0b75affcd4d0c9641e0bf7981958ba1f7e428` |
+| pv-cloud 0.1.0 | `sha256:29b994b89a66d8b663deb4706180659e4b0b1248ef6dc320a48eb95209dc440f` |
+| Runtime 0.1.0 index | `sha256:ddbdcc7241ba559a20fc804e9d9e235a21ec24afdd809adfb48f51facd6864e7` |
 
-Verified bundle: `.cache/verification/bundles/0.1.0`, index digest
-`sha256:3bc8e8ca4cb92d6af2cf10320ed2de57a578be6acdd333eb7fcedbca27450ab2`.
-No GHCR publication or live cloud/SSH guest checks were performed.
+Outputs are in `dist/blueprints/pv-cloud/0.1.0/` and `dist/bundles/0.1.0/`.
+Their build records contain the component locks, source identity and checksums.
+The bundle source record was compared with the final implementation files.
 
-Logs: `.cache/cleanup-full.log`, `.cache/cleanup-native.log` and
-`.cache/cleanup-bundle.log`.
+Both image variants verify that `/usr/local/bin/inframill` is a byte-for-byte copy
+of the corresponding locked sibling input:
+
+| Architecture | Inframill SHA-256 |
+| --- | --- |
+| Linux AMD64 | `e67b82df98f2dc8cec97dfa47ce8af0f5f297edb2e5d57437865ebee4ee2b668` |
+| Linux ARM64 | `5f2a91a0b30bd1d7c32aa13c89b4fb7c67bd2c5019ab5ccf04500c641585cfea` |
+
+## Executed checks
+
+`task check-fast` passed: twelve Python tests, all Go packages/integration tests
+with vet disabled, and the Kit build. `task blueprints:package`, `task bundle` and
+`task check-full` passed for the final candidate. Python syntax and
+`git diff --check` also passed.
+
+| Acceptance area | Evidence |
+| --- | --- |
+| AC-01: Protocol | Real upstream Manager/Serve discovery and JSON dispatch; distinct version schemas; structured messages/results; rejection of protocol argv, missing/contradictory final replies and nonzero exit after success; process-group cancellation |
+| AC-02: Preparation | Manifest validation without files, command-specific file requirements, no preparation writes/tools/secrets, syntax checks without node inventory |
+| AC-03: Secrets | Required-secret errors before effects, restricted child environment, chunked/multiline/escaped output filtering, credential-bearing result rejection; daemon/local snapshot tests and checks for synthetic secrets in saved daemon files |
+| AC-04: Outcomes | Saved-plan source/reference/mode/integrity checks, failed-apply inventory invalidation and plan retirement; Ansible complete-host recap validation; real local tool lifecycles |
+| AC-05: Versions | Two production driver names, distinct test driver versions/contracts, multiple local-resource blueprint versions, generic packaging of pv-cloud and fixtures; exact selection and mismatches |
+| AC-06: Engine | Real daemon runs Kit init/plan/apply/Ansible/destroy; history and JSON reply logs; available/unavailable health; project isolation, replace/clear, running/queued snapshots, restart loss; timed-out remote wait leaves execution running; reused local Instance receives no previous invocation's secrets |
+| AC-07: Packages | Deterministic packaging and graph integrity tests; disposable registry tag/digest pulls, idempotent pushes and conflicting-tag rejection; new Instance initialization from cache without authorized network acquisition; tampered cached source rejected without creating an Instance |
+| AC-08: Architectures | Local-resource workflows and four pv-cloud provider mocks pass inside both Linux images; native ARM64 and emulated AMD64; core byte hashes match supplied inputs |
+| AC-09: Release | Manual-only publication, sealed production source and core requirements, sibling source pin and prebuilt binary verification, isolated tests, rebuilt initial artifacts; superseded drivers and legacy blueprint tree removed |
+
+Native pv-cloud checks rendered ARM64, AMD64 and mixed Values, ran Ansible syntax
+checks and passed four OpenTofu provider-mock cases. Container verification repeated
+real fixture workflows and provider mocks on both architectures. Test images,
+registry containers, networks and daemon processes were cleaned up.
+
+Logs: `.cache/rewrite-fast.log`, `.cache/rewrite-native.log`,
+`.cache/rewrite-daemon.log`, `.cache/rewrite-bundle.log` and `.cache/rewrite-full.log`.
+The [rewrite plan](inframill-0.2.0-rewrite-plan.md) records the intended contracts.
+
+## External release checks
+
+These were not performed: native AMD64 hardware execution, real ARM64/AMD64 SSH
+guests and service checks, live Hetzner/S3 interoperability, and GHCR publication
+with anonymous blueprint retrieval. Emulation and provider mocks do not substitute
+for those checks. Local verification created no cloud resources and published only
+to disposable local registries.

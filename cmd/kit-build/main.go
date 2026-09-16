@@ -2,8 +2,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/elf"
+	"debug/macho"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -61,8 +64,9 @@ func run() error {
 	case "build":
 		kv := env("KIT_VERSION", "0.1.0")
 		var release struct {
-			Version string `yaml:"version"`
-			Drivers []struct {
+			Version          string `yaml:"version"`
+			InframillVersion string `yaml:"inframill_version"`
+			Drivers          []struct {
 				Name    string `yaml:"name"`
 				Version string `yaml:"version"`
 			} `yaml:"drivers"`
@@ -73,7 +77,7 @@ func run() error {
 		if e = packaging.ReadYAML(filepath.Join("releases/kits", kv+".yaml"), &release); e != nil {
 			return e
 		}
-		if release.Version != kv || len(release.Drivers) != len(catalog.List()) {
+		if release.InframillVersion != catalog.InframillVersion || release.Version != kv || len(release.Drivers) != len(catalog.List()) {
 			return errors.New("Kit descriptor differs from compiled catalog")
 		}
 		for _, d := range release.Drivers {
@@ -94,8 +98,9 @@ func run() error {
 			Inframill struct {
 				Version  string `json:"version"`
 				Binaries map[string]struct {
-					Path string `json:"path"`
-				} `json:"binaries"`
+					Path   string `json:"path"`
+					SHA256 string `json:"sha256"`
+				} `json:"native_binaries"`
 			} `json:"inframill"`
 		}
 		if err = json.Unmarshal(lockBytes, &lock); err != nil {
@@ -105,25 +110,50 @@ func run() error {
 		if !catalog.ValidVersion(iv) {
 			return errors.New("invalid Inframill release version")
 		}
-		relative := "inframill"
-		if runtime.GOOS == "linux" {
-			entry, ok := lock.Inframill.Binaries[runtime.GOARCH]
-			if !ok || !filepath.IsLocal(entry.Path) {
-				return errors.New("missing native Inframill release path")
-			}
-			relative = entry.Path
+		entry, ok := lock.Inframill.Binaries[runtime.GOOS+"/"+runtime.GOARCH]
+		if !ok || !filepath.IsLocal(entry.Path) || iv != catalog.InframillVersion {
+			return errors.New("unsupported native release")
 		}
-		source := env("INFRAMILL_NATIVE_BINARY", filepath.Join(env("INFRAMILL_DIST_DIR", filepath.Join(root, "..", "inframill", "dist")), relative))
-		output, err := exec.Command(source, "--version").Output()
-		if err != nil {
-			return fmt.Errorf("check prebuilt native Inframill binary: %w", err)
-		}
-		if strings.TrimSpace(string(output)) != iv {
-			return errors.New("native Inframill version differs from bundle lock")
-		}
+		source := filepath.Join(env("INFRAMILL_DIST_DIR", filepath.Join(root, "..", "inframill", "dist")), entry.Path)
 		data, err := os.ReadFile(source)
 		if err != nil {
-			return fmt.Errorf("read prebuilt native Inframill binary: %w", err)
+			return err
+		}
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != entry.SHA256 {
+			return errors.New("native Inframill checksum mismatch")
+		}
+		if runtime.GOOS == "linux" {
+			binary, e := elf.NewFile(bytes.NewReader(data))
+			if e != nil {
+				return e
+			}
+			want := elf.EM_X86_64
+			if runtime.GOARCH == "arm64" {
+				want = elf.EM_AARCH64
+			}
+			if binary.Machine != want {
+				return errors.New("native architecture mismatch")
+			}
+		} else if runtime.GOOS == "darwin" {
+			binary, e := macho.NewFile(bytes.NewReader(data))
+			if e != nil {
+				return e
+			}
+			want := macho.CpuAmd64
+			if runtime.GOARCH == "arm64" {
+				want = macho.CpuArm64
+			}
+			if binary.Cpu != want {
+				return errors.New("native architecture mismatch")
+			}
+		}
+		output, err := exec.Command(source, "--version").Output()
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(string(output)) != iv {
+			return errors.New("native version mismatch")
 		}
 		if err = os.MkdirAll(filepath.Join(root, "bin"), 0755); err != nil {
 			return err

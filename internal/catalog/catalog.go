@@ -4,14 +4,18 @@ package catalog
 import (
 	"encoding/hex"
 	"fmt"
-	"io/fs"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/inframill/kit/internal/drivers/ansible"
+	"github.com/inframill/kit/internal/drivers/opentofu"
 	descriptors "github.com/inframill/kit/releases"
+	driver "github.com/sir-hassan/inframill/pkg/driver"
 	"gopkg.in/yaml.v3"
 )
+
+const InframillVersion = "0.2.0"
 
 type Release struct {
 	Name        string `json:"name" yaml:"name"`
@@ -19,7 +23,23 @@ type Release struct {
 	ToolVersion string `json:"tool_version" yaml:"tool_version"`
 }
 
+type Factory func(Release, string) driver.Driver
+
+var factories = map[string]Factory{}
 var releases = map[string]Release{}
+
+func New(name, version, tool string) (driver.Driver, error) {
+	r, err := Get(name, version)
+	if err != nil {
+		return nil, err
+	}
+	f, ok := factories[name+"@"+version]
+	if !ok {
+		return nil, fmt.Errorf("missing driver implementation")
+	}
+	return f(r, tool), nil
+}
+
 var semver = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
 var name = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
@@ -70,20 +90,29 @@ func List() []Release {
 	return out
 }
 func init() {
-	files, err := fs.Glob(descriptors.Drivers, "drivers/*/*.yaml")
-	if err != nil {
-		panic(err)
+	implementations := map[string]Factory{
+		"opentofu@0.1.0": func(r Release, tool string) driver.Driver {
+			return opentofu.Driver{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
+		},
+		"ansible@0.1.0": func(r Release, tool string) driver.Driver {
+			return ansible.Driver{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
+		},
 	}
-	for _, path := range files {
-		data, err := descriptors.Drivers.ReadFile(path)
+	for key, factory := range implementations {
+		parts := strings.Split(key, "@")
+		data, err := descriptors.Drivers.ReadFile("drivers/" + parts[0] + "/" + parts[1] + ".yaml")
 		if err != nil {
 			panic(err)
 		}
-		var r Release
-		if err = yaml.Unmarshal(data, &r); err != nil {
+		var release Release
+		if err = yaml.Unmarshal(data, &release); err != nil {
 			panic(err)
 		}
-		Register(r)
+		if release.Name != parts[0] || release.Version != parts[1] {
+			panic("implementation and metadata disagree")
+		}
+		Register(release)
+		factories[key] = factory
 	}
 }
 

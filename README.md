@@ -1,295 +1,197 @@
 # Inframill Kit
 
-Versioned OpenTofu and Ansible Core drivers, portable blueprints, and a Linux runtime
-bundle for Inframill. Build and push manually with Task. Nothing publishes to GHCR
-as part of a build or routine check.
+Kit supplies OpenTofu and Ansible drivers, portable blueprints, and a Linux runtime
+for **Inframill 0.2.0**. This is the initial Kit 0.1.0 implementation. It uses only
+the current protocol and has no legacy input readers or migrations.
 
-| Component | Included versions | Distribution |
+| Component | Version | Delivery |
 | --- | --- | --- |
-| Kit | `0.1.0` | `bin/inframill-kit` |
-| OpenTofu driver | `0.1.0` | Explicitly selected in Kit |
-| Ansible driver | `0.1.0` | Explicitly selected in Kit |
-| pv-cloud blueprint | `0.1.0` | `ghcr.io/inframill/blueprints/pv-cloud` |
-| Runtime bundle | `0.1.0` | `ghcr.io/inframill/runtime` |
+| Kit | 0.1.0 | `inframill-kit` executable |
+| OpenTofu driver | 0.1.0 | Kit factory; OpenTofu 1.11.5 |
+| Ansible driver | 0.1.0 | Kit factory; Ansible Core 2.20.1 |
+| pv-cloud | 0.1.0 | `ghcr.io/inframill/blueprints/pv-cloud` |
+| Runtime | 0.1.0 | `ghcr.io/inframill/runtime` |
+| Inframill | 0.2.0 | Prebuilt sibling binaries copied into runtime |
 
-Every blueprint version is one architecture-independent OCI source artifact. The
-runtime is an OCI image index containing `linux/arm64` and `linux/amd64` images.
-pv-cloud supports ARM64, AMD64 and mixed node sets, independently of the runtime
-host architecture. Its initial supported guest image is Ubuntu 24.04.
+Blueprint, driver, Kit, runtime and core versions are independent. Select exact
+MAJOR.MINOR.PATCH versions. Multiple names and versions are supported by explicit
+release descriptors and implementation factories; there is no latest-version fallback.
+Blueprints are architecture-independent OCI source artifacts. The runtime contains
+Linux AMD64 and ARM64 images. pv-cloud supports either or mixed guest architectures.
 
-See [architecture](docs/architecture.md) and the [release acceptance checklist](docs/acceptance.md).
+## Build locally
 
-## Build and check locally
-
-Prerequisites: Go 1.27, Task v3, Docker with Buildx and both platform builders (native
-or emulated). Local integration tests also need Python 3.12–3.14. Build tooling
-runs with `python3`; set `PYTHON` for the interpreter used by the Ansible test venv.
+Prerequisites: Go 1.27.0, Task, Python 3 and Docker Buildx with both platforms. Native
+Ansible setup needs Python 3.12–3.14; select it with `PYTHON` when needed.
 
 ```sh
 PYTHON=/path/to/python3.13 task setup
-task build KIT_VERSION=0.1.0
+task build
 task inframill:copy
 task check-fast
 ```
 
-`task setup` installs checksum-pinned OpenTofu 1.11.5 and Ansible Core 2.20.1 into
-`.cache/`, using the committed Python dependency lock. Supported local setup hosts
-are Linux ARM64/AMD64 and macOS ARM64. Override `OPENTOFU_PATH` and `ANSIBLE_PATH`
-with absolute executable paths when using an existing installation; versions are
-still checked against the selected driver's lock.
+`task setup` installs checksum-pinned tools into `.cache`. You may set absolute
+`OPENTOFU_PATH` and `ANSIBLE_PATH` overrides; execution still verifies tool versions.
+Kit imports the public driver package from `../inframill` through Go's local
+replacement. The runtime release build requires the clean source revision pinned
+in `releases/bundles/0.1.0.lock.yaml`.
 
-Kit imports the public driver protocol from the sibling `../inframill` Go module.
-The local `third_party` snapshot has been removed. `task inframill:copy` copies
-the native binary to `bin/inframill` for local checks and verifies its version.
-On macOS the default input is `../inframill/dist/inframill`; Linux uses the
-matching release path from the bundle lock. Set `INFRAMILL_NATIVE_BINARY` to
-select an explicit host-platform binary.
-
-The bundle copies these existing Linux release binaries from the sibling project:
+Core binaries must already exist:
 
 ```text
-../inframill/dist/0.0.0-dev/inframill_0.0.0-dev_linux_amd64
-../inframill/dist/0.0.0-dev/inframill_0.0.0-dev_linux_arm64
+../inframill/dist/0.2.0/inframill_0.2.0_linux_amd64
+../inframill/dist/0.2.0/inframill_0.2.0_linux_arm64
+../inframill/dist/0.2.0/inframill_0.2.0_darwin_arm64
 ```
 
-Their paths and SHA-256 checksums are pinned under `inframill.binaries` in
-`releases/bundles/0.1.0.lock.yaml`. Both must already exist. Generate them separately when needed with
-`task --dir ../inframill release VERSION=0.0.0-dev`, then update the checksums
-in the bundle lock. The bundle validates
-the checksum and ELF architecture, copies the bytes, and sets executable mode.
-It never runs Inframill's build/release tasks or falls back to compiling Inframill.
-Kit itself is compiled for both architectures from this repository.
-
-Override the binary input directory with `task bundle INFRAMILL_DIST_DIR=/path/to/dist`.
-Paths in the lock are relative to that directory. Select new paths/checksums in a
-new bundle lock when changing the Inframill release; mismatches fail the build.
-The sibling source checkout supplies the protocol dependency and dependency
-notices, but its source tree is not embedded in the runtime.
+The lock also records Darwin AMD64 for that development host. `inframill:copy`
+selects the host platform from this versioned release and verifies its hash,
+architecture and reported version. `INFRAMILL_DIST_DIR` changes the parent directory.
+Bundle builds copy the Linux binary bytes, verify their hashes and ELF architecture,
+and compile Kit for each platform. They never invoke the sibling build/release task.
 
 ```sh
 task blueprint:check BLUEPRINT=pv-cloud VERSION=0.1.0
-task bundle VERSION=0.1.0
+task bundle
 task check-full
 ```
 
-Fast checks cover protocol validation, version selection, cancellation of child
-processes, plan/artifact binding, unsafe paths, and OCI integrity. Full checks use
-a disposable registry, render through real Inframill, run OpenTofu mock tests, and
-execute the local-resource workflow with real tools. They push only to that
-throwaway registry, then exercise the existing bundle on both Linux platforms.
-Run `task bundle` first. Emulated AMD64 success is recorded separately from native
-AMD64 release acceptance. Full checks never create Hetzner infrastructure. The two local-resource versions
-live under `tests/fixtures/` and are excluded from normal publication. Integration
-tests use `kit_testdrivers` only for their temporary multi-version executable.
+`check-fast` runs Python/Go tests and builds Kit, with Go vet disabled. `check-full`
+adds native workflows, provider mocks, a disposable daemon and registry, and tests
+both images. Build the bundle first. Tests use local terraform_data resources and
+loopback Ansible; they do not deploy cloud resources or publish to GHCR. AMD64 may
+run under emulation; [acceptance](docs/acceptance.md) records the actual evidence.
 
-## Manual package and push
+`KIT_DIST_DIR` changes the output root consistently for build, push and checks.
+A built version is immutable: explicitly remove an unpublished development output
+before rebuilding changed sources under the same version.
 
-Versions use independent `MAJOR.MINOR.PATCH` release identities. A blueprint version
-pins exact driver implementations; the bundle lock selects its components. Driver
-`0.1.0` includes OpenTofu `refresh_only` plans and Ansible `tags`. Driver versions
-are separate from upstream tool versions. Multi-version behavior is exercised by
-synthetic test builds, without shipping demonstration driver releases.
+## Local execution and secrets
 
-Authenticate locally using a GitHub PAT (classic) with `write:packages`; the push
-tooling uses the Docker credential store, including credential helpers:
-
-```sh
-docker login ghcr.io -u YOUR_GITHUB_USERNAME
-```
-
-Enter the PAT at the password prompt. For automated credential input use
-`--password-stdin`. Do not put tokens in Task arguments or release files.
-
-```sh
-task blueprint:package BLUEPRINT=pv-cloud VERSION=0.1.0
-task blueprint:push BLUEPRINT=pv-cloud VERSION=0.1.0
-
-task bundle VERSION=0.1.0
-task bundle:push VERSION=0.1.0
-```
-
-The package target writes `dist/blueprints/<name>/<version>/oci/` and a `build.json`
-record. Bundle writes the same layout beneath `dist/bundles/<version>/`. Push checks
-every blob against its descriptor and the root against the build record, uploads
-those existing bytes, and reports the digest reference. It does not rebuild.
-Existing tags with different contents are rejected. Local publication locks
-serialize writers on one workstation; coordinate releases across workstations
-because GHCR does not provide this project's immutable-tag transaction.
-
-`KIT_DIST_DIR` selects the output directory for package, bundle, push and full checks.
-To verify an unpublished change while preserving earlier artifacts:
-
-```sh
-task bundle KIT_DIST_DIR=.cache/verification
-task check-full KIT_DIST_DIR=.cache/verification
-```
-
-Use that same output directory when explicitly publishing the new build.
-
-A built version is immutable locally too. To change an unpublished development
-build, explicitly move its output directory aside before rebuilding. Published
-changes require a new version. Never replace an earlier release to apply a fix.
-
-```sh
-task blueprints:package RELEASE_SET=default
-task blueprints:push RELEASE_SET=default
-```
-
-Release sets list exact name/version pairs and may include multiple versions of a
-blueprint. Bulk pushes report each outcome; a partial failure can be rerun safely.
-The default release set contains only pv-cloud. `REGISTRY=ghcr.io` and
-`NAMESPACE=inframill` are defaults and can be overridden.
-Link blueprint packages through GHCR package settings; the canonical Inframill
-blueprint envelope cannot carry additional OCI annotations. Runtime images carry
-source labels. All packages can link to `github.com/inframill/kit`; no separate `runtime` or
-`blueprints` GitHub source repositories are required.
-
-GHCR initially creates private packages. Choose visibility in its package settings.
-The pinned Inframill consumer can only fetch anonymous/public blueprint packages;
-a Docker login authenticates the push tool, not Inframill. Private blueprint pulls
-need a consumer enhancement. Runtime images support normal Docker authentication.
-See [GHCR documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
-
-After publishing, verify using the printed digests:
-
-```sh
-task blueprint:verify BLUEPRINT=pv-cloud VERSION=0.1.0 REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
-task bundle:verify REFERENCE=ghcr.io/inframill/runtime@sha256:...
-```
-
-Run runtime verification on each native architecture. `bundle:verify` checks the
-index and probes the selected platform's drivers. `check-full` covers the actual
-local-resource execution path in both image variants.
-
-## Local registry
-
-```sh
-task registry:up
-task blueprint:push BLUEPRINT=pv-cloud VERSION=0.1.0 REGISTRY=localhost:5000 PLAIN_HTTP=true
-task registry:down
-```
-
-The registry image is pinned and its named volume persists across `registry:down`.
-Full tests use a separate, temporary registry without that volume. Set
-`INFRAMILL_HTTP_REGISTRIES=localhost:5000` for local Inframill pulls. Inside a
-container, use the registry's container/network address or a configured host gateway,
-with that exact authority in the allowlist. GHCR always uses HTTPS.
-
-## Configure and run drivers
+Examples under `examples/` contain plain Values, not Instance envelopes. Generate
+configuration using the installed local tools:
 
 ```sh
 OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
 ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
-task config > .inframill.yaml
-
-bin/inframill-kit drivers list
-bin/inframill driver list --config .inframill.yaml -o json
+  task --silent config > /tmp/kit-config.json
 ```
 
-The generated IDs include the exact version, such as `opentofu-0-1-0`. Blueprint
-manifest keys and `template/<id>/` directories use those IDs. Each driver config
-also declares `required_driver_version`; remapping an ID to a different version
-fails validation. Missing versions never fall back to another implementation.
-
-The runtime includes `/etc/inframill/config.json`, version-specific tool paths,
-OpenSSH and CA certificates. Persist `/var/lib/inframill`. Supply the SSH agent
-socket through `SSH_AUTH_SOCK` and mount a known-hosts file under the runtime user's
-`~/.ssh/known_hosts`. SSH is noninteractive with strict host verification. A blueprint
-can explicitly select `host_key_policy: accept-new` if first-use trust is intended.
+A pv-cloud invocation has this form; commands such as init/plan/apply contact real
+services and require your chosen credentials and infrastructure inputs:
 
 ```sh
-docker run --rm -p 8080:8080 \
-  -v inframill-data:/var/lib/inframill \
-  ghcr.io/inframill/runtime:0.1.0
+bin/inframill exec opentofu-0-1-0.init \
+  --config /tmp/kit-config.json \
+  --blueprint-dir blueprints/pv-cloud/versions/0.1.0 \
+  --values-file examples/pv-cloud-0.1.0.json \
+  --name production/example --secrets-file /private/path/secrets.json
 ```
 
-This starts Inframill; provisioning additionally requires credentials, agent/trust
-mounts, object-store access, cloud API access and guest package repositories.
+For a published source replace `--blueprint-dir` with `--blueprint` and its tag or
+digest reference. These source flags are mutually exclusive. Use `--args-file` for
+command arguments and `--result-file` with a new path outside source/data/input
+locations for machine results. Stdout is a stream of JSON reply records; tool
+diagnostics go to stderr. A result record's status, not mere file existence, decides
+success. Cancellation does not roll back tool effects.
 
-## pv-cloud operation
+Secret files are JSON maps of local names to strings. The example's names are
+`hetzner`, `s3_access` and `s3_secret`. Values select these names, never credential
+values. Inframill supplies a project snapshot only to driver Execute; Kit does not
+read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
+credentials must be nonempty and are checked before effects. Only selected values
+reach the tool environment. Known injected values are filtered from tool diagnostics;
+Kit results and shared artifacts contain only verified projections. Arbitrary
+provider/playbook output must not intentionally emit transformed secrets.
 
-Copy `examples/pv-cloud-0.1.0.json` and replace the sample public key, bucket,
-credential references, nodes and SSH source CIDRs. The example contains ARM64 and
-AMD64 nodes; separate examples cover each architecture. JSON Schema validates
-architectures, server-type families, roles and network references. Provider data
-sources check actual image architecture and server-type availability during plan.
-The first attached private network supplies the canonical private address.
+For daemon use, manage the in-memory project set with Inframill's `secret replace`,
+`secret list` and `secret clear`. Restart discards sets. Running commands retain their
+snapshot; queued commands obtain the set current when they start. Local exec needs
+`--secrets-file` on each invocation; omission means an empty set.
 
-Manifest `from_value` fields read scalar paths in Instance values; they are not
-template expressions. `secret_from_value` reads a secret *reference*, resolved only
-in `run` from `INFRAMILL_SECRET_<UPPERCASE_REFERENCE>`. The pv-cloud example uses
-`INFRAMILL_SECRET_HETZNER`, `INFRAMILL_SECRET_S3_ACCESS` and
-`INFRAMILL_SECRET_S3_SECRET`. Child tools receive only required credential variables.
-Cloud/backend credentials never become Terraform input variables or CLI arguments.
+Remote Instance initialization uses:
 
-Use a preexisting S3-compatible bucket. State keys are
-`instances/<InstanceID>/terraform.tfstate`, generated by the driver. S3 lockfiles
-are enabled; the actual object store must support the required conditional writes.
-No legacy state adoption or automatic migration is implemented.
+```json
+{"blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.1.0","values":{}}
+```
 
-The command sequence is explicit:
+Replace the empty Values object with the example's configured Values. The daemon
+must fetch the blueprint before initializing the Instance.
 
-1. `opentofu-0-1-0.init`, then `opentofu-0-1-0.validate`.
-2. `opentofu-0-1-0.plan`; retain the returned `plan_id`.
-3. `opentofu-0-1-0.apply` with `{"plan_id":"<producing CommandID>"}`.
-4. `ansible-0-1-0.inventory`, then `ansible-0-1-0.syntax-check` with `{"playbook":"site"}`.
-5. `ansible-0-1-0.check` for a prediction, then `ansible-0-1-0.apply`, with the same playbook argument.
-6. To destroy, run `opentofu-0-1-0.plan` with `{"destroy":true}`, then
-   `opentofu-0-1-0.destroy` with that new plan ID.
+## Driver contracts
 
-For local execution, use `bin/inframill exec <command> --config .inframill.yaml
---instance <instance.json> --name <project/name> --args-file <args.json>`.
-Omit `--args-file` for commands without arguments. Use `--result-file <new-file.json>`
-for the structured result, including the plan ID. Published blueprint references
-are resolved to digests; `--blueprint-dir` is an explicit development override.
+A blueprint has a static `manifest.yaml`, Values `schema.json`, and `template/`.
+Each driver section pins its exact implementation and a `settings_file`. Templates
+render nonsecret backend/address/user settings into `kit-driver.json` within that
+driver's workspace. Secret references are names in this file, never credentials.
+Manifest validation uses no files; Prepare reads and validates rendered inputs with
+no tool execution, writes, network or secrets. Execute performs and verifies effects.
 
-Plans are private, bounded files bound to the Instance, blueprint digest, driver/tool
-versions, driver configuration and source checksums. Applying a changed or consumed
-plan requires a fresh plan. OpenTofu performs stale-state checks. The provided
-blueprints place no private keys/passwords in resource inputs; saved plans still
-contain infrastructure metadata and public SSH keys. Storage must remain private.
-For blueprints requiring confidential resource values, configure native OpenTofu
-state/plan encryption through a `TF_ENCRYPTION` secret reference and validate key
-recovery before use. Kit does not claim all saved-plan contents are nonsensitive.
+OpenTofu supplies init, validate, plan, apply, destroy and output. Plan returns a
+`plan_id`; apply/destroy require it. Plans bind the Instance, pinned blueprint,
+driver/tool/configuration and source bytes. Kit retires a plan before apply effects,
+so failures and partial effects require a fresh plan. It invalidates shared nodes
+before mutation and only publishes verified output. Destroy verifies empty managed
+state. Refresh-only and destroy plans are distinct modes.
 
-Apply/destroy invalidate inventory before effects. Failure/cancellation leaves it
-unusable. After reconciling state, `opentofu-0-1-0.output` regenerates the allowlisted
-node artifact. Out-of-band changes require the same explicit refresh. Ansible rejects
-wrong bindings, unsupported schemas, duplicate hosts, missing selected addresses,
-architecture mismatches and unsuccessful or incomplete recaps.
+Ansible supplies inventory, syntax-check, check and apply. It consumes a bound node
+artifact, selects the requested address without fallback, and checks the complete
+host recap. Failed, unreachable, ignored or rescued failures reject. Check mode is a
+prediction. Syntax-check needs no previously applied infrastructure. SSH uses an
+agent, batch mode and explicit host-key policy; Kit does not write private keys.
 
-`opentofu-0-1-0.destroy` changes infrastructure. `builtin.delete` only removes local
-Inframill data. Inspect history with `bin/inframill history --workspace .inframill
---name <project/name>`. Neither retries nor rollback happen automatically.
+The executable's configured prefix is:
 
-## Add or maintain releases
+```text
+inframill-kit driver opentofu --driver-version 0.1.0
+```
 
-Blueprint sources live at `blueprints/<name>/versions/<version>/`; release metadata
-lives at `releases/blueprints/<name>/<version>.yaml`. Add the source, exact driver
-requirements, an example and tests. `task blueprint:source-digest BLUEPRINT=...
-VERSION=...` prints the deterministic source-layer digest for `source_sha256` in
-the release descriptor. Packaging rejects source drift. Blueprint packaging and
-push logic is independent of the blueprint name.
+Inframill sends one JSON request on stdin, without adding protocol arguments. Kit
+uses upstream `driver.Serve` for JSON Lines messages and final success/error replies.
+For a manual discovery probe, pipe this JSON to that prefix:
 
-Driver releases have one metadata source: `releases/drivers/<name>/<version>.yaml`,
-embedded into the compiled catalog. The implementation registry and command/config
-contracts are in `internal/catalog` and `internal/driverkit`. Kit release descriptors enumerate
-included versions; bundle locks select the required implementations and toolchains.
-Adding a new driver requires implementing and registering its handlers and tests.
-Tool assets and Python pins live in `runtime/tools.lock.json`. Bundle locks pin
-that file by checksum. Setup and runtime builds use the same selection; updating
-a tool requires new checksums, isolated installation and compatibility evidence.
+```json
+{"protocol":1,"method":"info","params":{}}
+```
 
-Backport compatible fixes as a new patch version on the older maintained line.
-Breaking inputs, state identity, commands or architecture support require a major
-release after 1.0.0. Before 1.0.0, breaking changes increment the minor version.
-Deprecated releases remain retrievable for pinned Instances. A newer bundle must
-retain required drivers to serve older Instances; it never upgrades them implicitly.
+## Manual package and push
 
-The runtime ships license notices, component locks, matching OpenTofu/Ansible and
-Python dependency sources, and Kit sources. Inframill is copied from its pinned
-binary release; available Go dependency notices are collected from the sibling
-module. See
-[runtime/NOTICES.md](runtime/NOTICES.md). OpenTofu uses MPL-2.0 and Ansible Core uses
-GPL-3.0-or-later; their redistribution conditions apply independently of Kit's MIT
-license. New dependency selections require a release-specific license review.
+```sh
+task blueprint:package BLUEPRINT=pv-cloud VERSION=0.1.0
+task blueprints:package
+task bundle
+
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+task blueprints:push
+task bundle:push
+```
+
+Builds never push. Push uploads the existing verified OCI bytes and rejects a tag
+pointing to different content. `REGISTRY` and `NAMESPACE` override the defaults;
+`PLAIN_HTTP=true` is available for a local test registry. Default publication includes
+pv-cloud only. Multi-version local-resource blueprints and synthetic driver factories
+are test fixtures and are not included in the production catalog/release set.
+
+GHCR image/package names do not require separate `runtime` or `blueprints` Git
+repositories. The image source label points at `inframill/kit`. Configure package
+visibility/access in GitHub. Inframill's current blueprint consumer fetches anonymously;
+private blueprint consumption is not provided by Docker login. Runtime pulls use
+normal Docker authentication.
+
+After publication, use the printed immutable digests:
+
+```sh
+task blueprint:verify BLUEPRINT=pv-cloud REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
+task bundle:verify REFERENCE=ghcr.io/inframill/runtime@sha256:...
+```
+
+New blueprint sources go in `blueprints/<name>/versions/<version>`. Their release
+files declare core/driver requirements and a sealed source digest, obtained with
+`task blueprint:source-digest`. Add actual production selections to
+`releases/sets/default.yaml`. New driver releases require an explicit factory and
+metadata; a YAML file alone never registers code. Locks and deterministic source
+hashes prevent accidental content replacement.
+
+See [architecture](docs/architecture.md), [acceptance](docs/acceptance.md), and
+[runtime notices](runtime/NOTICES.md) for ownership, checks and distribution contents.

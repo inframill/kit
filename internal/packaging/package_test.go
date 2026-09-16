@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/opencontainers/go-digest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/content/oci"
 )
@@ -20,9 +20,10 @@ func fixture(t *testing.T) string {
 	src := filepath.Join(root, "blueprints/test/versions/0.1.0")
 	os.MkdirAll(filepath.Join(src, "template/opentofu-0-1-0"), 0755)
 	os.MkdirAll(filepath.Join(root, "releases/blueprints/test"), 0755)
-	os.WriteFile(filepath.Join(src, "manifest.yaml"), []byte("api_version: inframill.dev/blueprint/v1\ndescription: fixture\ndrivers:\n  opentofu-0-1-0:\n    id: opentofu-0-1-0\n    required_driver_version: 0.1.0\n"), 0644)
+	os.WriteFile(filepath.Join(src, "manifest.yaml"), []byte("api_version: inframill.dev/blueprint/v1\ndescription: fixture\ndrivers:\n  opentofu-0-1-0:\n    id: opentofu-0-1-0\n    required_driver_version: 0.1.0\n    settings_file: kit-driver.json\n    backend: local\n    node_output: nodes\n    artifact: opentofu-0-1-0-nodes-v1.json\n"), 0644)
 	os.WriteFile(filepath.Join(src, "schema.json"), []byte(`{"type":"object"}`), 0644)
-	r := BlueprintRelease{Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-1-0", "opentofu", "0.1.0"}}, Status: "supported"}
+	os.WriteFile(filepath.Join(src, "template/opentofu-0-1-0/kit-driver.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0644)
+	r := BlueprintRelease{InframillVersion: "0.2.0", Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-1-0", "opentofu", "0.1.0"}}, Status: "supported"}
 	layer, e := Archive(src)
 	if e != nil {
 		t.Fatal(e)

@@ -3,11 +3,13 @@
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
 from bundle_inputs import read_binary
 from release_config import bundle_lock, configuration
+from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 version=os.environ.get('VERSION','0.1.0')
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
 lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=bundle_lock(version)
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
+source_revision=verify_source(ROOT,lock['inframill']['revision'])
 inframill_dist=(ROOT/os.environ.get('INFRAMILL_DIST_DIR','../inframill/dist')).resolve()
 inputs=lock['inframill']['binaries']
 if set(inputs)!={'amd64','arm64'}:raise SystemExit('Both prebuilt Inframill architectures required')
@@ -20,6 +22,7 @@ if set(lock['platforms'])!={'linux/amd64','linux/arm64'}:raise SystemExit('Both 
 compiled=json.loads(subprocess.check_output(['go','run','./cmd/inframill-kit','drivers','list'],cwd=ROOT,text=True))
 catalog={(d['name'],d['version']):d['tool_version'] for d in compiled}
 kit=json.loads((ROOT/f"releases/kits/{lock['kit_version']}.yaml").read_text())
+if kit['inframill_version']!=lock['inframill']['version']:raise SystemExit('Kit/core version mismatch')
 if kit['version']!=lock['kit_version'] or {(d['name'],d['version']) for d in kit['drivers']}!=set(catalog):raise SystemExit('Kit release differs from compiled catalog')
 selected=set()
 for driver in lock['drivers']:
@@ -79,6 +82,6 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     rootmanifest=json.loads((layout/'blobs/sha256'/descriptor['digest'].split(':')[1]).read_text())
     found={m.get('platform',{}).get('architecture') for m in rootmanifest['manifests']}
     if found!={'amd64','arm64'}:raise RuntimeError('Missing runtime platform')
-    record={'inframill':lock['inframill'],'source_files':{str(p.relative_to(sources)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.rglob('*') if p.is_file()},'version':version,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),'descriptor':descriptor,'platforms':rootmanifest['manifests'],'binaries':{str(p.relative_to(context)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (context/'bin').rglob('*') if p.is_file()}}
+    record={'dependency_revision':source_revision,'inframill':lock['inframill'],'source_files':{str(p.relative_to(sources)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.rglob('*') if p.is_file()},'version':version,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),'descriptor':descriptor,'platforms':rootmanifest['manifests'],'binaries':{str(p.relative_to(context)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (context/'bin').rglob('*') if p.is_file()}}
     output.mkdir();shutil.move(str(layout),output/'oci');(output/'build.json').write_text(json.dumps(record,indent=2)+'\n')
     print('Built local bundle:',output,'digest:',descriptor['digest'])
