@@ -51,9 +51,8 @@ The root `VERSION` selects `releases/kits/<version>.yaml`, whose `inframill_vers
 declares the exact engine target. There is no separate engine version constant in
 Go. Standalone Kit builds reject a different major/minor version from this target.
 For example, Kit `0.6.3` may target Inframill `0.6.1`, but cannot target `0.7.0`.
-Image builds, pushes and
-native engine copies additionally require the image and Kit versions to match
-exactly, and the locked engine to equal Kit's declared target. Run
+Image builds, pushes and native engine copies additionally require the image and
+Kit versions to match exactly, and the locked engine to equal Kit's declared target. Run
 `task release:check` to validate the selected release without building or pushing;
 `task check-fast` includes this check.
 
@@ -63,7 +62,9 @@ target. Changing a descriptor declares compatibility; verify the driver API and 
 
 Blueprints and drivers use independent versions. The current pv-cloud, OpenTofu
 driver and Ansible driver are `0.2.0`, reflecting the new blueprint and driver contract.
-Historical 0.1.0 release files are retained; Kit 0.6.0-dev does not execute those packages.
+Production sources and descriptors contain only maintained releases. Git preserves
+retired releases. The `0.1.0` and `0.2.0` versions under `tests/fixtures` exercise
+multiple versions using the current protocol; they are not historical production releases.
 
 ## Adding releases
 

@@ -92,7 +92,7 @@ def image_check(tmp, image, arch, network):
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
         assert len(history) == 1 and history[0]['status'] == 'COMMAND_STATUS_SUCCEEDED', history
-        # 0.4.0 CLI roots: local inspection can read a running daemon's storage.
+        # Local inspection can read a running daemon's storage.
         cli = ['docker', 'exec', name, 'inframill']
         local = json.loads(docker(cli + ['local', 'history', '--config', CONFIG,
                            '--name', 'image/persistence', '-o', 'json']).stdout)['executions']
@@ -120,7 +120,7 @@ def image_check(tmp, image, arch, network):
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
         print('Default YAML, named volume and container replacement passed on ' + arch, flush=True)
 
-        # A different working directory proves 0.3.0's config-relative data rule.
+        # A different working directory proves the config-relative data rule.
         custom = root / 'inframill.yaml'
         text = configuration('/usr/local/bin/inframill-kit', './data', drivers=lock['drivers'], format='yaml')
         assert 'port: 8080' in text

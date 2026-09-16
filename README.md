@@ -109,14 +109,6 @@ Changing mount sources selects different storage; it does not copy existing data
 Inframill 0.6.0-dev resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
-### Upgrading to 0.6.0-dev
-
-This version requires pv-cloud 0.2.0 and Kit drivers 0.2.0, using the unified
-`blueprint.yaml` definition and the new `settings` driver protocol. Earlier packages
-and stored Instance source snapshots are unsupported; there is no automatic migration.
-Keep existing data intact and test this version with a separate volume. Any transition
-of existing infrastructure needs an explicit state and resource ownership plan.
-
 ### Logs, restarts and upgrades
 
 ```sh

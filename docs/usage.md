@@ -4,23 +4,25 @@
 
 `inframill local` operates on this machine using application configuration;
 `inframill server start` starts the daemon; other `inframill server` commands send
-requests to a daemon. Utilities live under `inframill other`. These replace the old
-command paths without aliases. Kit's own `inframill-kit driver` prefix is unchanged.
+requests to a daemon. Utilities live under `inframill other`. Kit drivers use the
+`inframill-kit driver` prefix.
 
 Local operations and server startup accept `--config` (default `.inframill.yaml`).
 Relative data and driver paths resolve beside that file. Server requests accept
 `--endpoint` and `--timeout`, falling back to `INFRAMILL_ENDPOINT` and
 `INFRAMILL_TIMEOUT`, then `http://127.0.0.1:8080` and `2m`. They reject `--config`
-and never load YAML; the application config no longer accepts a `cli` section.
+and never load YAML. Client connection settings are separate from application YAML.
 
-With Inframill 0.6.0-dev, `inframill server driver list` reports the selected
+`inframill server driver list` reports the selected
 daemon's cached driver availability without loading local configuration or probing
 drivers again. `inframill local driver list` performs fresh local probes instead.
 
 ## Local execution and secrets
 
-Run these commands from the repository root. Files under `examples/` contain plain Values JSON. Generate
-configuration using the installed local tools:
+Run these commands from the repository root. Files under `examples/` contain plain
+Values JSON: `pv-cloud-0.2.0.json` uses mixed architectures; `pv-cloud-amd64.json`
+and `pv-cloud-arm64.json` each use one architecture. Generate configuration using
+the installed local tools:
 
 ```sh
 OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
@@ -53,8 +55,8 @@ bin/inframill local driver list --config /tmp/kit-config.json
 bin/inframill local history --config /tmp/kit-config.json --name production/example -o json
 ```
 
-History uses the configured `engine.dataDir`; it no longer accepts `--workspace`.
-It reads existing records without probing drivers or changing execution state,
+History uses the configured `engine.dataDir`. It reads existing records without
+probing drivers or changing execution state,
 including while a daemon uses the same data directory. Local execution requires
 exclusive storage access; use a separate data directory from a running daemon.
 

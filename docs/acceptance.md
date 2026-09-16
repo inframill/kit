@@ -68,9 +68,16 @@ Logs: `.cache/0.6-bundle.log` and `.cache/0.6-full.log`. This report was
 updated after verification; the image's source snapshot contains the earlier report.
 Current contracts are documented in [architecture](architecture.md) and [usage](usage.md).
 
-Historical production 0.1.0 sources/descriptors are unchanged. Kit 0.6.0-dev requires
-the new blueprint layout and driver protocol; existing old-layout Instances are
-unsupported and must not be treated as migrated by this verification.
+Retired production sources, descriptors and examples have been removed from the
+working tree. Test fixtures retain multiple versions using the current blueprint
+layout and driver protocol. The image recorded above predates this cleanup and
+still contains its original source snapshot.
+
+Cleanup verification passed `task check-fast`, an uncached run of
+`go test -vet=off -count=1 ./tests/integration`, blueprint packaging, driver discovery
+and documentation file-link checks. Packaging retained the pv-cloud digest above.
+The catalog test now requires every embedded driver descriptor to have an executable
+implementation. Fast-check log: `.cache/cleanup-fast.log`.
 
 ## External release checks
 
