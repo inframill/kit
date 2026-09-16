@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit 0.5.0-dev targets the Inframill 0.5.0-dev API. The `inframill-kit` executable hosts
+Kit 0.6.0-dev targets the Inframill 0.6.0-dev API. The `inframill-kit` executable hosts
 drivers. The `ghcr.io/inframill/kit` image bundles that executable with the engine
 and tools; build tasks call this image a bundle. Blueprints are separate OCI packages.
 
@@ -11,7 +11,7 @@ and tools; build tasks call this image a bundle. Blueprints are separate OCI pac
 - `cmd/inframill-kit` consumes the configured prefix and calls upstream `driver.Serve`.
   `internal/catalog` selects explicit implementation factories by exact name/version.
 - `internal/drivers/opentofu` and `internal/drivers/ansible` own separate typed
-  manifests, rendered settings, arguments, prepared commands and typed outcomes.
+  static settings, rendered settings, arguments, prepared commands and typed outcomes.
 - `internal/artifacts` owns bounded rooted file access, source hashes and the shared
   node record. `internal/toolrun` owns subprocesses, restricted environments,
   bounded machine output and filtered diagnostics.
@@ -20,7 +20,7 @@ and tools; build tasks call this image a bundle. Blueprints are separate OCI pac
 
 ## Command lifecycle
 
-`ValidateManifest` examines only the driver's static manifest section. Engine
+`ValidateSettings` examines only the driver's static settings object. Engine
 renders Values into each configured driver's workspace, including a strict
 `kit-driver.json`. `Prepare` validates arguments/settings and reads required files
 without effects or credentials. For run, the fresh driver process prepares again,
@@ -48,13 +48,13 @@ not require node artifacts; check mode reports prediction.
 
 ## Versions and publication
 
-The initial catalog contains OpenTofu and Ansible 0.1.0. Explicit factories select
+The current catalog contains OpenTofu and Ansible 0.2.0. Explicit factories select
 code; embedded release descriptors supply versions/tool pins. Synthetic test factories
-have different manifest and argument contracts to exercise future version coexistence.
+have different settings and argument contracts to exercise future version coexistence.
 The default blueprint set contains pv-cloud; local-resource variants are fixtures.
 
 A blueprint release pins core version and exact configured driver requirements.
-Packaging validates upstream manifest structure and each implementation's manifest,
+Packaging validates the unified blueprint definition and each implementation's settings,
 required settings templates, Values schema and the sealed source layer. OCI sources
 are architecture-independent; Kit image indices contain both Linux architectures.
 
@@ -74,7 +74,7 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.5.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.6.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while project secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).

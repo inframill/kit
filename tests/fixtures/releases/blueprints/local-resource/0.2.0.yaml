@@ -12,17 +12,17 @@
   ],
   "drivers": [
     {
-      "id": "opentofu-0-1-0",
+      "id": "opentofu-0-2-0",
       "name": "opentofu",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
-      "id": "ansible-0-1-0",
+      "id": "ansible-0-2-0",
       "name": "ansible",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ],
   "status": "supported",
-  "source_sha256": "sha256:1a1d070c7d676c5f37af716383afd0a9b5b910f22686632b55777970900c3d5b",
-  "inframill_version": "0.5.0-dev"
+  "source_sha256": "sha256:a004352fe9a9b4c99de62849cdfd84940ce3898e8e442a7e552c5cde42419c23",
+  "inframill_version": "0.6.0-dev"
 }

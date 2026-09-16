@@ -13,7 +13,7 @@ Relative data and driver paths resolve beside that file. Server requests accept
 `INFRAMILL_TIMEOUT`, then `http://127.0.0.1:8080` and `2m`. They reject `--config`
 and never load YAML; the application config no longer accepts a `cli` section.
 
-With Inframill 0.5.0-dev, `inframill server driver list` reports the selected
+With Inframill 0.6.0-dev, `inframill server driver list` reports the selected
 daemon's cached driver availability without loading local configuration or probing
 drivers again. `inframill local driver list` performs fresh local probes instead.
 
@@ -32,10 +32,10 @@ A pv-cloud invocation has this form; commands such as init/plan/apply contact re
 services and require your chosen credentials and infrastructure inputs:
 
 ```sh
-bin/inframill local exec opentofu-0-1-0.init \
+bin/inframill local exec opentofu-0-2-0.init \
   --config /tmp/kit-config.json \
-  --blueprint-dir blueprints/pv-cloud/versions/0.1.0 \
-  --values-file examples/pv-cloud-0.1.0.json \
+  --blueprint-dir blueprints/pv-cloud/versions/0.2.0 \
+  --values-file examples/pv-cloud-0.2.0.json \
   --name production/example --secrets-file /private/path/secrets.json
 ```
 
@@ -75,7 +75,7 @@ snapshot; queued commands obtain the set current when they start. Local exec nee
 Remote Instance initialization uses:
 
 ```json
-{"blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.1.0","values":{}}
+{"blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.2.0","values":{}}
 ```
 
 Replace the empty Values object with the example's configured Values. The daemon
@@ -83,11 +83,12 @@ must fetch the blueprint before initializing the Instance.
 
 ## Drivers
 
-A blueprint has a static `manifest.yaml`, Values `schema.json`, and `template/`.
-Each driver section pins its exact implementation and a `settings_file`. Templates
+A blueprint has a static `blueprint.yaml` containing `api_version`, `description`,
+an inline `values_schema`, and `driver_settings`, alongside `template/`.
+Each entry in `driver_settings` pins its exact implementation and a `settings_file`. Templates
 render nonsecret backend/address/user settings into `kit-driver.json` within that
 driver's workspace. Secret references are names in this file, never credentials.
-Manifest validation uses no files; Prepare reads and validates rendered inputs with
+Settings validation uses no files; Prepare reads and validates rendered inputs with
 no tool execution, writes, network or secrets. Execute performs and verifies effects.
 
 OpenTofu supplies init, validate, plan, apply, destroy and output. Plan returns a
@@ -106,7 +107,7 @@ agent, batch mode and explicit host-key policy; Kit does not write private keys.
 The executable's configured prefix is:
 
 ```text
-inframill-kit driver opentofu --driver-version 0.1.0
+inframill-kit driver opentofu --driver-version 0.2.0
 ```
 
 Inframill sends one JSON request on stdin, without adding protocol arguments. Kit

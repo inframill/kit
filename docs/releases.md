@@ -14,8 +14,8 @@ task blueprints:push
 task bundle:push
 ```
 
-To package one blueprint, use `task blueprint:package BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0`.
-Publish it with `task blueprint:push BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0`.
+To package one blueprint, use `task blueprint:package BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0`.
+Publish it with `task blueprint:push BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0`.
 
 Builds never push. Push uploads the existing verified OCI bytes and rejects a tag
 pointing to different content. `REGISTRY` and `NAMESPACE` override the defaults;
@@ -40,12 +40,12 @@ task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
-The current development baseline is Kit `0.5.0-dev` with Inframill `0.5.0-dev`.
+The current development baseline is Kit `0.6.0-dev` with Inframill `0.6.0-dev`.
 Kit patch releases may differ from the engine within the same major/minor line.
-Moving to Inframill `0.6.x` requires a Kit `0.6.x` release after compatibility checks.
+Moving to Inframill `0.7.x` requires a Kit `0.7.x` release after compatibility checks.
 The bundle lock always pins the exact engine version and binary checksums.
 Development tags are also immutable here: changed binary bytes require a new
-version/tag, such as `0.5.0-dev.1`, rather than overwriting a published `0.5.0-dev`.
+version/tag, such as `0.6.0-dev.1`, rather than overwriting a published `0.6.0-dev`.
 
 The build tooling enforces this policy. Standalone Kit builds reject a different
 major/minor version from the compiled Inframill target. Image builds, pushes and
@@ -55,7 +55,8 @@ exactly, and the locked engine to equal Kit's declared target. Run
 `task check-fast` includes this check.
 
 Blueprints and drivers use independent versions. The current pv-cloud, OpenTofu
-driver and Ansible driver remain `0.1.0`.
+driver and Ansible driver are `0.2.0`, reflecting the new blueprint and driver contract.
+Historical 0.1.0 release files are retained; Kit 0.6.0-dev does not execute those packages.
 
 ## Adding releases
 
@@ -84,8 +85,8 @@ metadata suffix).
 
 | Variable | Selects | Default |
 | --- | --- | --- |
-| `BLUEPRINT_VERSION` | Blueprint release | `0.1.0` |
-| `DRIVER_VERSION` | Driver for `task driver:check` | `0.1.0` |
+| `BLUEPRINT_VERSION` | Blueprint release | `0.2.0` |
+| `DRIVER_VERSION` | Driver for `task driver:check` | `0.2.0` |
 
 `task bundle` and `task bundle:push` use the same release from `VERSION`.
 

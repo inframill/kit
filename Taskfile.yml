@@ -2,8 +2,8 @@ version: '3'
 
 # Kit and image releases always use the root VERSION file.
 env:
-  BLUEPRINT_VERSION: '{{default "0.1.0" .BLUEPRINT_VERSION}}'
-  DRIVER_VERSION: '{{default "0.1.0" .DRIVER_VERSION}}'
+  BLUEPRINT_VERSION: '{{default "0.2.0" .BLUEPRINT_VERSION}}'
+  DRIVER_VERSION: '{{default "0.2.0" .DRIVER_VERSION}}'
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
   KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
   REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
@@ -28,7 +28,7 @@ tasks:
           'Check:     task check-fast' \
           'Image:     task bundle && task check-full' \
           'Publish:   docker login ghcr.io && task bundle:push' \
-          'Blueprint: task blueprint:package BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0' \
+          'Blueprint: task blueprint:package BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0' \
           '' \
           'Versions: root VERSION file=Kit/image; BLUEPRINT_VERSION=blueprint;' \
           '          DRIVER_VERSION=driver. Kit/image version overrides are ignored.' \
@@ -88,7 +88,7 @@ tasks:
     desc: Check discovery and tests for DRIVER=opentofu|ansible (DRIVER_VERSION)
     cmds: ['python3 scripts/check.py driver:check']
   blueprint:check:
-    desc: Check a blueprint locally (BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0)
+    desc: Check a blueprint locally (BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0)
     cmds: ['python3 scripts/check.py blueprint:check']
 
   # Blueprint packages are architecture-independent OCI sources.
@@ -111,7 +111,7 @@ tasks:
     desc: Fetch and check a published blueprint (BLUEPRINT, BLUEPRINT_VERSION, REFERENCE)
     summary: |
       REFERENCE must be digest-pinned, for example:
-        task blueprint:verify BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0 \
+        task blueprint:verify BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
           REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
     cmds: ['python3 scripts/check.py blueprint:verify']
 
