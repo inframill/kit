@@ -58,8 +58,8 @@ code; the embedded selected release supplies versions/tool pins. Synthetic test 
 have different settings and argument contracts to exercise future version coexistence.
 Blueprints are a standalone subproject under `blueprints/`. Its `releases.json`
 selects production packages independently of Kit's version and declares each
-blueprint's engine and driver requirements. Fixtures, examples, registry config,
-tasks and packaging tests live in that subproject too. One Python script validates
+blueprint's engine and driver requirements. Fixtures, examples, test configuration,
+tasks and blueprint workflow checks live in that subproject too. One Python script validates
 source metadata, offline schemas, driver requirement agreement and source seals,
 then builds OCI packages, loads them into Docker and invokes `docker push`.
 The publisher does not handle credentials or registry lifecycle. Driver implementation validation remains in

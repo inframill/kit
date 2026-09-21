@@ -1,1 +1,13 @@
-{"blueprints":[{"name":"local-resource","version":"0.1.0"},{"name":"local-resource","version":"0.2.0"}]}
+{
+  "blueprints": [
+    {
+      "name": "local-resource",
+      "version": "0.1.0"
+    },
+    {
+      "name": "local-resource",
+      "version": "0.2.0"
+    }
+  ],
+  "registry_image": "registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e"
+}

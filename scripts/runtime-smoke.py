@@ -6,9 +6,12 @@ import os
 import pathlib
 import platform
 import subprocess
+import sys
 import tempfile
 
 import yaml
+sys.path.insert(0, '/')  # The harness mounts the blueprint subproject at /blueprints.
+from blueprints.tests.integration import runtime_flows
 from engine_client import Engine
 
 registry = os.environ['KIT_TEST_REGISTRY']
@@ -23,28 +26,6 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     config['engine']['dataDir'] = str(tmp / 'data')
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
         assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
-        for case in json.loads(os.environ['KIT_TEST_FIXTURES']):
-            version = case['version']
-            reference = f'{registry}/inframill/blueprints/local-resource:{version}'
-            client.fetch(reference)
-            iid = client.initialize('smoke/v' + version.replace('.', '-'), reference, {'architecture': arch})
-            prefix, ansible = case['drivers']['opentofu'], case['drivers']['ansible']
-            client.execute(iid, prefix + '.init')
-            plan = client.execute(iid, prefix + '.plan')
-            client.execute(iid, prefix + '.apply', {'plan_id': plan['plan_id']})
-            client.execute(iid, ansible + '.apply', {'playbook': 'site'})
-            plan = client.execute(iid, prefix + '.plan', {'destroy': True})
-            client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-        reference = registry + '/inframill/blueprints/pv-cloud:0.2.0'
-        values = json.loads(pathlib.Path('/pv-example.json').read_text())
-        client.fetch(reference)
-        iid = client.initialize('smoke/pv-cloud', reference, values)
-        release = next(b for b in json.loads(os.environ['KIT_TEST_BLUEPRINTS']) if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
-        ids = {d['name']: d['id'] for d in release['drivers']}
-        client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
-        work = tmp / 'data/instances' / iid / 'workspace' / ids['opentofu']
         tofu = '/opt/inframill/tools/opentofu/' + lock['opentofu']['version'] + '/tofu'
-        for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
-                     ['validate', '-no-color'], ['test', '-no-color']]:
-            subprocess.run([tofu, *args], cwd=work, env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'}, check=True)
+        runtime_flows(client, registry, arch, tofu)
 print('Runtime workflow and provider mocks passed on ' + arch)

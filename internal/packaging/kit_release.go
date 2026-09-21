@@ -30,7 +30,6 @@ type KitRelease struct {
 			SHA256 string `json:"sha256"`
 		} `json:"binaries"`
 	} `json:"inframill"`
-	Blueprints         json.RawMessage `json:"blueprints,omitempty"`
 	OpenTofu           json.RawMessage `json:"opentofu"`
 	AnsibleCore        string          `json:"ansible_core"`
 	Python             string          `json:"python"`
@@ -82,17 +81,6 @@ func readKitRelease(root, version string) (KitRelease, error) {
 		return release, fmt.Errorf("Kit %s must match Inframill %s major/minor version", version, release.Inframill.Version)
 	}
 	return release, nil
-}
-
-// EngineVersion uses the Kit release selected by VERSION, never the sibling checkout.
-// Historical locks may retain their former blueprint selections.
-func EngineVersion(root string) (string, error) {
-	version, err := ProjectVersion(root)
-	if err != nil {
-		return "", err
-	}
-	release, err := readKitRelease(root, version)
-	return release.Inframill.Version, err
 }
 
 // Kit validates the declared engine target and compiled driver catalog.

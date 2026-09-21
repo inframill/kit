@@ -5,7 +5,6 @@ import io
 import json
 import os
 import pathlib
-import platform
 import subprocess
 import sys
 import tarfile
@@ -13,12 +12,16 @@ import tempfile
 import urllib.error
 import uuid
 
+# Make the sibling blueprint test package available when invoked as a script.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_image,
+                                          blueprint_releases, publish, local_flow,
+                                          pv_flow, verify)
 from daemon_check import daemon_check
 from engine_client import Engine
 from image_check import image_check
-from release_config import (ROOT, FIXTURES, local_tools, configuration, blueprint_root,
-                            driver_ids, fixture_cases, registry_image, bundle_output, bundle_lock,
-                            BLUEPRINTS, BLUEPRINT_PYTHON, blueprint_releases)
+from release_config import ROOT, local_tools, configuration, bundle_output, bundle_lock
 
 
 def run(args, **kwargs):
@@ -82,54 +85,6 @@ def registry_env(tmp, address, push_address):
             'NAMESPACE': 'inframill', 'PLAIN_HTTP': 'true', 'INFRAMILL_HTTP_REGISTRIES': address}
 
 
-def publish(name, version, env):
-    for action in ['build', 'push', 'push']:
-        run([BLUEPRINT_PYTHON, BLUEPRINTS / 'build.py', action,
-             '--root', blueprint_root(name), '--name', name, '--version', version,
-             '--dist', pathlib.Path(env['KIT_DIST_DIR']) / 'blueprints'], cwd=ROOT, env=env)
-
-
-def local_flow(client, version, reference, name=None, fetch=True):
-    data = json.loads((FIXTURES / f'examples/local-resource-{version}.json').read_text())
-    data['architecture'] = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
-    if fetch:
-        client.fetch(reference)
-    iid = client.initialize(name or 'test/local-' + version.replace('.', '-'), reference, data)
-    ids = driver_ids('local-resource', version)
-    prefix, ansible = ids['opentofu'], ids['ansible']
-
-    def do(command, args=None):
-        return client.execute(iid, command, args)
-    do(prefix + '.init')
-    do(prefix + '.validate')
-    plan = do(prefix + '.plan')
-    do(prefix + '.apply', {'plan_id': plan['plan_id']})
-    do(ansible + '.inventory')
-    do(ansible + '.syntax-check', {'playbook': 'site'})
-    do(ansible + '.check', {'playbook': 'site'})
-    do(ansible + '.apply', {'playbook': 'site'})
-    destroy = do(prefix + '.plan', {'destroy': True})
-    do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
-
-
-def pv_flow(client, reference):
-    tofu, _ = tools()
-    client.fetch(reference)
-    ids = driver_ids('pv-cloud', '0.2.0')
-    instances = []
-    for suffix in ['arm64', 'amd64', '0.2.0']:
-        values = json.loads((BLUEPRINTS / f'examples/pv-cloud-{suffix}.json').read_text())
-        iid = client.initialize('test/pv-' + suffix.replace('.', '-'), reference, values)
-        instances.append(iid)
-        client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
-    data = pathlib.Path(client.config['engine']['dataDir'])
-    workspaces = [data / 'instances' / iid / 'workspace' / ids['opentofu'] for iid in instances]
-    assert all((work / 'main.tf').is_file() for work in workspaces)
-    for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
-                 ['validate', '-no-color'], ['test', '-no-color']]:
-        run([tofu, *args], cwd=workspaces[0], env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'})
-
-
 def blueprint_check(name, version):
     if name != 'local-resource' and (name, version) != ('pv-cloud', '0.2.0'):
         raise RuntimeError('No declared integration fixture for this blueprint version')
@@ -142,7 +97,7 @@ def blueprint_check(name, version):
             if name == 'local-resource':
                 local_flow(client, version, reference)
             else:
-                pv_flow(client, reference)
+                pv_flow(client, reference, tools()[0])
 
 
 def cache_check(tmp, address, env):
@@ -206,11 +161,8 @@ def container_checks(tmp, network, env):
             image_check(tmp, image, arch, network)
             run(['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch,
                  '--network', network, '-e', 'KIT_TEST_REGISTRY=registry:5000',
-                 '-e', 'KIT_TEST_FIXTURES=' + json.dumps([
-                     {**case, 'drivers': driver_ids(case['name'], case['version'])} for case in fixture_cases()]),
-                 '--env', 'KIT_TEST_BLUEPRINTS=' + json.dumps(blueprint_releases()),
                  '--mount', 'type=bind,src=' + str(ROOT / 'scripts') + ',dst=/verify,readonly',
-                 '--mount', 'type=bind,src=' + str(BLUEPRINTS / 'examples/pv-cloud-0.2.0.json') + ',dst=/pv-example.json,readonly',
+                 '--mount', 'type=bind,src=' + str(BLUEPRINTS) + ',dst=/blueprints,readonly',
                  '--entrypoint', python, image, '/verify/runtime-smoke.py'])
     finally:
         subprocess.run(['docker', 'image', 'rm', image], stdout=subprocess.DEVNULL, check=False)
@@ -227,7 +179,7 @@ def registry_check():
         with engine(tmp / 'workflows', env) as client:
             for case in fixture_cases():
                 local_flow(client, case['version'], f"{address}/inframill/blueprints/local-resource:{case['version']}")
-            pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.2.0')
+            pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.2.0', tools()[0])
         daemon_check(tmp, address, env)
         cache_check(tmp, address, env)
         container_checks(tmp, network, env)
@@ -273,17 +225,9 @@ def main():
         if '@sha256:' not in reference:
             raise RuntimeError('REFERENCE must be digest-pinned')
         name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0')
-        values = json.loads((blueprint_root(name) / f'examples/{name}-{version}.json').read_text())
-        release = next(b for b in json.loads((blueprint_root(name) / 'releases.json').read_text())['blueprints']
-                       if b['name'] == name and b['version'] == version)
-        candidates = [d['id'] for d in release['drivers'] if d['name'] == 'ansible']
-        if len(candidates) != 1:
-            raise RuntimeError('Verification requires a fixture selecting one Ansible driver')
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             with engine(pathlib.Path(td)) as client:
-                client.fetch(reference)
-                iid = client.initialize('verify/blueprint', reference, values)
-                client.execute(iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
+                verify(client, name, version, reference)
     elif action == 'bundle:verify':
         reference = os.environ['REFERENCE']
         if '@sha256:' not in reference:

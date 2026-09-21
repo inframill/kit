@@ -53,7 +53,7 @@ func run() error {
 	}
 	ctx := context.Background()
 	action := os.Args[1]
-	version := "0.2.0"
+	var version string
 	if action == "build" || action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
 		version, e = packaging.ProjectVersion(root)
 		if e != nil {
@@ -63,8 +63,8 @@ func run() error {
 	registry := env("REGISTRY", "ghcr.io")
 	ns := env("NAMESPACE", "inframill")
 	plain := os.Getenv("PLAIN_HTTP") == "true"
-	if !catalog.ValidVersion(version) || !catalog.ValidName(ns) {
-		return errors.New("invalid exact version or namespace")
+	if !catalog.ValidName(ns) {
+		return errors.New("invalid namespace")
 	}
 	switch action {
 	case "build":

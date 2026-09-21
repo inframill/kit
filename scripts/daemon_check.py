@@ -2,7 +2,6 @@
 import base64
 import hashlib
 import json
-import os
 import pathlib
 import platform
 import socket
@@ -11,7 +10,8 @@ import time
 import urllib.error
 import urllib.request
 
-from release_config import ROOT, configuration, local_tools, bundle_lock, BLUEPRINTS, BLUEPRINT_PYTHON
+from blueprints.tests.integration import publish_protocol_fixture
+from release_config import ROOT, configuration, local_tools, bundle_lock
 
 
 def daemon_check(tmp, registry, env):
@@ -19,22 +19,7 @@ def daemon_check(tmp, registry, env):
     tmp.mkdir()
     binary = tmp / 'kit-fixtures'
     subprocess.run(['go', 'build', '-tags=kit_testdrivers', '-o', str(binary), './cmd/inframill-kit'], cwd=ROOT, check=True)
-    # This blueprint and driver exist only in test builds, never the release set.
-    source = tmp / 'blueprints/protocol-fixture/0.1.0'
-    (source / 'template/fixture').mkdir(parents=True)
-    (source / 'template/fixture/readme.txt').write_text('secret snapshot test\n')
-    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'driver_settings': {'fixture': {'id': 'fixture', 'required_driver_version': '0.1.0', 'contract': '0.1.0'}}}))
-    prefix = [str(BLUEPRINT_PYTHON), str(BLUEPRINTS / 'build.py')]
-    selectors = ['--root', str(tmp / 'blueprints'), '--name', 'protocol-fixture', '--version', '0.1.0',
-                 '--dist', str(tmp / 'dist')]
-    digest = subprocess.check_output(prefix + ['source-digest'] + selectors, env=env, text=True).strip()
-    release = tmp / 'blueprints/releases.json'
-    release.write_text(json.dumps({'schema': 1, 'blueprints': [{'name': 'protocol-fixture', 'version': '0.1.0',
-        'inframill_version': bundle_lock()['inframill']['version'], 'protocol': 1,
-        'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'],
-        'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}]}))
-    for action in ['build', 'push']:
-        subprocess.run(prefix + [action] + selectors, env=env, check=True)
+    publish_protocol_fixture(tmp, env, bundle_lock()['inframill']['version'])
     tofu, ansible = local_tools()
     data_root = tmp / 'data'
     config = configuration(ROOT / 'bin/inframill-kit', data_root, {'opentofu': tofu, 'ansible': ansible})

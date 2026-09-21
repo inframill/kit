@@ -80,8 +80,6 @@ rejected. Remote tag behavior is standard Docker behavior: pushing can replace
 an existing tag unless your registry enforces immutability. Use new release
 versions for changed packages. Build and push never modify release metadata.
 
-Old Kit release locks retain historical records; they no longer select builds.
-
 ## Add a release
 
 1. Add source under `<name>/<version>/blueprint.yaml` and `template/`.
@@ -142,6 +140,9 @@ BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
 ```
 
 Integration fixtures and example Values live under `tests/fixtures/` and
-`examples/`. The parent `task check-full` also runs these packages through the
+`examples/`. `tests/integration.py` owns fixture selection and blueprint workflow
+checks; `tests/fixtures/suite.json` pins the disposable test registry image.
+The parent harness manages test daemons and registries separately from `build.py`.
+The parent `task check-full` also runs these packages through the
 AMD64 and ARM64 Kit runtimes. Blueprint build/test dependencies are set up with
 `task blueprints:setup` before running the parent's checks.

@@ -84,12 +84,6 @@ class ReleaseConfigTests(unittest.TestCase):
             self.assertNotIn('blueprints', updated)
             self.assertEqual(list(root.glob('runtime/*')), [])
 
-    def test_fixture_blueprint_versions_select_real_driver_requirements(self):
-        for case in release_config.fixture_cases():
-            requirements = release_config.requirements(case['name'], case['version'])
-            self.assertEqual({d['version'] for d in requirements}, {'0.2.0'})
-            self.assertEqual(set(release_config.driver_ids(case['name'],case['version'])), {'opentofu','ansible'})
-
     def test_version_file_controls_lock_and_output_despite_overrides(self):
         with patch.dict(os.environ, {'VERSION': '9.9.9', 'KIT_VERSION': '9.9.9',
                                     'BUNDLE_VERSION': '9.9.9', 'BLUEPRINT_VERSION': '9.9.9'}):

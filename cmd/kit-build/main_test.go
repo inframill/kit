@@ -30,7 +30,6 @@ func TestReleaseActionsRejectMismatchedLineBeforeEffects(t *testing.T) {
 			}
 			t.Chdir(root)
 			t.Setenv("NAMESPACE", "inframill")
-			t.Setenv("BLUEPRINT_VERSION", "0.2.0")
 			args := os.Args
 			t.Cleanup(func() { os.Args = args })
 			os.Args = []string{"kit-build", action}

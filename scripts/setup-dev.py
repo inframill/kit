@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Install the pinned test tools into .cache; never install globally."""
-import hashlib,json,os,pathlib,platform,subprocess,sys,urllib.request,zipfile,tempfile
+import hashlib,os,pathlib,platform,subprocess,urllib.request,zipfile,tempfile
 from release_config import bundle_lock, python_requirements
 from python_runtime import find_python
 root=pathlib.Path(__file__).resolve().parent.parent

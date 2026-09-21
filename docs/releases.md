@@ -53,17 +53,6 @@ the release pin. All four engine binary paths and checksums have been refreshed.
 The default configuration remains included. Driver and blueprint versions stay
 `0.2.0`, with blueprint engine requirements updated to `0.3.0-dev`.
 
-## Previous Kit 0.2.1-dev
-
-This Kit patch release includes the checked-in default `runtime/inframill.yaml`
-with HTTP settings, logging, persistent storage and all bundled driver/tool paths.
-The image copies it unchanged to `/etc/inframill/inframill.yaml` and uses it at
-startup. Image checks verify the exact file and both configured drivers.
-
-The engine remains pinned to Inframill `0.2.0-dev` at revision
-`e012760daf7fa759a0b1c106ab6d3d3ec0e46770`. OpenTofu/Ansible drivers and the pv-cloud
-blueprint remain `0.2.0`; tool versions and binary checksums are unchanged.
-
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
@@ -134,18 +123,14 @@ The file does not automatically track the sibling project's development version.
 Release descriptors and OCI tags retain their exact version constraints (no build
 metadata suffix).
 
-Existing releases have been migrated to the self-contained layout. Previously built
-images remain unchanged, but their build records contain the old lock checksum.
-Rebuild to a separate `KIT_DIST_DIR` before publishing with the new lock; existing
-outputs are never rewritten by the migration.
-
 | Variable | Selects | Default |
 | --- | --- | --- |
-| `BLUEPRINT_VERSION` | Blueprint release | `0.2.0` |
+| `BLUEPRINT_VERSION` | Blueprint for `scripts/check.py` integration checks | `0.2.0` |
 | `DRIVER_VERSION` | Driver for `task driver:check` | `0.2.0` |
 
 `task bundle` and `task bundle:push` use the same release from `VERSION`.
 
-`KIT_DIST_DIR` changes the output root for packaging, image builds, pushes and checks.
+`KIT_DIST_DIR` changes the output root for Kit image builds, pushes and integration
+checks. Standalone blueprint commands use `--dist`, defaulting to `blueprints/dist`.
 Outputs are immutable: remove an unpublished development output explicitly before
 rebuilding changed sources under the same version.

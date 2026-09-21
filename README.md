@@ -23,8 +23,8 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 Kit and its image follow Inframill's major/minor release line, with independent Kit
 patch releases. The root [`VERSION`](VERSION) file selects the Kit executable and
 image version for builds, pushes and checks. Task arguments and environment values
-cannot override it. Blueprints and drivers have their own versions, selected with
-`BLUEPRINT_VERSION` and `DRIVER_VERSION`.
+cannot override it. Blueprint releases are selected by `blueprints/releases.json`
+and optional `--name` / `--version` flags. `DRIVER_VERSION` selects a driver check.
 
 Release descriptors select exact `MAJOR.MINOR.PATCH` versions. Blueprints and
 drivers support multiple names and versions, with explicit implementation selection.

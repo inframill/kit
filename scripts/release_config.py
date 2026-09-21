@@ -1,4 +1,4 @@
-"""Shared release selection, tool pins, configuration and fixture requirements."""
+"""Kit release selection, tool pins and runtime configuration."""
 import json
 import os
 import pathlib
@@ -6,9 +6,6 @@ import re
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-BLUEPRINTS = ROOT / 'blueprints'
-FIXTURES = BLUEPRINTS / 'tests/fixtures'
-BLUEPRINT_PYTHON = BLUEPRINTS / '.venv/bin/python'
 
 
 def project_version():
@@ -63,20 +60,6 @@ def configuration(executable, workspace, tools=None, drivers=None, format='json'
     return json.loads(result) if format == 'json' else result
 
 
-def blueprint_root(name):
-    return FIXTURES if (FIXTURES / name).is_dir() else BLUEPRINTS
-
-
-def requirements(name, version):
-    root = blueprint_root(name)
-    release = json.loads((root / 'releases.json').read_text())
-    return next(b['drivers'] for b in release['blueprints'] if b['name'] == name and b['version'] == version)
-
-
-def driver_ids(name, version):
-    return {d['name']: d['id'] for d in requirements(name, version)}
-
-
 def local_tools():
     lock = bundle_lock()
     tofu = ROOT / f".cache/tools/opentofu/{lock['opentofu']['version']}/tofu"
@@ -84,24 +67,5 @@ def local_tools():
     return pathlib.Path(os.environ.get('OPENTOFU_PATH', tofu)).resolve(), pathlib.Path(os.environ.get('ANSIBLE_PATH', ansible)).resolve()
 
 
-def registry_image():
-    # Compose is the single source for the disposable registry's image pin too.
-    for line in (BLUEPRINTS / 'registry.compose.yaml').read_text().splitlines():
-        if line.strip().startswith('image:'):
-            image = line.split('image:', 1)[1].strip()
-            if '@sha256:' not in image:
-                raise ValueError('Registry image must be digest pinned')
-            return image
-    raise ValueError('Registry image missing')
-
-
-def fixture_cases():
-    return json.loads((FIXTURES / 'suite.json').read_text())['blueprints']
-
-
 def bundle_output():
     return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / project_version()
-
-
-def blueprint_releases():
-    return json.loads((BLUEPRINTS / 'releases.json').read_text())['blueprints']

@@ -8,7 +8,8 @@ import urllib.error
 import urllib.request
 import uuid
 
-from release_config import ROOT, bundle_lock, configuration, driver_ids
+from blueprints.tests.integration import driver_ids
+from release_config import ROOT, bundle_lock, configuration
 
 CONFIG = '/etc/inframill/inframill.yaml'
 DATA = '/var/lib/inframill'
