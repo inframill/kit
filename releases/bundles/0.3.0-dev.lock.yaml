@@ -1,0 +1,61 @@
+{
+  "version": "0.3.0-dev",
+  "kit_version": "0.3.0-dev",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "drivers": [
+    {
+      "name": "opentofu",
+      "version": "0.2.0"
+    },
+    {
+      "name": "ansible",
+      "version": "0.2.0"
+    }
+  ],
+  "base_image": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
+  "base_platform_digests": {
+    "amd64": "sha256:781449467ffb6f04218f09b1ecdcdc7d22b289ee5da9ec498b024e24ad7a6db7",
+    "arm64": "sha256:fcf02c9e248b995ae2ca9aac6fa24b489f34b589dbfdc44698ad245d2ad41d1e"
+  },
+  "source_date_epoch": 1759190400,
+  "go_version": "go1.27.0",
+  "inframill": {
+    "version": "0.3.0-dev",
+    "revision": "07440bac8583f0b3d0dcce7be0656a8272595c4d",
+    "binaries": {
+      "amd64": {
+        "path": "0.3.0-dev/inframill_0.3.0-dev_linux_amd64",
+        "sha256": "7c4995f8a3b0267e6e5fa555a4c9d37c68be95fe21a1f676fb9ed6a3e03b9b9c"
+      },
+      "arm64": {
+        "path": "0.3.0-dev/inframill_0.3.0-dev_linux_arm64",
+        "sha256": "9a76c8c8127cd260fce0941e1dee01b5eedef568330c11caac18c5c223c92175"
+      }
+    },
+    "native_binaries": {
+      "darwin/amd64": {
+        "path": "0.3.0-dev/inframill_0.3.0-dev_darwin_amd64",
+        "sha256": "c5fd8d6cf37129d494db236d5932bd20b7099ff2f960cd797de0fe49c2a296f9"
+      },
+      "darwin/arm64": {
+        "path": "0.3.0-dev/inframill_0.3.0-dev_darwin_arm64",
+        "sha256": "c569b60b8c55b84be77207efcdca5b91c1ef1e0ba073c80d88928b49dcd910e1"
+      },
+      "linux/amd64": {
+        "path": "0.3.0-dev/inframill_0.3.0-dev_linux_amd64",
+        "sha256": "7c4995f8a3b0267e6e5fa555a4c9d37c68be95fe21a1f676fb9ed6a3e03b9b9c"
+      },
+      "linux/arm64": {
+        "path": "0.3.0-dev/inframill_0.3.0-dev_linux_arm64",
+        "sha256": "9a76c8c8127cd260fce0941e1dee01b5eedef568330c11caac18c5c223c92175"
+      }
+    }
+  },
+  "toolchain": {
+    "path": "runtime/tools.lock.json",
+    "sha256": "67f2b1f7d7efbdc8636b1f3c01b01913adbc6c76ee439016471d6f418e409f69"
+  }
+}
