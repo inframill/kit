@@ -5,6 +5,23 @@ is pinned to sibling revision `07440bac8583f0b3d0dcce7be0656a8272595c4d`.
 The bundle lock records checksums for all four supplied engine binaries.
 Blueprint and driver versions remain `0.2.0`.
 
+## Docker-only Blueprint publication
+
+Blueprint build now loads each unchanged OCI artifact into Docker, and push only
+invokes `docker push` for each release tag after local build verification. The
+script no longer reads Docker credentials, handles registry authentication or
+performs registry HTTP requests. Login and registry configuration are the user's
+responsibility. Remote tags follow Docker/registry policy.
+
+Fast checks passed (21 Kit Python tests, 10 Blueprint tests, Go tests, native
+build and release validation). Real Docker pushes of pv-cloud and both
+local-resource fixture versions preserved their exact OCI digests; repeat pushes
+also passed. Unit tests check that publication calls only Docker load/push and
+that a failed push stops publication. Test registries are managed separately by
+the integration harness. The existing ARM64/AMD64 compatibility results below
+apply to these unchanged artifact bytes; the full runtime suite was not rerun
+for this transport-only change.
+
 ## Standalone Blueprint subproject
 
 `blueprints/` now owns its release manifest, single Python build/push script,

@@ -6,7 +6,6 @@ import json
 import os
 import pathlib
 import platform
-import shutil
 import subprocess
 import sys
 import tarfile
@@ -46,21 +45,40 @@ def engine(tmp, env=None, data=None):
 def registry():
     name = 'kit-test-' + uuid.uuid4().hex[:12]
     run(['docker', 'network', 'create', name], stdout=subprocess.DEVNULL)
-    started = False
+    started = []
+    volume = name + '-data'
+    run(['docker', 'volume', 'create', volume], stdout=subprocess.DEVNULL)
+    # Docker Desktop's daemon cannot use the Mac's published loopback port.
+    # Two disposable endpoints share storage: native/containers read through the
+    # bridge endpoint, while docker push writes through the daemon's loopback.
+    push_address = '127.0.0.1:' + str(49152 + int(uuid.uuid4().hex[:4], 16) % 16384)
     try:
-        run(['docker', 'run', '-d', '--rm', '--network', name, '--network-alias', 'registry',
-             '--name', name, '-p', '127.0.0.1::5000', registry_image()], stdout=subprocess.DEVNULL)
-        started = True
+        run(['docker', 'run', '-d', '--network', name, '--network-alias', 'registry',
+             '--name', name, '-p', '127.0.0.1::5000', '-v', volume + ':/var/lib/registry',
+             '-e', 'OTEL_TRACES_EXPORTER=none', registry_image()], stdout=subprocess.DEVNULL)
+        started.append(name)
+        run(['docker', 'run', '-d', '--network', 'host', '--name', name + '-push',
+             '-e', 'REGISTRY_HTTP_ADDR=' + push_address, '-e', 'REGISTRY_HTTP_DEBUG_ADDR=127.0.0.1:0',
+             '-e', 'OTEL_TRACES_EXPORTER=none',
+             '-v', volume + ':/var/lib/registry', registry_image()], stdout=subprocess.DEVNULL)
+        started.append(name + '-push')
         address = run(['docker', 'port', name, '5000/tcp'], capture_output=True).stdout.strip()
-        yield address, name
+        yield address, name, push_address
     finally:
+        # Remove only tags belonging to this temporary publication endpoint.
+        tagged = run(['docker', 'image', 'ls', '--format', '{{.Repository}}:{{.Tag}}',
+                      '--filter', 'reference=' + push_address + '/inframill/blueprints/*'],
+                     capture_output=True).stdout.splitlines()
+        if tagged:
+            run(['docker', 'image', 'rm', *tagged], stdout=subprocess.DEVNULL)
         if started:
-            run(['docker', 'stop', name], stdout=subprocess.DEVNULL)
+            run(['docker', 'rm', '-f', *started], stdout=subprocess.DEVNULL)
+        run(['docker', 'volume', 'rm', volume], stdout=subprocess.DEVNULL)
         run(['docker', 'network', 'rm', name], stdout=subprocess.DEVNULL)
 
 
-def registry_env(tmp, address):
-    return {**os.environ, 'KIT_DIST_DIR': str(tmp / 'dist'), 'REGISTRY': address,
+def registry_env(tmp, address, push_address):
+    return {**os.environ, 'KIT_DIST_DIR': str(tmp / 'dist'), 'REGISTRY': push_address,
             'NAMESPACE': 'inframill', 'PLAIN_HTTP': 'true', 'INFRAMILL_HTTP_REGISTRIES': address}
 
 
@@ -115,9 +133,9 @@ def pv_flow(client, reference):
 def blueprint_check(name, version):
     if name != 'local-resource' and (name, version) != ('pv-cloud', '0.2.0'):
         raise RuntimeError('No declared integration fixture for this blueprint version')
-    with registry() as (address, _), tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
+    with registry() as (address, _, push_address), tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
-        env = registry_env(tmp, address)
+        env = registry_env(tmp, address, push_address)
         publish(name, version, env)
         reference = f'{address}/inframill/blueprints/{name}:{version}'
         with engine(tmp / 'engine', env) as client:
@@ -164,7 +182,8 @@ def container_checks(tmp, network, env):
     if not (bundle_output() / 'build.json').is_file():
         raise RuntimeError('Run task bundle before check-full container verification')
     run(['go', 'run', './cmd/kit-build', 'bundle:push'], cwd=ROOT,
-        env={**env, 'KIT_DIST_DIR': str(bundle_output().parent.parent)})
+        env={**env, 'REGISTRY': env['INFRAMILL_HTTP_REGISTRIES'],
+             'KIT_DIST_DIR': str(bundle_output().parent.parent)})
     image = 'docker.io/library/inframill-kit-test:' + uuid.uuid4().hex
     layout = bundle_output() / 'oci'
     index = json.loads((layout / 'index.json').read_text())
@@ -199,9 +218,9 @@ def container_checks(tmp, network, env):
 
 def registry_check():
     tools()
-    with registry() as (address, network), tempfile.TemporaryDirectory(prefix='kit-registry-') as td:
+    with registry() as (address, network, push_address), tempfile.TemporaryDirectory(prefix='kit-registry-') as td:
         tmp = pathlib.Path(td)
-        env = registry_env(tmp, address)
+        env = registry_env(tmp, address, push_address)
         cases = fixture_cases() + [{'name': b['name'], 'version': b['version']} for b in blueprint_releases()]
         for case in cases:
             publish(case['name'], case['version'], env)
@@ -210,23 +229,6 @@ def registry_check():
                 local_flow(client, case['version'], f"{address}/inframill/blueprints/local-resource:{case['version']}")
             pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.2.0')
         daemon_check(tmp, address, env)
-        conflict = tmp / 'conflict/blueprints/local-resource/0.1.0'
-        shutil.copytree(tmp / 'dist/blueprints/local-resource/0.2.0', conflict)
-        index_path = conflict / 'oci/index.json'
-        index = json.loads(index_path.read_text())
-        for descriptor in index['manifests']:
-            descriptor.setdefault('annotations', {})['org.opencontainers.image.ref.name'] = '0.1.0'
-        index_path.write_text(json.dumps(index))
-        record_path = conflict / 'build.json'
-        record = json.loads(record_path.read_text())
-        record['release'] = json.loads((FIXTURES / 'releases.json').read_text())['blueprints'][0]
-        record_path.write_text(json.dumps(record))
-        rejected = subprocess.run([str(BLUEPRINT_PYTHON), str(BLUEPRINTS / 'build.py'), 'push',
-                                   '--root', str(FIXTURES), '--dist', str(tmp / 'conflict/blueprints'),
-                                   '--name', 'local-resource', '--version', '0.1.0'], cwd=ROOT,
-                                  env=env, text=True, capture_output=True)
-        if rejected.returncode == 0 or 'release tag already points to different content' not in rejected.stderr:
-            raise RuntimeError('Conflicting release tag was not rejected: ' + rejected.stderr)
         cache_check(tmp, address, env)
         container_checks(tmp, network, env)
 

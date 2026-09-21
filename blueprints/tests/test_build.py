@@ -1,5 +1,3 @@
-import base64
-import http.server
 import importlib.util
 import io
 import json
@@ -10,7 +8,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import threading
 import unittest
 from unittest.mock import patch
 
@@ -18,59 +15,6 @@ SPEC = importlib.util.spec_from_file_location('blueprint_build', Path(__file__).
 build = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(build)
 FIXTURES = Path(__file__).parent / 'fixtures'
-
-
-class RegistryHandler(http.server.BaseHTTPRequestHandler):
-    def log_message(self, *args):
-        pass
-
-    def reply(self, code, data=b'', **headers):
-        self.send_response(code)
-        for key, value in headers.items():
-            self.send_header(key.replace('_', '-'), value)
-        self.send_header('Content-Length', str(len(data)))
-        self.end_headers()
-        if self.command != 'HEAD':
-            self.wfile.write(data)
-
-    def authenticate(self):
-        if self.path.startswith('/token?'):
-            self.server.token_requests += 1
-            self.reply(200, b'{"token":"local-test-token"}')
-            return False
-        if self.headers.get('Authorization') != 'Bearer local-test-token':
-            self.reply(401, WWW_Authenticate='Bearer realm="http://127.0.0.1:%s/token",service="test"' % self.server.server_port)
-            return False
-        return True
-
-    def do_GET(self):
-        if not self.authenticate():
-            return
-        if self.path in self.server.objects:
-            self.reply(200, self.server.objects[self.path])
-        else:
-            self.reply(404)
-
-    do_HEAD = do_GET
-
-    def do_POST(self):
-        if self.authenticate():
-            self.reply(202, Location=self.path + 'upload-id?state=test')
-
-    def do_PUT(self):
-        if not self.authenticate():
-            return
-        data = self.rfile.read(int(self.headers.get('Content-Length', '0')))
-        if '/blobs/uploads/' in self.path:
-            query = build.urllib.parse.parse_qs(build.urllib.parse.urlsplit(self.path).query)
-            if query['digest'][0] != build.digest(data):
-                self.reply(400)
-                return
-            path = self.path.split('/blobs/')[0] + '/blobs/' + query['digest'][0]
-        else:
-            path = self.path
-        self.server.objects[path] = data
-        self.reply(201)
 
 
 class BuildTests(unittest.TestCase):
@@ -89,20 +33,17 @@ class BuildTests(unittest.TestCase):
         entry['source_sha256'] = build.digest(build.archive(build.source_path(self.root, entry))[0])
         return entry
 
-    def registry(self):
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), RegistryHandler)
-        server.objects = {}
-        server.token_requests = 0
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
-        return server, '127.0.0.1:' + str(server.server_port)
-
     def test_build_from_detached_project_and_unrelated_working_directory(self):
         shutil.copy(build.ROOT / 'build.py', self.root)
+        # The detached script still uses only its project files and the Docker CLI.
+        docker_bin = self.root / 'bin'
+        docker_bin.mkdir()
+        docker = docker_bin / 'docker'
+        docker.write_text('#!/bin/sh\n[ "$1" = load ] || exit 1\ncat >/dev/null\n')
+        docker.chmod(0o755)
         result = subprocess.run([sys.executable, str(self.root / 'build.py'), 'build'],
-                                cwd=self.root.parent, capture_output=True, text=True)
+                                cwd=self.root.parent, capture_output=True, text=True,
+                                env={**os.environ, 'PATH': str(docker_bin) + os.pathsep + os.environ['PATH']})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(result.stdout.splitlines()), 2)
         for entry in self.entries:
@@ -178,20 +119,38 @@ class BuildTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 build.validate_definition({**entries, 'blueprint.yaml': invalid}, self.entry)
 
-    def test_publish_all_authentication_idempotence_and_tag_conflict(self):
-        server, address = self.registry()
-        with patch.object(build, 'docker_credentials', return_value=None):
-            build.main(['publish', '--root', str(self.root), '--registry', address, '--plain-http'])
-            originals = dict(server.objects)
-            build.main(['push', '--root', str(self.root), '--registry', address, '--plain-http'])
-            self.assertEqual(server.objects, originals)
-            self.assertGreater(server.token_requests, 0)
-            tag = '/v2/inframill/blueprints/local-resource/manifests/0.1.0'
-            server.objects[tag] = b'conflicting manifest'
-            with self.assertRaisesRegex(ValueError, 'release tag already points to different content'):
-                build.push(self.dist, self.entry, address, 'inframill', True)
-            self.assertEqual(server.objects[tag], b'conflicting manifest')
-            self.assertFalse((self.dist / 'local-resource/0.1.0/.push-lock').exists())
+    def test_publish_uses_only_docker_load_then_push_for_every_release(self):
+        calls = []
+        def docker(command, **kwargs):
+            self.assertTrue(kwargs['check'])
+            calls.append(command)
+            if command == ['docker', 'load']:
+                with tarfile.open(fileobj=kwargs['stdin'], mode='r:') as tar:
+                    index = json.load(tar.extractfile('index.json'))
+                    desc = index['manifests'][0]
+                    self.assertNotIn('platform', desc)
+                    reference = desc['annotations']['io.containerd.image.name']
+                    version = reference.rsplit(':', 1)[1]
+                    original, _, _ = build.verify(self.dist / 'local-resource' / version, version)
+                    self.assertEqual(desc['digest'], original['digest'])
+                    manifest = json.load(tar.extractfile('blobs/sha256/' + desc['digest'][7:]))
+                    self.assertEqual(manifest['artifactType'], build.ARTIFACT)
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(build.subprocess, 'run', side_effect=docker):
+            build.main(['publish', '--root', str(self.root), '--registry', 'localhost:5000'])
+        self.assertEqual(calls, [['docker', 'load'], ['docker', 'load'],
+            ['docker', 'push', 'localhost:5000/inframill/blueprints/local-resource:0.1.0'],
+            ['docker', 'push', 'localhost:5000/inframill/blueprints/local-resource:0.2.0']])
+
+    def test_push_only_invokes_docker_push_and_propagates_failure(self):
+        for entry in self.entries:
+            build.build(self.root, self.dist, entry)
+        denied = subprocess.CalledProcessError(1, ['docker', 'push'])
+        with patch.object(build.subprocess, 'run', side_effect=denied) as docker:
+            with self.assertRaises(subprocess.CalledProcessError):
+                build.main(['push', '--root', str(self.root)])
+        docker.assert_called_once_with(['docker', 'push',
+            'ghcr.io/inframill/blueprints/local-resource:0.1.0'], check=True)
 
     def test_publish_builds_everything_before_upload(self):
         self.entries[1]['source_sha256'] = 'sha256:' + '0' * 64
@@ -211,42 +170,6 @@ class BuildTests(unittest.TestCase):
                 build.main(['push', '--root', str(self.root)])
             push.assert_not_called()
 
-    def test_registry_rejects_nonlocal_http(self):
-        with self.assertRaisesRegex(ValueError, 'local test registries'):
-            build.Registry('ghcr.io', 'inframill/blueprints/example', True)
-
-    def test_registry_blob_redirect_does_not_forward_credentials(self):
-        remote = build.Registry('ghcr.io', 'inframill/blueprints/example')
-        error = build.urllib.error.HTTPError('https://ghcr.io/v2/blob', 307, 'redirect',
-                                            {'Location': 'https://blob.example/download'}, io.BytesIO())
-        with patch.object(remote.opener, 'open', side_effect=error) as opened:
-            headers, data = remote.request('HEAD', 'blobs/sha256:' + 'a' * 64)
-            self.assertEqual(data, b'')
-            self.assertEqual(opened.call_count, 1)
-
-    def test_identity_token_uses_refresh_exchange(self):
-        remote = build.Registry('ghcr.io', 'inframill/blueprints/example')
-        with patch.object(build, 'docker_credentials', return_value=('<token>', 'identity-secret')), \
-             patch.object(remote.opener, 'open', return_value=io.BytesIO(b'{"access_token":"access"}')) as opened:
-            remote.authenticate('Bearer realm="https://ghcr.io/token",service="ghcr.io"')
-            request = opened.call_args.args[0]
-            body = build.urllib.parse.parse_qs(request.data.decode())
-            self.assertEqual(body['grant_type'], ['refresh_token'])
-            self.assertEqual(body['refresh_token'], ['identity-secret'])
-            self.assertIsNone(request.get_header('Authorization'))
-            self.assertEqual(remote.authorization, 'Bearer access')
-
-    def test_docker_credentials_support_inline_and_helper(self):
-        config = self.root / 'docker'; config.mkdir()
-        with patch.dict(os.environ, {'DOCKER_CONFIG': str(config)}):
-            (config / 'config.json').write_text(json.dumps({'auths': {'ghcr.io': {
-                'auth': base64.b64encode(b'user:password').decode()}}}))
-            self.assertEqual(build.docker_credentials('ghcr.io'), ('user', 'password'))
-            (config / 'config.json').write_text(json.dumps({'credsStore': 'osxkeychain'}))
-            with patch.object(build.subprocess, 'run', return_value=subprocess.CompletedProcess(
-                    [], 0, '{"Username":"user","Secret":"password"}', '')) as helper:
-                self.assertEqual(build.docker_credentials('ghcr.io'), ('user', 'password'))
-                self.assertEqual(helper.call_args.args[0], ['docker-credential-osxkeychain', 'get'])
 
 
 if __name__ == '__main__':

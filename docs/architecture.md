@@ -61,7 +61,8 @@ selects production packages independently of Kit's version and declares each
 blueprint's engine and driver requirements. Fixtures, examples, registry config,
 tasks and packaging tests live in that subproject too. One Python script validates
 source metadata, offline schemas, driver requirement agreement and source seals,
-then builds and pushes OCI packages. Driver implementation validation remains in
+then builds OCI packages, loads them into Docker and invokes `docker push`.
+The publisher does not handle credentials or registry lifecycle. Driver implementation validation remains in
 Kit's engine integration checks. OCI sources are architecture-independent; Kit
 image indices contain both Linux architectures.
 
@@ -69,7 +70,8 @@ Image assembly verifies the clean sibling source revision before compiling Kit,
 then copies checksum/architecture-verified core binaries from the versioned sibling
 dist. Native copying verifies the corresponding host binary too. The bundle task
 never compiles Inframill. Build records capture source, dependency and binary hashes.
-Push verifies existing bytes and rejects conflicting version tags. Publication is
+Kit image push verifies existing bytes and rejects conflicting version tags. Blueprint
+push uses standard Docker tag semantics. Publication is
 manual; local acceptance uses a disposable registry.
 
 ## Container configuration and storage

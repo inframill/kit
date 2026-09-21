@@ -2,7 +2,7 @@
 
 Build and publish all maintained Blueprint releases from this directory. The
 single `build.py` script owns source validation, deterministic archives, OCI
-packaging and registry publication. It does not import Kit scripts, compile Go,
+packaging and calls to `docker load` / `docker push`. It does not import Kit scripts, compile Go,
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
 Each release is **one architecture-independent OCI artifact** containing
@@ -13,7 +13,9 @@ that can be started with `docker run`.
 
 ## Setup
 
-Use Python 3.10 or newer (3.14 is tested). From this directory:
+Use Python 3.10 or newer (3.14 is tested) and a running Docker daemon with the
+[containerd image store](https://docs.docker.com/engine/storage/containerd/).
+From this directory:
 
 ```sh
 python3.14 -m venv .venv
@@ -21,15 +23,15 @@ python3.14 -m venv .venv
 ```
 
 Or use `task setup PYTHON=python3.14`. Python dependencies validate YAML and JSON
-Schema; building needs no Docker daemon. Publishing uses the registry HTTP API
-and your existing `docker login` credentials, including Docker credential helpers.
-No ORAS installation is needed.
+Schema. Run `docker login ghcr.io` yourself before pushing. The script never
+logs in, reads credentials, exchanges authentication tokens, or creates a registry.
+Docker manages authentication and registry access. No ORAS installation is needed.
 
 ## Commands
 
 ```sh
 .venv/bin/python build.py list       # show every declared release
-.venv/bin/python build.py build      # build all releases locally
+.venv/bin/python build.py build      # build all releases and load them into Docker
 
 docker login ghcr.io
 .venv/bin/python build.py push       # push every existing package
@@ -52,28 +54,32 @@ task build -- --name pv-cloud --version 0.2.0
 ```
 
 Every entry in `releases.json` is selected by default. Test fixtures are excluded.
-`build` writes `dist/<name>/<version>/oci/` and a `build.json` record.
-`push` verifies these existing files and never rebuilds. `publish` finishes every
-build before it starts any upload. Commands exit nonzero on the first failure.
+`build` writes `dist/<name>/<version>/oci/` and a `build.json` record, then uses
+`docker load` to tag each artifact locally for its destination.
+`push` checks the existing build records and invokes only `docker push <tag>` for
+each release. It does not rebuild, load, log in, or manage the registry.
+`publish` completes all builds and loads, then pushes all tags. Commands exit
+nonzero on the first failure. Docker reports upload progress and the remote digest.
 
 The default destination is `ghcr.io/inframill/blueprints/<name>:<version>`.
 Override it with flags or the `REGISTRY` and `NAMESPACE` environment variables:
 
 ```sh
+.venv/bin/python build.py build --registry ghcr.io --namespace my-org
 .venv/bin/python build.py push --registry ghcr.io --namespace my-org
 .venv/bin/python build.py build --dist /tmp/blueprint-output
 .venv/bin/python build.py push --dist /tmp/blueprint-output
 ```
 
-The script prints immutable `repository@sha256:...` references after publication.
-Repeated identical builds and pushes are safe. Changed source, corrupt blobs,
-different local output, or a remote version tag pointing at different content
-are rejected. Coordinate publication across machines; registry tags have no
-atomic compare-and-swap operation. Build and push never modify release metadata.
+Use the same registry and namespace for build and push so the local Docker tags
+match. If a local tag is missing, run build again. Docker handles TLS and any
+insecure-registry settings; the script has no authentication or HTTP options.
 
-Python archive encoding differs from the former Go packager, so this migration
-changes artifact digests even for unchanged source. Previously published tags
-remain immutable: use a new blueprint version to publish different package bytes.
+Changed source, corrupt local blobs and conflicting local build output are
+rejected. Remote tag behavior is standard Docker behavior: pushing can replace
+an existing tag unless your registry enforces immutability. Use new release
+versions for changed packages. Build and push never modify release metadata.
+
 Old Kit release locks retain historical records; they no longer select builds.
 
 ## Add a release
@@ -107,23 +113,22 @@ checks; the standalone packager does not load driver implementations.
 `--config` overrides the manifest path. Relative `--root`, `--config` and `--dist`
 arguments are interpreted from your working directory.
 
-## Verification and local registry
+## Verification
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -p "test_*.py"
-# Requires Docker; creates a persistent loopback-only registry:
-docker compose -f registry.compose.yaml up -d
-.venv/bin/python build.py publish --registry localhost:5000 --plain-http
-docker compose -f registry.compose.yaml down
 ```
 
-Plain HTTP is allowed only for explicit local test registries (`localhost`,
-`127.0.0.1`, or the test container hostname `registry`). Otherwise TLS is required.
-`PLAIN_HTTP=true` is equivalent to `--plain-http`.
-
 Unit tests cover detached builds, both fixture versions, determinism, tampering,
-unsafe inputs, authentication, repeat publication, and immutable tags using a
-local HTTP test registry. They create no public packages.
+unsafe inputs, Docker command sequencing and push failure propagation. Docker is
+stubbed in unit tests; they create no registries or public packages.
+
+For a registry you have already configured, use matching build/push destinations:
+
+```sh
+.venv/bin/python build.py build --registry my-registry.example:5000
+.venv/bin/python build.py push --registry my-registry.example:5000
+```
 
 The following optional checks integrate with the parent Kit project and require
 its `task setup`, `task build`, `task inframill:copy`, and Docker prerequisites.

@@ -22,9 +22,11 @@ Use `-- --name pv-cloud --version 0.2.0` to select one release.
 The Python script runs without Kit's Go tooling or release locks and produces one
 portable OCI source artifact for AMD64 and ARM64.
 
-Builds never push. Push uploads existing verified OCI bytes and rejects a tag
-pointing to different content. `REGISTRY` and `NAMESPACE` override the defaults;
-`PLAIN_HTTP=true` is available for a local test registry. Production selection
+Blueprint builds load the OCI artifacts into Docker; push invokes `docker push`
+for each tag. Run `docker login` yourself. Use the same `REGISTRY` and `NAMESPACE`
+for build and push. Docker and the registry control authentication, TLS and remote
+tag overwrites. Kit bundle publication still rejects conflicting tags and supports
+`PLAIN_HTTP=true` for local integration registries. Production selection
 currently includes pv-cloud only. Local-resource variants are isolated fixtures.
 
 `task bundle:push` publishes to `ghcr.io/inframill/kit:<version>` by default.

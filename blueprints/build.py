@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build and publish portable Blueprint OCI artifacts, independently of Kit."""
 import argparse
-import base64
 import gzip
 import hashlib
 import io
@@ -14,9 +13,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.error
-import urllib.parse
-import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST = 'application/vnd.oci.image.manifest.v1+json'
@@ -261,140 +257,36 @@ def build(root, dist, entry):
     return desc
 
 
-def docker_credentials(registry):
-    path = Path(os.environ.get('DOCKER_CONFIG', str(Path.home() / '.docker'))) / 'config.json'
-    if not path.exists():
-        return None
-    config = read_json(path)
-    helper = config.get('credHelpers', {}).get(registry, config.get('credsStore'))
-    if helper:
-        result = subprocess.run(['docker-credential-' + helper, 'get'], input=registry + '\n',
-                                text=True, capture_output=True)
-        if result.returncode:
-            # Anonymous registries need no stored credential.
-            require('credentials not found' in (result.stdout + result.stderr).lower(), 'Docker credential helper failed')
-            return None
-        credential = json.loads(result.stdout)
-        return credential['Username'], credential['Secret']
-    auths = config.get('auths', {})
-    for key in (registry, 'https://' + registry, 'https://' + registry + '/v1/'):
-        if auths.get(key, {}).get('identitytoken'):
-            return '<token>', auths[key]['identitytoken']
-        if auths.get(key, {}).get('auth'):
-            return tuple(base64.b64decode(auths[key]['auth']).decode().split(':', 1))
-    return None
+def image_reference(entry, registry, namespace):
+    return registry + '/' + namespace + '/blueprints/' + entry['name'] + ':' + entry['version']
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, fp, code, message, headers, url):
-        # Never forward registry credentials to a different endpoint implicitly.
-        return None
-
-
-class Registry:
-    def __init__(self, registry, repository, plain=False):
-        parsed = urllib.parse.urlsplit('https://' + registry)
-        require(parsed.netloc == registry and not parsed.path and not parsed.username and not parsed.password,
-                'registry must be a host[:port], without a scheme or path')
-        require(not plain or parsed.hostname in ('localhost', '127.0.0.1', 'registry'), 'plain HTTP is only allowed for local test registries')
-        require(all(re.fullmatch(r'[a-z0-9]+(?:[._-][a-z0-9]+)*', p) for p in repository.split('/')), 'invalid repository')
-        self.origin = ('http://' if plain else 'https://') + registry
-        self.base = self.origin + '/v2/' + repository + '/'
-        self.registry = registry
-        self.repository = repository
-        self.authorization = None
-        self.opener = urllib.request.build_opener(NoRedirect())
-
-    def request(self, method, path, data=None, media=None, missing=False):
-        url = urllib.parse.urljoin(self.base, path)
-        require(urllib.parse.urlsplit(url)[:2] == urllib.parse.urlsplit(self.origin)[:2], 'cross-origin registry upload refused')
-        for attempt in range(2):
-            headers = {'Accept': MANIFEST}
-            if media:
-                headers['Content-Type'] = media
-            if self.authorization:
-                headers['Authorization'] = self.authorization
-            try:
-                with self.opener.open(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=60) as response:
-                    return response.headers, response.read()
-            except urllib.error.HTTPError as error:
-                if method == 'HEAD' and error.code in (302, 307, 308):
-                    # Blob storage redirects mean the registry already has this digest.
-                    headers = error.headers
-                    error.close()
-                    return headers, b''
-                if error.code == 404 and missing:
-                    error.close()
-                    return None
-                if error.code != 401 or attempt:
-                    raise
-                challenge = error.headers.get('WWW-Authenticate', '')
-                error.close()
-                self.authenticate(challenge)
-        raise ValueError('registry authentication failed')
-
-    def authenticate(self, challenge):
-        credentials = docker_credentials(self.registry)
-        basic = ('Basic ' + base64.b64encode((':'.join(credentials)).encode()).decode()) if credentials else None
-        if challenge.lower().startswith('basic '):
-            require(basic, 'registry requires authentication; run docker login ' + self.registry)
-            self.authorization = basic
-            return
-        require(challenge.lower().startswith('bearer '), 'unsupported registry authentication')
-        params = dict(re.findall(r'(\w+)="([^\"]*)"', challenge))
-        realm = params['realm']
-        parsed = urllib.parse.urlsplit(realm)
-        require(parsed.scheme == 'https' or
-                (self.origin.startswith('http://') and parsed.scheme == 'http' and
-                 parsed.netloc == urllib.parse.urlsplit(self.origin).netloc), 'insecure token endpoint')
-        query = urllib.parse.parse_qsl(parsed.query) + [('service', params.get('service', '')),
-                ('scope', 'repository:' + self.repository + ':pull,push')]
-        headers = {'Authorization': basic} if basic else {}
-        body = None
-        if credentials and credentials[0] == '<token>':
-            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-            body = urllib.parse.urlencode(query + [('grant_type', 'refresh_token'),
-                ('refresh_token', credentials[1]), ('client_id', 'blueprint-builder')]).encode()
-            url = realm
-        else:
-            url = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(query)))
-        with self.opener.open(urllib.request.Request(url, data=body, headers=headers), timeout=60) as response:
-            token = json.load(response)
-        value = token.get('token') or token.get('access_token')
-        require(value, 'registry returned no token')
-        self.authorization = 'Bearer ' + value
-
-    def manifest_digest(self, reference):
-        response = self.request('GET', 'manifests/' + reference, missing=True)
-        return digest(response[1]) if response else None
-
-
-def push(dist, entry, registry, namespace, plain):
+def load(dist, entry, registry, namespace):
+    """Load the unchanged OCI artifact into Docker under its destination tag."""
     output = dist / entry['name'] / entry['version']
-    # Serialize publishers sharing this local package. Registry tags still need release coordination across hosts.
-    lock = output / '.push-lock'
-    with lock.open('x'):
-        try:
-            desc, manifest, document = verify(output, entry['version'], entry)
-            repository = namespace + '/blueprints/' + entry['name']
-            remote = Registry(registry, repository, plain)
-            prior = remote.manifest_digest(entry['version'])
-            require(prior is None or prior == desc['digest'], 'release tag already points to different content')
-            if prior is None:
-                for child in [document['config'], *document['layers']]:
-                    if remote.request('HEAD', 'blobs/' + child['digest'], missing=True) is None:
-                        headers, _ = remote.request('POST', 'blobs/uploads/', data=b'')
-                        location = urllib.parse.urljoin(remote.base, headers['Location'])
-                        location += ('&' if '?' in location else '?') + urllib.parse.urlencode({'digest': child['digest']})
-                        remote.request('PUT', location, blob(output / 'oci', child), 'application/octet-stream')
-                remote.request('PUT', 'manifests/' + desc['digest'], manifest, MANIFEST)
-                prior = remote.manifest_digest(entry['version'])
-                require(prior is None or prior == desc['digest'], 'concurrent conflicting publication')
-                remote.request('PUT', 'manifests/' + entry['version'], manifest, MANIFEST)
-            require(remote.manifest_digest(entry['version']) == desc['digest'], 'published digest mismatch')
-            return registry + '/' + repository + '@' + desc['digest']
-        finally:
-            lock.unlink()
+    desc, _, _ = verify(output, entry['version'], entry)
+    reference = image_reference(entry, registry, namespace)
+    tagged = {**desc, 'annotations': {'org.opencontainers.image.ref.name': entry['version'],
+                                    'io.containerd.image.name': reference}}
+    index = encode({'schemaVersion': 2, 'manifests': [tagged]})
+    with tempfile.TemporaryFile() as stream:
+        with tarfile.open(fileobj=stream, mode='w') as tar:
+            layout = output / 'oci'
+            for path in sorted(layout.rglob('*')):
+                if path.name != 'index.json':
+                    tar.add(path, arcname=path.relative_to(layout).as_posix(), recursive=False)
+            header = tarfile.TarInfo('index.json')
+            header.size = len(index)
+            tar.addfile(header, io.BytesIO(index))
+        stream.seek(0)
+        subprocess.run(['docker', 'load'], stdin=stream, check=True)
+    return reference
+
+
+def push(entry, registry, namespace):
+    reference = image_reference(entry, registry, namespace)
+    subprocess.run(['docker', 'push', reference], check=True)
+    return reference
 
 
 def main(argv=None):
@@ -407,7 +299,6 @@ def main(argv=None):
     parser.add_argument('--version', help='select one version (requires --name)')
     parser.add_argument('--registry', default=os.environ.get('REGISTRY', 'ghcr.io'))
     parser.add_argument('--namespace', default=os.environ.get('NAMESPACE', 'inframill'))
-    parser.add_argument('--plain-http', action='store_true', default=os.environ.get('PLAIN_HTTP') == 'true')
     args = parser.parse_args(argv)
     root = args.root.resolve()
     dist = (args.dist or root / 'dist').resolve()
@@ -428,11 +319,13 @@ def main(argv=None):
         for entry in entries:
             result = build(root, dist, entry)
             print(entry['name'] + ':' + entry['version'] + ' ' + result['digest'], flush=True)
+        for entry in entries:
+            load(dist, entry, args.registry, args.namespace)
     if args.command in ('push', 'publish'):
         for entry in entries:
             verify(dist / entry['name'] / entry['version'], entry['version'], entry)
         for entry in entries:
-            print(push(dist, entry, args.registry, args.namespace, args.plain_http), flush=True)
+            print(push(entry, args.registry, args.namespace), flush=True)
 
 
 if __name__ == '__main__':
