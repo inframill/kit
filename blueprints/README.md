@@ -77,7 +77,7 @@ Old Kit release locks retain historical records; they no longer select builds.
 
 ## Add a release
 
-1. Add source under `<name>/versions/<version>/blueprint.yaml` and `template/`.
+1. Add source under `<name>/<version>/blueprint.yaml` and `template/`.
    Each driver has a `template/<driver-id>/` directory. Keep binaries out of these
    portable packages; driver tools belong in the Kit runtime.
 2. Print the source seal (this works before adding release metadata):

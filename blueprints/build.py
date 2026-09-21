@@ -82,8 +82,8 @@ def releases(path):
 
 
 def source_path(root, entry):
-    path = root / entry['name'] / 'versions' / entry['version']
-    require(not any(p.is_symlink() for p in [root, path.parent.parent, path.parent, path]),
+    path = root / entry['name'] / entry['version']
+    require(not any(p.is_symlink() for p in [root, path.parent, path]),
             'source directories cannot be symlinks')
     return path
 
