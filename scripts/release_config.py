@@ -1,8 +1,8 @@
 """Shared release selection, tool pins, configuration and fixture requirements."""
-import hashlib
 import json
 import os
 import pathlib
+import re
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -20,19 +20,34 @@ def bundle_lock(version=None):
     lock = json.loads((ROOT / f'releases/{version}.lock.json').read_text())
     if lock['version'] != version:
         raise ValueError('Release lock identity mismatch')
-    path = pathlib.PurePosixPath(lock['toolchain']['path'])
-    if path.is_absolute() or '..' in path.parts:
-        raise ValueError('Toolchain path must be local')
-    data = (ROOT / path).read_bytes()
-    if hashlib.sha256(data).hexdigest() != lock['toolchain']['sha256']:
-        raise ValueError('Toolchain lock checksum mismatch')
-    tools = json.loads(data)
-    if set(lock) & set(tools):
-        raise ValueError('Duplicate toolchain fields in bundle lock')
-    for file, key in [('runtime/requirements.lock', 'python_requirements_sha256'), ('runtime/python-sources.lock.json', 'python_sources_sha256')]:
-        if hashlib.sha256((ROOT / file).read_bytes()).hexdigest() != tools[key]:
-            raise ValueError('Dependency lock checksum mismatch: ' + file)
-    return {**lock, **tools}
+    python_requirements(lock)
+    return lock
+
+
+def python_requirements(lock):
+    """Render pip input from the release; never resolve or update dependencies."""
+    lines = []
+    seen = set()
+    for package in lock['python_dependencies']:
+        name, version = package['name'], package['version']
+        identity = re.sub(r'[-_.]+', '-', name).lower()
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) or identity in seen:
+            raise ValueError('Invalid or duplicate Python dependency: ' + name)
+        seen.add(identity)
+        if not re.fullmatch(r'[0-9][A-Za-z0-9.+!-]*', version):
+            raise ValueError('Python dependencies require exact versions')
+        hashes = package['hashes']
+        if not hashes or any(not re.fullmatch(r'[a-f0-9]{64}', h) for h in hashes):
+            raise ValueError('Python dependencies require SHA-256 hashes')
+        if package['source']['sha256'] not in hashes:
+            raise ValueError('Python source checksum must be included in package hashes')
+        if identity == 'ansible-core' and version != lock['ansible_core']:
+            raise ValueError('Ansible version differs from Python dependencies')
+        lines.append(name + '==' + version + ''.join(' \\\n    --hash=sha256:' + h for h in hashes))
+    if 'ansible-core' not in seen:
+        raise ValueError('Python dependencies must include ansible-core')
+    return '\n'.join(lines) + '\n'
+
 
 
 def configuration(executable, workspace, tools=None, drivers=None, format='json'):
@@ -51,7 +66,9 @@ def blueprint_root(name):
 
 
 def requirements(name, version):
-    return json.loads((blueprint_root(name) / f'releases/blueprints/{name}/{version}.yaml').read_text())['drivers']
+    root = blueprint_root(name)
+    release = json.loads((root / f'releases/{project_version()}.lock.json').read_text())
+    return next(b['drivers'] for b in release['blueprints'] if b['name'] == name and b['version'] == version)
 
 
 def driver_ids(name, version):

@@ -11,7 +11,6 @@ env:
   PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}' # Local test registries only.
   BLUEPRINT: '{{default "" .BLUEPRINT}}'
   DRIVER: '{{default "" .DRIVER}}'
-  RELEASE_SET: '{{default "default" .RELEASE_SET}}'
   REFERENCE: '{{default "" .REFERENCE}}'
 
 tasks:
@@ -99,13 +98,13 @@ tasks:
     desc: Package one sealed blueprint locally (BLUEPRINT, BLUEPRINT_VERSION)
     cmds: ['go run ./cmd/kit-build blueprint:package']
   blueprints:package:
-    desc: Package every blueprint selected by RELEASE_SET
+    desc: Package every blueprint in the selected Kit release
     cmds: ['go run ./cmd/kit-build blueprints:package']
   blueprint:push:
     desc: Push one existing package to REGISTRY/NAMESPACE/blueprints/BLUEPRINT
     cmds: ['go run ./cmd/kit-build blueprint:push']
   blueprints:push:
-    desc: Push existing packages selected by RELEASE_SET
+    desc: Push existing blueprint packages in the selected Kit release
     cmds: ['go run ./cmd/kit-build blueprints:push']
   blueprint:verify:
     desc: Fetch and check a published blueprint (BLUEPRINT, BLUEPRINT_VERSION, REFERENCE)

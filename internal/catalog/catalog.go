@@ -3,22 +3,26 @@ package catalog
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	descriptors "github.com/inframill/kit"
 	"github.com/inframill/kit/internal/drivers/ansible"
 	"github.com/inframill/kit/internal/drivers/opentofu"
-	descriptors "github.com/inframill/kit/releases"
 	driver "github.com/sir-hassan/inframill/pkg/driver"
-	"gopkg.in/yaml.v3"
 )
 
 type Release struct {
-	Name        string `json:"name" yaml:"name"`
-	Version     string `json:"version" yaml:"version"`
-	ToolVersion string `json:"tool_version" yaml:"tool_version"`
+	Name           string   `json:"name" yaml:"name"`
+	Version        string   `json:"version" yaml:"version"`
+	ToolVersion    string   `json:"tool_version" yaml:"tool_version"`
+	Protocol       int      `json:"protocol" yaml:"protocol"`
+	Platforms      []string `json:"platforms" yaml:"platforms"`
+	ArtifactSchema int      `json:"artifact_schema" yaml:"artifact_schema"`
+	Status         string   `json:"status" yaml:"status"`
 }
 
 type Factory func(Release, string) driver.Driver
@@ -96,18 +100,21 @@ func init() {
 			return ansible.Driver{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
 	}
-	for key, factory := range implementations {
-		parts := strings.Split(key, "@")
-		data, err := descriptors.Drivers.ReadFile("drivers/" + parts[0] + "/" + parts[1] + ".yaml")
-		if err != nil {
-			panic(err)
-		}
-		var release Release
-		if err = yaml.Unmarshal(data, &release); err != nil {
-			panic(err)
-		}
-		if release.Name != parts[0] || release.Version != parts[1] {
-			panic("implementation and metadata disagree")
+	data, err := descriptors.Release()
+	if err != nil {
+		panic(err)
+	}
+	var selected struct {
+		Drivers []Release `json:"drivers"`
+	}
+	if err := json.Unmarshal(data, &selected); err != nil {
+		panic(err)
+	}
+	for _, release := range selected.Drivers {
+		key := release.Name + "@" + release.Version
+		factory, ok := implementations[key]
+		if !ok {
+			panic("release driver has no implementation: " + key)
 		}
 		Register(release)
 		factories[key] = factory

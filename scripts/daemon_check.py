@@ -11,7 +11,7 @@ import time
 import urllib.error
 import urllib.request
 
-from release_config import ROOT, configuration, local_tools, bundle_lock
+from release_config import ROOT, configuration, local_tools, bundle_lock, project_version
 
 
 def daemon_check(tmp, registry, env):
@@ -27,9 +27,9 @@ def daemon_check(tmp, registry, env):
     selection = {**env, 'BLUEPRINT_ROOT': str(tmp), 'BLUEPRINT': 'protocol-fixture', 'BLUEPRINT_VERSION': '0.1.0', 'KIT_DIST_DIR': str(tmp / 'dist')}
     prefix = ['go', 'run', '-tags=kit_testdrivers', './cmd/kit-build']
     digest = subprocess.check_output(prefix + ['blueprint:source-digest'], cwd=ROOT, env=selection, text=True).strip()
-    release = tmp / 'releases/blueprints/protocol-fixture/0.1.0.yaml'
+    release = tmp / f'releases/{project_version()}.lock.json'
     release.parent.mkdir(parents=True)
-    release.write_text(json.dumps({'name': 'protocol-fixture', 'version': '0.1.0', 'inframill_version': bundle_lock()['inframill']['version'], 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}))
+    release.write_text(json.dumps({'version': project_version(), 'inframill': {'version': bundle_lock()['inframill']['version']}, 'blueprints': [{'name': 'protocol-fixture', 'version': '0.1.0', 'protocol': 1, 'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'], 'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}]}))
     for action in ['blueprint:package', 'blueprint:push']:
         subprocess.run(prefix + [action], cwd=ROOT, env=selection, check=True)
     tofu, ansible = local_tools()

@@ -10,11 +10,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	metadata "github.com/inframill/kit"
 	"github.com/inframill/kit/internal/catalog"
 	wire "github.com/sir-hassan/inframill/pkg/driver"
 )
 
-var version = "0.3.0-dev"
+var version string
 var errServed = errors.New("driver invocation failed")
 
 func main() {
@@ -26,6 +27,9 @@ func main() {
 	}
 }
 func run(args []string) error {
+	if version == "" {
+		version = metadata.Version()
+	}
 	if len(args) == 1 && args[0] == "version" {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"version": version, "drivers": catalog.List()})
 	}

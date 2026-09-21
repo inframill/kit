@@ -68,9 +68,13 @@ func run() error {
 	if !catalog.ValidVersion(version) || !catalog.ValidName(ns) {
 		return errors.New("invalid exact version or namespace")
 	}
-	var engineVersion string
+	var kitVersion string
 	if action == "blueprint:requirements" || action == "blueprint:package" || action == "blueprints:package" || action == "blueprint:push" || action == "blueprints:push" {
-		engineVersion, e = packaging.EngineVersion(root)
+		kitVersion, e = packaging.ProjectVersion(root)
+		if e != nil {
+			return e
+		}
+		_, e = packaging.EngineVersion(root)
 		if e != nil {
 			return e
 		}
@@ -188,7 +192,7 @@ func run() error {
 			return errors.New("CONFIG_FORMAT must be json or yaml")
 		}
 	case "blueprint:requirements":
-		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version, engineVersion)
+		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version, kitVersion)
 		if err != nil {
 			return err
 		}
@@ -204,7 +208,7 @@ func run() error {
 		fmt.Println(digest.FromBytes(b))
 		return nil
 	case "blueprint:package":
-		d, e := packaging.Package(ctx, blueprintRoot(root), name, version, engineVersion)
+		d, e := packaging.Package(ctx, blueprintRoot(root), name, version, kitVersion)
 		if e != nil {
 			return e
 		}
@@ -222,18 +226,9 @@ func run() error {
 		fmt.Println(repo + "@" + d.Digest.String())
 		return nil
 	case "blueprints:package", "blueprints:push":
-		set := env("RELEASE_SET", "default")
-		if !catalog.ValidName(set) {
-			return errors.New("invalid release set")
-		}
-		var selections struct {
-			Blueprints []struct {
-				Name    string `yaml:"name"`
-				Version string `yaml:"version"`
-			} `yaml:"blueprints"`
-		}
-		if e = packaging.ReadYAML(filepath.Join(root, "releases/sets", set+".yaml"), &selections); e != nil {
-			return e
+		selections, err := packaging.Kit(root, kitVersion)
+		if err != nil {
+			return err
 		}
 		var failures []error
 		for _, s := range selections.Blueprints {
@@ -241,7 +236,7 @@ func run() error {
 				return errors.New("invalid release selection")
 			}
 			if action == "blueprints:package" {
-				d, e := packaging.Package(ctx, blueprintRoot(root), s.Name, s.Version, engineVersion)
+				d, e := packaging.Package(ctx, blueprintRoot(root), s.Name, s.Version, kitVersion)
 				if e != nil {
 					failures = append(failures, e)
 					fmt.Fprintln(os.Stderr, s.Name, s.Version, e)

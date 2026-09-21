@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
         values = json.loads(pathlib.Path('/pv-example.json').read_text())
         client.fetch(reference)
         iid = client.initialize('smoke/pv-cloud', reference, values)
-        release = json.loads(pathlib.Path('/usr/share/inframill/sources/kit/releases/blueprints/pv-cloud/0.2.0.yaml').read_text())
+        release = next(b for b in lock['blueprints'] if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
         ids = {d['name']: d['id'] for d in release['drivers']}
         client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
         work = tmp / 'data/instances' / iid / 'workspace' / ids['opentofu']

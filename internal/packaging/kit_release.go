@@ -30,11 +30,13 @@ type KitRelease struct {
 			SHA256 string `json:"sha256"`
 		} `json:"binaries"`
 	} `json:"inframill"`
-	Toolchain struct {
-		Path   string `json:"path"`
-		SHA256 string `json:"sha256"`
-	} `json:"toolchain"`
-	raw []byte
+	Blueprints         []BlueprintRelease `json:"blueprints"`
+	OpenTofu           json.RawMessage    `json:"opentofu"`
+	AnsibleCore        string             `json:"ansible_core"`
+	Python             string             `json:"python"`
+	PythonDependencies json.RawMessage    `json:"python_dependencies"`
+	DebianSnapshot     string             `json:"debian_snapshot"`
+	raw                []byte
 }
 
 // ProjectVersion reads the authoritative VERSION file using the shared validator.

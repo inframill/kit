@@ -4,13 +4,14 @@ ARG TARGETARCH
 ARG SOURCE_DATE_EPOCH=1759190400
 LABEL org.opencontainers.image.source="https://github.com/inframill/kit"
 LABEL org.opencontainers.image.description="Inframill Kit with the engine, versioned drivers, OpenTofu and Ansible Core"
+ARG DEBIAN_SNAPSHOT
 # Signed Debian snapshot metadata fixes the OS dependency resolution date.
-RUN printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260913T000000Z bookworm main\ndeb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20260913T000000Z bookworm-security main\n' > /etc/apt/sources.list \
+RUN printf "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main\ndeb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} bookworm-security main\n" > /etc/apt/sources.list \
     && rm -f /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-client ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.lock python-sources.lock.json bundle.lock.json fetch-runtime.py /build/
+COPY requirements.lock bundle.lock.json fetch-runtime.py /build/
 ARG ANSIBLE_VERSION
 ARG OPENTOFU_VERSION
 RUN python3 -m venv /opt/inframill/tools/ansible/${ANSIBLE_VERSION} \

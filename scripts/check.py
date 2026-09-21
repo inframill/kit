@@ -200,7 +200,7 @@ def registry_check():
     with registry() as (address, network), tempfile.TemporaryDirectory(prefix='kit-registry-') as td:
         tmp = pathlib.Path(td)
         env = registry_env(tmp, address)
-        cases = fixture_cases() + json.loads((ROOT / 'releases/sets/default.yaml').read_text())['blueprints']
+        cases = fixture_cases() + [{'name': b['name'], 'version': b['version']} for b in bundle_lock()['blueprints']]
         for case in cases:
             publish(case['name'], case['version'], env)
         with engine(tmp / 'workflows', env) as client:

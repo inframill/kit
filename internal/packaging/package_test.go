@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -20,7 +19,7 @@ func fixture(t *testing.T) string {
 	t.Setenv("KIT_DIST_DIR", filepath.Join(root, "dist"))
 	src := filepath.Join(root, "blueprints/test/versions/0.1.0")
 	os.MkdirAll(filepath.Join(src, "template/opentofu-0-2-0"), 0755)
-	os.MkdirAll(filepath.Join(root, "releases/blueprints/test"), 0755)
+	os.MkdirAll(filepath.Join(root, "releases"), 0755)
 	os.WriteFile(filepath.Join(src, "blueprint.yaml"), []byte("api_version: inframill.dev/blueprint/v1\ndescription: fixture\nvalues_schema: {type: object}\ndriver_settings:\n  opentofu-0-2-0:\n    id: opentofu-0-2-0\n    required_driver_version: 0.2.0\n    settings_file: kit-driver.json\n    backend: local\n    node_output: nodes\n    artifact: opentofu-0-2-0-nodes-v1.json\n"), 0644)
 	os.WriteFile(filepath.Join(src, "template/opentofu-0-2-0/kit-driver.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0644)
 	r := BlueprintRelease{InframillVersion: "0.6.0-dev", Name: "test", Version: "0.1.0", Protocol: 1, Platforms: []string{"linux/amd64", "linux/arm64"}, Architectures: []string{"amd64", "arm64"}, Drivers: []Requirement{{"opentofu-0-2-0", "opentofu", "0.2.0"}}, Status: "supported"}
@@ -29,8 +28,8 @@ func fixture(t *testing.T) string {
 		t.Fatal(e)
 	}
 	r.SourceSHA256 = digest.FromBytes(layer).String()
-	b, _ := json.Marshal(r)
-	os.WriteFile(filepath.Join(root, "releases/blueprints/test/0.1.0.yaml"), b, 0644)
+	b, _ := json.Marshal(map[string]any{"version": "0.6.0-dev", "inframill": map[string]string{"version": "0.6.0-dev"}, "blueprints": []BlueprintRelease{r}})
+	os.WriteFile(filepath.Join(root, "releases/0.6.0-dev.lock.json"), b, 0644)
 	return root
 }
 func TestDeterministicPackageAndImmutableBuild(t *testing.T) {
@@ -65,7 +64,7 @@ func TestDeterministicPackageAndImmutableBuild(t *testing.T) {
 	}
 }
 
-func TestBlueprintRequiresExactSelectedEngine(t *testing.T) {
+func TestBlueprintRequiresSelectedRelease(t *testing.T) {
 	root := fixture(t)
 	for _, target := range []string{"0.6.0-dev", "0.6.0", "0.6.1", "0.7.0", "", "0.6"} {
 		t.Run(target, func(t *testing.T) {
@@ -74,10 +73,38 @@ func TestBlueprintRequiresExactSelectedEngine(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-			} else if err == nil || !strings.Contains(err.Error(), "differs from selected Kit target") {
-				t.Fatalf("got %v, want exact engine target rejection", err)
+			} else if err == nil {
+				t.Fatalf("got %v, want missing or invalid release rejection", err)
 			}
 		})
+	}
+}
+
+func TestBlueprintInheritsEngineFromSelectedKitPatch(t *testing.T) {
+	root := fixture(t)
+	path := filepath.Join(root, "releases/0.6.0-dev.lock.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var release map[string]any
+	if err := json.Unmarshal(data, &release); err != nil {
+		t.Fatal(err)
+	}
+	release["version"] = "0.6.7"
+	data, err = json.Marshal(release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "releases/0.6.7.lock.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	blueprint, _, err := Blueprint(root, "test", "0.1.0", "0.6.7")
+	if err != nil || blueprint.InframillVersion != "0.6.0-dev" {
+		t.Fatalf("blueprint must inherit its engine target from the selected Kit patch: %+v, %v", blueprint, err)
 	}
 }
 func TestUnsafeAndRuntimeSourceRejected(t *testing.T) {

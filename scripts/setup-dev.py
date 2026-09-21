@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install the pinned test tools into .cache; never install globally."""
-import hashlib,json,os,pathlib,platform,subprocess,sys,urllib.request,zipfile
-from release_config import bundle_lock
+import hashlib,json,os,pathlib,platform,subprocess,sys,urllib.request,zipfile,tempfile
+from release_config import bundle_lock, python_requirements
 from python_runtime import find_python
 root=pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -19,5 +19,8 @@ with zipfile.ZipFile(archive) as z:(folder/'tofu').write_bytes(z.read('tofu'))
 (folder/'tofu').chmod(0o755);archive.unlink()
 venv=root/f".cache/ansible-{lock['ansible_core']}"
 subprocess.run([python,'-m','venv',str(venv)],check=True)
-subprocess.run([str(venv/'bin/pip'),'install','--require-hashes','-r',str(root/'runtime/requirements.lock')],check=True)
+with tempfile.TemporaryDirectory(prefix='kit-python-') as td:
+    requirements=pathlib.Path(td)/'requirements.lock'
+    requirements.write_text(python_requirements(lock))
+    subprocess.run([str(venv/'bin/pip'),'install','--require-hashes','-r',str(requirements)],check=True)
 print('Pinned test tools installed under .cache')

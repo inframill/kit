@@ -1,33 +1,30 @@
 package catalog
 
 import (
-	"io/fs"
-	"strings"
+	"encoding/json"
 	"testing"
 
-	descriptors "github.com/inframill/kit/releases"
+	descriptors "github.com/inframill/kit"
 )
 
-func TestEveryDriverDescriptorHasAnImplementation(t *testing.T) {
-	err := fs.WalkDir(descriptors.Drivers, "drivers", func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		parts := strings.Split(path, "/")
-		if len(parts) != 3 || !strings.HasSuffix(parts[2], ".yaml") {
-			t.Errorf("unexpected driver descriptor: %s", path)
-			return nil
-		}
-		if _, err := New(parts[1], strings.TrimSuffix(parts[2], ".yaml"), "/unused"); err != nil {
-			t.Errorf("descriptor %s has no executable implementation: %v", path, err)
-		}
-		return nil
-	})
+func TestSelectedReleaseDriversHaveImplementations(t *testing.T) {
+	data, err := descriptors.Release()
 	if err != nil {
 		t.Fatal(err)
+	}
+	var release struct {
+		Drivers []Release `json:"drivers"`
+	}
+	if err := json.Unmarshal(data, &release); err != nil {
+		t.Fatal(err)
+	}
+	if len(release.Drivers) == 0 {
+		t.Fatal("empty release catalog")
+	}
+	for _, d := range release.Drivers {
+		if _, err := New(d.Name, d.Version, "/unused"); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

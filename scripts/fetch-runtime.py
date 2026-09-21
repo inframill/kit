@@ -19,5 +19,5 @@ with zipfile.ZipFile(archive) as z:
     for name in z.namelist():
         if 'LICENSE' in name.upper() and '/' not in name:(out/name).write_bytes(z.read(name))
 (out/'tofu').chmod(0o755)
-for source in json.loads(pathlib.Path('/build/python-sources.lock.json').read_text())+[lock['opentofu']['source']]:
+for source in [package['source'] for package in lock['python_dependencies']]+[lock['opentofu']['source']]:
     download(source['url'],source['sha256'],'/usr/share/inframill/sources/'+source['url'].rsplit('/',1)[-1])

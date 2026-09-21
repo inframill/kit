@@ -2,7 +2,7 @@
 """Build both platforms to a local OCI layout. Never authenticate or push."""
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
 from bundle_inputs import read_binary
-from release_config import bundle_lock, project_version
+from release_config import bundle_lock, project_version, python_requirements
 from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 version=project_version()
@@ -27,7 +27,7 @@ for driver in lock['drivers']:
     key=(driver['name'],driver['version'])
     if key not in catalog or key in selected:raise SystemExit('Unknown or duplicate bundle driver')
     selected.add(key)
-    release=json.loads((ROOT/f'releases/drivers/{key[0]}/{key[1]}.yaml').read_text())
+    release=driver
     installed={'opentofu':lock['opentofu']['version'],'ansible':lock['ansible_core']}.get(key[0])
     if release['name']!=key[0] or release['version']!=key[1] or release['tool_version']!=catalog[key] or installed!=catalog[key]:raise SystemExit('Driver/tool lock mismatch')
     if release['protocol']!=1 or set(release['platforms'])!=set(lock['platforms']):raise SystemExit('Driver platform/protocol mismatch')
@@ -39,7 +39,7 @@ def run(args,**kwargs):
     print('+',' '.join(map(str,args)),flush=True);subprocess.run(list(map(str,args)),check=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     stage=pathlib.Path(td);context=stage/'context';context.mkdir();sources=context/'sources';sources.mkdir()
-    for name in ['VERSION','go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
+    for name in ['VERSION','release.go','go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
         p=ROOT/name
         if p.is_dir():shutil.copytree(p,sources/name,ignore=shutil.ignore_patterns('__pycache__'))
         else:shutil.copy2(p,sources/name)
@@ -63,10 +63,11 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
         (bindir/'inframill').write_bytes(inframill_binaries[arch])
         (bindir/'inframill').chmod(0o755)
     shutil.copy2(ROOT/'runtime/inframill.yaml',context/'inframill.yaml')
-    for name in ['Dockerfile','requirements.lock','python-sources.lock.json','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
+    for name in ['Dockerfile','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
+    (context/'requirements.lock').write_text(python_requirements(lock))
     shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');(context/'bundle.lock.json').write_text(json.dumps(lock,indent=2)+'\n')
     tar=stage/'image.tar'
-    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','OPENTOFU_VERSION='+lock['opentofu']['version'],'--build-arg','ANSIBLE_VERSION='+lock['ansible_core'],'--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag',image_reference,context])
+    run(['docker','buildx','build','--platform','linux/amd64,linux/arm64','--provenance=false','--sbom=false','--build-arg','OPENTOFU_VERSION='+lock['opentofu']['version'],'--build-arg','ANSIBLE_VERSION='+lock['ansible_core'],'--build-arg','INFRAMILL_VERSION='+lock['inframill']['version'],'--build-arg','DEBIAN_SNAPSHOT='+lock['debian_snapshot'],'--build-arg','BASE_IMAGE='+lock['base_image'],'--build-arg','SOURCE_DATE_EPOCH='+str(lock['source_date_epoch']),'--output','type=oci,dest='+str(tar)+',rewrite-timestamp=true','--tag',image_reference,context])
     layout=stage/'oci';layout.mkdir()
     with tarfile.open(tar) as archive:
         for item in archive:

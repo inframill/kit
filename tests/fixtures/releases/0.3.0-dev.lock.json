@@ -1,0 +1,62 @@
+{
+  "version": "0.3.0-dev",
+  "inframill": {
+    "version": "0.3.0-dev"
+  },
+  "blueprints": [
+    {
+      "name": "local-resource",
+      "version": "0.1.0",
+      "protocol": 1,
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "drivers": [
+        {
+          "id": "opentofu-0-2-0",
+          "name": "opentofu",
+          "version": "0.2.0"
+        },
+        {
+          "id": "ansible-0-2-0",
+          "name": "ansible",
+          "version": "0.2.0"
+        }
+      ],
+      "status": "supported",
+      "source_sha256": "sha256:f4b5e19c76a07aab1b9a194335b5077ed0c115e4445870db49c56cd771b681af"
+    },
+    {
+      "name": "local-resource",
+      "version": "0.2.0",
+      "protocol": 1,
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "drivers": [
+        {
+          "id": "opentofu-0-2-0",
+          "name": "opentofu",
+          "version": "0.2.0"
+        },
+        {
+          "id": "ansible-0-2-0",
+          "name": "ansible",
+          "version": "0.2.0"
+        }
+      ],
+      "status": "supported",
+      "source_sha256": "sha256:a004352fe9a9b4c99de62849cdfd84940ce3898e8e442a7e552c5cde42419c23"
+    }
+  ]
+}

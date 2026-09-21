@@ -1,11 +1,9 @@
 package packaging
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,7 +11,6 @@ import (
 	"github.com/inframill/kit/internal/artifacts"
 	"github.com/inframill/kit/internal/catalog"
 	"github.com/opencontainers/go-digest"
-	"gopkg.in/yaml.v3"
 )
 
 type Requirement struct {
@@ -33,34 +30,30 @@ type BlueprintRelease struct {
 	Status           string        `yaml:"status" json:"status"`
 }
 
-func ReadYAML(path string, v any) error {
-	b, e := os.ReadFile(path)
-	if e != nil {
-		return e
-	}
-	d := yaml.NewDecoder(bytes.NewReader(b))
-	d.KnownFields(true)
-	if e = d.Decode(v); e != nil {
-		return e
-	}
-	if e = d.Decode(new(any)); !errors.Is(e, io.EOF) {
-		return errors.New("expected one YAML document")
-	}
-	return nil
-}
-func Blueprint(root, name, version, engineVersion string) (BlueprintRelease, string, error) {
+func Blueprint(root, name, version, kitVersion string) (BlueprintRelease, string, error) {
 	var r BlueprintRelease
 	if !catalog.ValidName(name) || !catalog.ValidVersion(version) {
 		return r, "", errors.New("exact blueprint name and SemVer required")
 	}
-	if e := ReadYAML(filepath.Join(root, "releases", "blueprints", name, version+".yaml"), &r); e != nil {
+	kit, e := readKitRelease(root, kitVersion)
+	if e != nil {
 		return r, "", e
 	}
+	found := false
+	for _, blueprint := range kit.Blueprints {
+		if blueprint.Name == name && blueprint.Version == version {
+			if found {
+				return r, "", errors.New("duplicate blueprint release")
+			}
+			r, found = blueprint, true
+		}
+	}
+	if !found {
+		return r, "", errors.New("blueprint is not included in selected Kit release")
+	}
+	r.InframillVersion = kit.Inframill.Version
 	if r.Name != name || r.Version != version || r.Protocol != 1 {
 		return r, "", errors.New("release identity or protocol mismatch")
-	}
-	if !catalog.ValidVersion(engineVersion) || r.InframillVersion != engineVersion {
-		return r, "", errors.New("blueprint Inframill version differs from selected Kit target")
 	}
 	sort.Strings(r.Platforms)
 	sort.Strings(r.Architectures)

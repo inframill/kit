@@ -19,7 +19,7 @@ Publish it with `task blueprint:push BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0`
 
 Builds never push. Push uploads the existing verified OCI bytes and rejects a tag
 pointing to different content. `REGISTRY` and `NAMESPACE` override the defaults;
-`PLAIN_HTTP=true` is available for a local test registry. Default publication includes
+`PLAIN_HTTP=true` is available for a local test registry. The selected release's `blueprints` list controls publication; it currently includes
 pv-cloud only. Multi-version local-resource blueprints and synthetic driver factories
 are test fixtures and are not included in the production catalog/release set.
 
@@ -77,8 +77,8 @@ value. Image builds, pushes and native engine copies consume the same lock. Run
 `task release:check` to validate the selected release without building or pushing;
 `task check-fast` includes this check.
 
-Blueprint packaging checks its declared engine requirement against that same exact
-target. Changing a descriptor declares compatibility; verify the driver API and run
+Blueprint packaging uses the engine target and blueprint metadata from that same
+release. Changing a release file declares compatibility; verify the driver API and run
 `task check-full` before releasing against a new engine.
 
 Blueprints and drivers use independent versions. The current pv-cloud, OpenTofu
@@ -89,28 +89,38 @@ multiple versions using the current protocol; they are not historical production
 
 ## Adding releases
 
-New blueprint sources go in `blueprints/<name>/versions/<version>`. Their release
-files declare core/driver requirements and a sealed source digest, obtained with
-`task blueprint:source-digest`. Add actual production selections to
-`releases/sets/default.yaml`. New driver releases require an explicit factory and
-metadata; a YAML file alone never registers code. Locks and deterministic source
-hashes prevent accidental content replacement.
+New blueprint sources go in `blueprints/<name>/versions/<version>`. Add their
+metadata to the selected release file's `blueprints` list: exact driver requirements,
+platforms, and a sealed source digest obtained with `task blueprint:source-digest`.
+The engine target comes from that same release. This list also selects the
+blueprints for `task blueprints:package` and `task blueprints:push`.
+New drivers require both an explicit implementation factory and an entry in the
+release file's `drivers` list; metadata alone never registers code. Locks and
+deterministic source hashes prevent accidental content replacement.
 
 The root [`VERSION`](../VERSION) file is authoritative for Kit builds, image builds
 and pushes, native engine copies and full checks. It contains one SemVer value with
 an optional final newline. Missing/invalid content, whitespace and a `v` prefix
 reject before building. `VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` task arguments
-or environment values cannot override it. Direct `go build` uses `0.3.0-dev`;
-`task build` embeds the file's value.
+or environment values cannot override it. Direct `go build` embeds `VERSION` and
+the selected release's driver metadata; `task build` uses the same version.
 
 To prepare a Kit release, edit `VERSION` and add `releases/<version>.lock.json`.
 The file contains one driver selection, the engine version and source revision,
 one `inframill.binaries` map keyed by OS/architecture (for example `linux/amd64`),
-and the image, Go toolchain and timestamp pins. Each binary entry retains its
-path relative to the sibling `dist` directory and its SHA-256 checksum.
-Shared tool/Python dependency locks remain under `runtime/`; the release pins
-`runtime/tools.lock.json` by checksum, which in turn pins the Python locks.
-Driver and blueprint descriptors retain their independent versions.
+and the image, Go toolchain, Debian snapshot and timestamp pins. Each binary entry
+retains its path relative to the sibling `dist` directory and its SHA-256 checksum.
+The same file contains complete driver definitions, selected blueprint metadata,
+OpenTofu downloads and source pins, and every Python package version, distribution
+hash and source archive. There are no shared release descriptors or dependency
+lock files. Driver and blueprint versions remain independent of the Kit version.
+
+Builds generate pip's `requirements.lock` in a temporary build directory from
+`python_dependencies`; it is not a second source of release metadata. The image
+includes the selected release at `/usr/share/inframill/bundle.lock.json`.
+`python3 scripts/lock-python.py REPORT.json` explicitly updates only the selected
+release's Python pins from a resolved pip report. It rejects an Ansible version
+that differs from `ansible_core`. Normal builds never resolve new versions.
 
 Keep the declared core target aligned, then run `task release:check`, `task build`
 and `task bundle`. Commit the release inputs before publishing with
@@ -119,7 +129,7 @@ The file does not automatically track the sibling project's development version.
 Release descriptors and OCI tags retain their exact version constraints (no build
 metadata suffix).
 
-Existing releases have been migrated from the two-file layout. Previously built
+Existing releases have been migrated to the self-contained layout. Previously built
 images remain unchanged, but their build records contain the old lock checksum.
 Rebuild to a separate `KIT_DIST_DIR` before publishing with the new lock; existing
 outputs are never rewritten by the migration.

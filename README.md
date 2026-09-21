@@ -148,6 +148,8 @@ ARM64 support.
 Keep the Inframill checkout alongside this repository at `../inframill`. Kit imports
 its public driver package through a local Go replacement. Image builds require the
 clean source revision pinned in [the release lock](releases/0.3.0-dev.lock.json).
+Each release file contains all engine, driver, blueprint and tool dependency pins;
+there are no shared release descriptors or dependency locks.
 
 ```sh
 task setup
