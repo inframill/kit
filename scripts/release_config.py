@@ -6,7 +6,9 @@ import re
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-FIXTURES = ROOT / 'tests/fixtures'
+BLUEPRINTS = ROOT / 'blueprints'
+FIXTURES = BLUEPRINTS / 'tests/fixtures'
+BLUEPRINT_PYTHON = BLUEPRINTS / '.venv/bin/python'
 
 
 def project_version():
@@ -62,12 +64,12 @@ def configuration(executable, workspace, tools=None, drivers=None, format='json'
 
 
 def blueprint_root(name):
-    return FIXTURES if (FIXTURES / 'blueprints' / name).is_dir() else ROOT
+    return FIXTURES if (FIXTURES / name).is_dir() else BLUEPRINTS
 
 
 def requirements(name, version):
     root = blueprint_root(name)
-    release = json.loads((root / f'releases/{project_version()}.lock.json').read_text())
+    release = json.loads((root / 'releases.json').read_text())
     return next(b['drivers'] for b in release['blueprints'] if b['name'] == name and b['version'] == version)
 
 
@@ -84,7 +86,7 @@ def local_tools():
 
 def registry_image():
     # Compose is the single source for the disposable registry's image pin too.
-    for line in (ROOT / 'runtime/registry.compose.yaml').read_text().splitlines():
+    for line in (BLUEPRINTS / 'registry.compose.yaml').read_text().splitlines():
         if line.strip().startswith('image:'):
             image = line.split('image:', 1)[1].strip()
             if '@sha256:' not in image:
@@ -99,3 +101,7 @@ def fixture_cases():
 
 def bundle_output():
     return (ROOT / os.environ.get('KIT_DIST_DIR', 'dist')) / 'bundles' / project_version()
+
+
+def blueprint_releases():
+    return json.loads((BLUEPRINTS / 'releases.json').read_text())['blueprints']

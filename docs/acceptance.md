@@ -5,7 +5,28 @@ is pinned to sibling revision `07440bac8583f0b3d0dcce7be0656a8272595c4d`.
 The bundle lock records checksums for all four supplied engine binaries.
 Blueprint and driver versions remain `0.2.0`.
 
-## Self-contained release files
+## Standalone Blueprint subproject
+
+`blueprints/` now owns its release manifest, single Python build/push script,
+Taskfile, dependencies, examples, fixtures, registry configuration and dedicated
+README. It builds independently of Kit and the sibling engine checkout. The
+current Kit release no longer selects blueprint publication; historical locks
+remain unchanged.
+
+Fast checks and detached-project packaging tests passed. A fresh Kit test image
+was built under `.cache/blueprint-refactor/`, and `task check-full
+KIT_DIST_DIR=.cache/blueprint-refactor` passed against a disposable local registry.
+The checks include repeated publication, conflicting tags, native daemon/cache
+workflows, and identical Blueprint artifacts used by Linux ARM64 and emulated
+AMD64 runtimes, including provider mocks and Ansible workflows. No GHCR packages
+were published. Full-check log: `.cache/blueprint-refactor-check.log`.
+
+The Python archive encoding gives pv-cloud 0.2.0 a new OCI digest:
+`sha256:c4fedb716d3d10bf57e075ea336238ed65d6989aa2370235d33350758dfaf960`.
+Previously published tags are not overwritten; publication of changed package
+bytes requires a new blueprint version. Source contents are unchanged.
+
+## Previous self-contained release migration
 
 Each file in `releases/` now contains all release metadata: engine and image pins,
 complete driver definitions, blueprint selections and source digests, OpenTofu

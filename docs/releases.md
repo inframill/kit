@@ -6,7 +6,7 @@ steps. `bundle` is the build task name for the Kit image.
 ## Package and push
 
 ```sh
-task blueprints:package
+task blueprints:build
 task bundle
 
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
@@ -14,14 +14,18 @@ task blueprints:push
 task bundle:push
 ```
 
-To package one blueprint, use `task blueprint:package BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0`.
-Publish it with `task blueprint:push BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0`.
+Blueprint packaging is an independent [subproject](../blueprints/README.md).
+Run `task blueprints:setup PYTHON=python3.14` once to install its dependencies.
+`task blueprints:build` and `task blueprints:push` select every entry in
+`blueprints/releases.json`; `task blueprints:publish` performs both stages.
+Use `-- --name pv-cloud --version 0.2.0` to select one release.
+The Python script runs without Kit's Go tooling or release locks and produces one
+portable OCI source artifact for AMD64 and ARM64.
 
-Builds never push. Push uploads the existing verified OCI bytes and rejects a tag
+Builds never push. Push uploads existing verified OCI bytes and rejects a tag
 pointing to different content. `REGISTRY` and `NAMESPACE` override the defaults;
-`PLAIN_HTTP=true` is available for a local test registry. The selected release's `blueprints` list controls publication; it currently includes
-pv-cloud only. Multi-version local-resource blueprints and synthetic driver factories
-are test fixtures and are not included in the production catalog/release set.
+`PLAIN_HTTP=true` is available for a local test registry. Production selection
+currently includes pv-cloud only. Local-resource variants are isolated fixtures.
 
 `task bundle:push` publishes to `ghcr.io/inframill/kit:<version>` by default.
 GHCR image/package names do not require matching Git repositories. The image
@@ -33,7 +37,7 @@ normal Docker authentication.
 After publication, use the printed immutable digests:
 
 ```sh
-task blueprint:verify BLUEPRINT=pv-cloud REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
+task blueprints:verify BLUEPRINT=pv-cloud REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
 task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ```
 
@@ -77,23 +81,21 @@ value. Image builds, pushes and native engine copies consume the same lock. Run
 `task release:check` to validate the selected release without building or pushing;
 `task check-fast` includes this check.
 
-Blueprint packaging uses the engine target and blueprint metadata from that same
-release. Changing a release file declares compatibility; verify the driver API and run
+Blueprint packaging uses its own `blueprints/releases.json`, including an explicit
+engine compatibility target for each release. Verify driver compatibility and run
 `task check-full` before releasing against a new engine.
 
 Blueprints and drivers use independent versions. The current pv-cloud, OpenTofu
 driver and Ansible driver are `0.2.0`, reflecting the new blueprint and driver contract.
 Production sources and descriptors contain only maintained releases. Git preserves
-retired releases. The `0.1.0` and `0.2.0` versions under `tests/fixtures` exercise
+retired releases. The `0.1.0` and `0.2.0` versions under `blueprints/tests/fixtures` exercise
 multiple versions using the current protocol; they are not historical production releases.
 
 ## Adding releases
 
 New blueprint sources go in `blueprints/<name>/versions/<version>`. Add their
-metadata to the selected release file's `blueprints` list: exact driver requirements,
-platforms, and a sealed source digest obtained with `task blueprint:source-digest`.
-The engine target comes from that same release. This list also selects the
-blueprints for `task blueprints:package` and `task blueprints:push`.
+metadata and sealed source digest to `blueprints/releases.json`, following the
+[Blueprint release instructions](../blueprints/README.md#add-a-release).
 New drivers require both an explicit implementation factory and an entry in the
 release file's `drivers` list; metadata alone never registers code. Locks and
 deterministic source hashes prevent accidental content replacement.
@@ -110,7 +112,7 @@ The file contains one driver selection, the engine version and source revision,
 one `inframill.binaries` map keyed by OS/architecture (for example `linux/amd64`),
 and the image, Go toolchain, Debian snapshot and timestamp pins. Each binary entry
 retains its path relative to the sibling `dist` directory and its SHA-256 checksum.
-The same file contains complete driver definitions, selected blueprint metadata,
+The same file contains complete driver definitions,
 OpenTofu downloads and source pins, and every Python package version, distribution
 hash and source archive. There are no shared release descriptors or dependency
 lock files. Driver and blueprint versions remain independent of the Kit version.

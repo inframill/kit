@@ -162,10 +162,3 @@ func Push(ctx context.Context, layout, version, repository string, plain bool) (
 	}
 	return d, nil
 }
-func BlueprintLayout(root, name, version string) string {
-	d := os.Getenv("KIT_DIST_DIR")
-	if d == "" {
-		d = filepath.Join(root, "dist")
-	}
-	return filepath.Join(d, "blueprints", name, version, "oci")
-}

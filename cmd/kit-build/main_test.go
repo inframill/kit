@@ -12,7 +12,7 @@ func TestReleaseActionsRejectMismatchedLineBeforeEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []string{"build", "bundle:validate", "bundle:push", "inframill:copy", "blueprint:requirements", "blueprint:package", "blueprints:package", "blueprint:push", "blueprints:push"} {
+	for _, action := range []string{"build", "bundle:validate", "bundle:push", "inframill:copy"} {
 		t.Run(action, func(t *testing.T) {
 			root := t.TempDir()
 			for path, data := range map[string]string{

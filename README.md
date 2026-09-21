@@ -148,11 +148,13 @@ ARM64 support.
 Keep the Inframill checkout alongside this repository at `../inframill`. Kit imports
 its public driver package through a local Go replacement. Image builds require the
 clean source revision pinned in [the release lock](releases/0.3.0-dev.lock.json).
-Each release file contains all engine, driver, blueprint and tool dependency pins;
-there are no shared release descriptors or dependency locks.
+Each Kit release file contains engine, driver and tool dependency pins.
+Blueprints are an independent [subproject](blueprints/README.md) with their own
+release metadata, build script, tasks and tests.
 
 ```sh
 task setup
+task blueprints:setup PYTHON=python3.14
 task build
 task inframill:copy
 task check-fast
@@ -172,7 +174,7 @@ binaries and copies them directly; it compiles only its own driver executable.
 ## Build and publish
 
 ```sh
-task blueprints:package
+task blueprints:build
 task bundle
 
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
@@ -182,14 +184,15 @@ task bundle:push
 
 These publish pv-cloud to `ghcr.io/inframill/blueprints/pv-cloud:0.2.0` and the Kit
 image to `ghcr.io/inframill/kit:0.3.0-dev`. Builds never push automatically.
-See [releases](docs/releases.md) for individual packages, registry overrides,
-verification and adding versions.
+See the [Blueprint README](blueprints/README.md) for standalone commands,
+`publish` (build all, then push all), registry options and adding blueprint versions.
+See [releases](docs/releases.md) for Kit publication.
 
 ## Verification
 
 ```sh
 task check-fast
-task blueprint:check BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0
+task blueprints:check BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0
 task bundle                 # build once before full verification
 task check-full
 ```

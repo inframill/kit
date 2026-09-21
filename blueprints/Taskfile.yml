@@ -1,0 +1,55 @@
+version: '3'
+
+vars:
+  PYTHON: '{{default "python3" .PYTHON}}'
+  BUILD_PYTHON: '{{.TASKFILE_DIR}}/.venv/bin/python'
+
+tasks:
+  default:
+    desc: Show blueprint subproject commands
+    cmds: ['task --list']
+  setup:
+    desc: Install blueprint build dependencies in the local .venv
+    cmds:
+      - '{{.PYTHON}} -m venv .venv'
+      - '{{.BUILD_PYTHON}} -m pip install -r requirements.txt'
+  build:
+    aliases: [package]
+    desc: Build all releases as architecture-independent OCI artifacts
+    cmds: ['{{.BUILD_PYTHON}} build.py build {{.CLI_ARGS}}']
+  push:
+    desc: Push all existing packages; reject conflicting version tags
+    cmds: ['{{.BUILD_PYTHON}} build.py push {{.CLI_ARGS}}']
+  publish:
+    desc: Build all releases, then push all packages
+    cmds: ['{{.BUILD_PYTHON}} build.py publish {{.CLI_ARGS}}']
+  list:
+    desc: List the independently versioned blueprint releases
+    cmds: ['{{.BUILD_PYTHON}} build.py list {{.CLI_ARGS}}']
+  source-digest:
+    desc: Print the sealed digest (-- --name NAME --version VERSION)
+    cmds: ['{{.BUILD_PYTHON}} build.py source-digest {{.CLI_ARGS}}']
+  test:
+    desc: Test packaging and publication against an in-process registry
+    cmds: ['{{.BUILD_PYTHON}} -m unittest discover -s tests -p "test_*.py"']
+  check:
+    desc: Check a blueprint through Kit and a disposable registry (requires parent Kit setup)
+    env:
+      BLUEPRINT: '{{default "pv-cloud" .BLUEPRINT}}'
+      BLUEPRINT_VERSION: '{{default "0.2.0" .BLUEPRINT_VERSION}}'
+    dir: '{{.TASKFILE_DIR}}/..'
+    cmds: ['python3 scripts/check.py blueprint:check']
+  verify:
+    desc: Verify a published digest through Kit (requires parent Kit setup and REFERENCE)
+    env:
+      BLUEPRINT: '{{default "pv-cloud" .BLUEPRINT}}'
+      BLUEPRINT_VERSION: '{{default "0.2.0" .BLUEPRINT_VERSION}}'
+      REFERENCE: '{{.REFERENCE}}'
+    dir: '{{.TASKFILE_DIR}}/..'
+    cmds: ['python3 scripts/check.py blueprint:verify']
+  registry:up:
+    desc: Start a local registry for manual publication checks
+    cmds: ['docker compose -f registry.compose.yaml up -d']
+  registry:down:
+    desc: Stop the local registry
+    cmds: ['docker compose -f registry.compose.yaml down']

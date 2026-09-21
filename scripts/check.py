@@ -18,7 +18,8 @@ from daemon_check import daemon_check
 from engine_client import Engine
 from image_check import image_check
 from release_config import (ROOT, FIXTURES, local_tools, configuration, blueprint_root,
-                            driver_ids, fixture_cases, registry_image, bundle_output, bundle_lock)
+                            driver_ids, fixture_cases, registry_image, bundle_output, bundle_lock,
+                            BLUEPRINTS, BLUEPRINT_PYTHON, blueprint_releases)
 
 
 def run(args, **kwargs):
@@ -64,10 +65,10 @@ def registry_env(tmp, address):
 
 
 def publish(name, version, env):
-    selection = {**env, 'BLUEPRINT_ROOT': str(blueprint_root(name)),
-                 'BLUEPRINT': name, 'BLUEPRINT_VERSION': version}
-    for action in ['blueprint:package', 'blueprint:push', 'blueprint:push']:
-        run(['go', 'run', './cmd/kit-build', action], cwd=ROOT, env=selection)
+    for action in ['build', 'push', 'push']:
+        run([BLUEPRINT_PYTHON, BLUEPRINTS / 'build.py', action,
+             '--root', blueprint_root(name), '--name', name, '--version', version,
+             '--dist', pathlib.Path(env['KIT_DIST_DIR']) / 'blueprints'], cwd=ROOT, env=env)
 
 
 def local_flow(client, version, reference, name=None, fetch=True):
@@ -99,7 +100,7 @@ def pv_flow(client, reference):
     ids = driver_ids('pv-cloud', '0.2.0')
     instances = []
     for suffix in ['arm64', 'amd64', '0.2.0']:
-        values = json.loads((ROOT / f'examples/pv-cloud-{suffix}.json').read_text())
+        values = json.loads((BLUEPRINTS / f'examples/pv-cloud-{suffix}.json').read_text())
         iid = client.initialize('test/pv-' + suffix.replace('.', '-'), reference, values)
         instances.append(iid)
         client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
@@ -188,8 +189,9 @@ def container_checks(tmp, network, env):
                  '--network', network, '-e', 'KIT_TEST_REGISTRY=registry:5000',
                  '-e', 'KIT_TEST_FIXTURES=' + json.dumps([
                      {**case, 'drivers': driver_ids(case['name'], case['version'])} for case in fixture_cases()]),
+                 '--env', 'KIT_TEST_BLUEPRINTS=' + json.dumps(blueprint_releases()),
                  '--mount', 'type=bind,src=' + str(ROOT / 'scripts') + ',dst=/verify,readonly',
-                 '--mount', 'type=bind,src=' + str(ROOT / 'examples/pv-cloud-0.2.0.json') + ',dst=/pv-example.json,readonly',
+                 '--mount', 'type=bind,src=' + str(BLUEPRINTS / 'examples/pv-cloud-0.2.0.json') + ',dst=/pv-example.json,readonly',
                  '--entrypoint', python, image, '/verify/runtime-smoke.py'])
     finally:
         subprocess.run(['docker', 'image', 'rm', image], stdout=subprocess.DEVNULL, check=False)
@@ -200,7 +202,7 @@ def registry_check():
     with registry() as (address, network), tempfile.TemporaryDirectory(prefix='kit-registry-') as td:
         tmp = pathlib.Path(td)
         env = registry_env(tmp, address)
-        cases = fixture_cases() + [{'name': b['name'], 'version': b['version']} for b in bundle_lock()['blueprints']]
+        cases = fixture_cases() + [{'name': b['name'], 'version': b['version']} for b in blueprint_releases()]
         for case in cases:
             publish(case['name'], case['version'], env)
         with engine(tmp / 'workflows', env) as client:
@@ -215,10 +217,14 @@ def registry_check():
         for descriptor in index['manifests']:
             descriptor.setdefault('annotations', {})['org.opencontainers.image.ref.name'] = '0.1.0'
         index_path.write_text(json.dumps(index))
-        rejected = subprocess.run(['go', 'run', './cmd/kit-build', 'blueprint:push'], cwd=ROOT,
-                                  env={**env, 'KIT_DIST_DIR': str(tmp / 'conflict'),
-                                       'BLUEPRINT': 'local-resource', 'BLUEPRINT_VERSION': '0.1.0'},
-                                  text=True, capture_output=True)
+        record_path = conflict / 'build.json'
+        record = json.loads(record_path.read_text())
+        record['release'] = json.loads((FIXTURES / 'releases.json').read_text())['blueprints'][0]
+        record_path.write_text(json.dumps(record))
+        rejected = subprocess.run([str(BLUEPRINT_PYTHON), str(BLUEPRINTS / 'build.py'), 'push',
+                                   '--root', str(FIXTURES), '--dist', str(tmp / 'conflict/blueprints'),
+                                   '--name', 'local-resource', '--version', '0.1.0'], cwd=ROOT,
+                                  env=env, text=True, capture_output=True)
         if rejected.returncode == 0 or 'release tag already points to different content' not in rejected.stderr:
             raise RuntimeError('Conflicting release tag was not rejected: ' + rejected.stderr)
         cache_check(tmp, address, env)
@@ -266,9 +272,8 @@ def main():
             raise RuntimeError('REFERENCE must be digest-pinned')
         name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0')
         values = json.loads((blueprint_root(name) / f'examples/{name}-{version}.json').read_text())
-        release = json.loads(run(['go', 'run', './cmd/kit-build', 'blueprint:requirements'],
-                                 cwd=ROOT, capture_output=True,
-                                 env={**os.environ, 'BLUEPRINT_ROOT': str(blueprint_root(name))}).stdout)
+        release = next(b for b in json.loads((blueprint_root(name) / 'releases.json').read_text())['blueprints']
+                       if b['name'] == name and b['version'] == version)
         candidates = [d['id'] for d in release['drivers'] if d['name'] == 'ansible']
         if len(candidates) != 1:
             raise RuntimeError('Verification requires a fixture selecting one Ansible driver')

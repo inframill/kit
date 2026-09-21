@@ -30,12 +30,12 @@ type KitRelease struct {
 			SHA256 string `json:"sha256"`
 		} `json:"binaries"`
 	} `json:"inframill"`
-	Blueprints         []BlueprintRelease `json:"blueprints"`
-	OpenTofu           json.RawMessage    `json:"opentofu"`
-	AnsibleCore        string             `json:"ansible_core"`
-	Python             string             `json:"python"`
-	PythonDependencies json.RawMessage    `json:"python_dependencies"`
-	DebianSnapshot     string             `json:"debian_snapshot"`
+	Blueprints         json.RawMessage `json:"blueprints,omitempty"`
+	OpenTofu           json.RawMessage `json:"opentofu"`
+	AnsibleCore        string          `json:"ansible_core"`
+	Python             string          `json:"python"`
+	PythonDependencies json.RawMessage `json:"python_dependencies"`
+	DebianSnapshot     string          `json:"debian_snapshot"`
 	raw                []byte
 }
 
@@ -85,7 +85,7 @@ func readKitRelease(root, version string) (KitRelease, error) {
 }
 
 // EngineVersion uses the Kit release selected by VERSION, never the sibling checkout.
-// Blueprint fixtures may have their own source root and extra test drivers.
+// Historical locks may retain their former blueprint selections.
 func EngineVersion(root string) (string, error) {
 	version, err := ProjectVersion(root)
 	if err != nil {

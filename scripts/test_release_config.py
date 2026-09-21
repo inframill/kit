@@ -81,7 +81,7 @@ class ReleaseConfigTests(unittest.TestCase):
                 runpy.run_path(str(script), run_name='__main__')
             updated = json.loads(path.read_text())
             self.assertEqual(updated['python_dependencies'][0]['version'], '2.21.0')
-            self.assertEqual(updated['blueprints'], lock['blueprints'])
+            self.assertNotIn('blueprints', updated)
             self.assertEqual(list(root.glob('runtime/*')), [])
 
     def test_fixture_blueprint_versions_select_real_driver_requirements(self):

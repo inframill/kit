@@ -49,19 +49,21 @@ not require node artifacts; check mode reports prediction.
 ## Versions and publication
 
 The root `VERSION` selects one self-contained `releases/<version>.lock.json`,
-which declares the exact Inframill target, drivers, blueprints and dependency pins. Kit and engine must share major/minor; patches and prereleases
+which declares the exact Inframill target, drivers and dependency pins. Kit and engine must share major/minor; patches and prereleases
 can differ. The image shares Kit's exact version and its lock must pin the declared
 engine target. The sibling checkout does not select either release version.
 
 The current catalog contains OpenTofu and Ansible 0.2.0. Explicit factories select
 code; the embedded selected release supplies versions/tool pins. Synthetic test factories
 have different settings and argument contracts to exercise future version coexistence.
-The release's blueprint list contains pv-cloud; local-resource variants are fixtures.
-
-A blueprint entry inherits the release's engine target and pins configured driver requirements.
-Packaging validates the unified blueprint definition and each implementation's settings,
-required settings templates, Values schema and the sealed source layer. OCI sources
-are architecture-independent; Kit image indices contain both Linux architectures.
+Blueprints are a standalone subproject under `blueprints/`. Its `releases.json`
+selects production packages independently of Kit's version and declares each
+blueprint's engine and driver requirements. Fixtures, examples, registry config,
+tasks and packaging tests live in that subproject too. One Python script validates
+source metadata, offline schemas, driver requirement agreement and source seals,
+then builds and pushes OCI packages. Driver implementation validation remains in
+Kit's engine integration checks. OCI sources are architecture-independent; Kit
+image indices contain both Linux architectures.
 
 Image assembly verifies the clean sibling source revision before compiling Kit,
 then copies checksum/architecture-verified core binaries from the versioned sibling

@@ -1,8 +1,5 @@
 {
-  "version": "0.3.0-dev",
-  "inframill": {
-    "version": "0.3.0-dev"
-  },
+  "schema": 1,
   "blueprints": [
     {
       "name": "local-resource",
@@ -29,7 +26,8 @@
         }
       ],
       "status": "supported",
-      "source_sha256": "sha256:f4b5e19c76a07aab1b9a194335b5077ed0c115e4445870db49c56cd771b681af"
+      "source_sha256": "sha256:1675597b292952c446e95fc8d3b31a109ead76dca8f62ff33877a732f79d7d51",
+      "inframill_version": "0.3.0-dev"
     },
     {
       "name": "local-resource",
@@ -56,7 +54,8 @@
         }
       ],
       "status": "supported",
-      "source_sha256": "sha256:a004352fe9a9b4c99de62849cdfd84940ce3898e8e442a7e552c5cde42419c23"
+      "source_sha256": "sha256:7799a8dcbd81880a31c7e9aaa9331b003c75acac17a1c43dbb2a0dab6a1586cb",
+      "inframill_version": "0.3.0-dev"
     }
   ]
 }

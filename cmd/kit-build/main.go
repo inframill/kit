@@ -21,7 +21,6 @@ import (
 
 	"github.com/inframill/kit/internal/catalog"
 	"github.com/inframill/kit/internal/packaging"
-	"github.com/opencontainers/go-digest"
 )
 
 func main() {
@@ -54,8 +53,7 @@ func run() error {
 	}
 	ctx := context.Background()
 	action := os.Args[1]
-	name := os.Getenv("BLUEPRINT")
-	version := env("BLUEPRINT_VERSION", "0.2.0")
+	version := "0.2.0"
 	if action == "build" || action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
 		version, e = packaging.ProjectVersion(root)
 		if e != nil {
@@ -67,17 +65,6 @@ func run() error {
 	plain := os.Getenv("PLAIN_HTTP") == "true"
 	if !catalog.ValidVersion(version) || !catalog.ValidName(ns) {
 		return errors.New("invalid exact version or namespace")
-	}
-	var kitVersion string
-	if action == "blueprint:requirements" || action == "blueprint:package" || action == "blueprints:package" || action == "blueprint:push" || action == "blueprints:push" {
-		kitVersion, e = packaging.ProjectVersion(root)
-		if e != nil {
-			return e
-		}
-		_, e = packaging.EngineVersion(root)
-		if e != nil {
-			return e
-		}
 	}
 	switch action {
 	case "build":
@@ -191,70 +178,6 @@ func run() error {
 		default:
 			return errors.New("CONFIG_FORMAT must be json or yaml")
 		}
-	case "blueprint:requirements":
-		release, _, err := packaging.Blueprint(blueprintRoot(root), name, version, kitVersion)
-		if err != nil {
-			return err
-		}
-		return json.NewEncoder(os.Stdout).Encode(release)
-	case "blueprint:source-digest":
-		if !catalog.ValidName(name) {
-			return errors.New("invalid blueprint name")
-		}
-		b, e := packaging.Archive(filepath.Join(blueprintRoot(root), "blueprints", name, "versions", version))
-		if e != nil {
-			return e
-		}
-		fmt.Println(digest.FromBytes(b))
-		return nil
-	case "blueprint:package":
-		d, e := packaging.Package(ctx, blueprintRoot(root), name, version, kitVersion)
-		if e != nil {
-			return e
-		}
-		fmt.Println(d.Digest)
-		return nil
-	case "blueprint:push":
-		if !catalog.ValidName(name) {
-			return errors.New("invalid blueprint name")
-		}
-		repo := registry + "/" + ns + "/blueprints/" + name
-		d, e := packaging.Push(ctx, packaging.BlueprintLayout(blueprintRoot(root), name, version), version, repo, plain)
-		if e != nil {
-			return e
-		}
-		fmt.Println(repo + "@" + d.Digest.String())
-		return nil
-	case "blueprints:package", "blueprints:push":
-		selections, err := packaging.Kit(root, kitVersion)
-		if err != nil {
-			return err
-		}
-		var failures []error
-		for _, s := range selections.Blueprints {
-			if !catalog.ValidName(s.Name) || !catalog.ValidVersion(s.Version) {
-				return errors.New("invalid release selection")
-			}
-			if action == "blueprints:package" {
-				d, e := packaging.Package(ctx, blueprintRoot(root), s.Name, s.Version, kitVersion)
-				if e != nil {
-					failures = append(failures, e)
-					fmt.Fprintln(os.Stderr, s.Name, s.Version, e)
-				} else {
-					fmt.Println(s.Name, s.Version, d.Digest)
-				}
-			} else {
-				repo := registry + "/" + ns + "/blueprints/" + s.Name
-				d, e := packaging.Push(ctx, packaging.BlueprintLayout(blueprintRoot(root), s.Name, s.Version), s.Version, repo, plain)
-				if e != nil {
-					failures = append(failures, e)
-					fmt.Fprintln(os.Stderr, s.Name, s.Version, e)
-				} else {
-					fmt.Println(repo + "@" + d.Digest.String())
-				}
-			}
-		}
-		return errors.Join(failures...)
 	case "bundle:validate":
 		_, e := packaging.Bundle(root, version)
 		return e
@@ -287,6 +210,3 @@ func run() error {
 	}
 	return errors.New("unknown build action")
 }
-
-// Test fixtures use the same packaging contract with an explicit source root.
-func blueprintRoot(root string) string { return env("BLUEPRINT_ROOT", root) }

@@ -38,7 +38,7 @@ Initialization validates Values and renders files without executing a driver:
 bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0
 bin/inframill server instance init production/example \
   --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
-  --values-file examples/pv-cloud-0.2.0.json
+  --values-file blueprints/examples/pv-cloud-0.2.0.json
 bin/inframill server secret replace production --file /private/path/secrets.json
 bin/inframill server instance exec production/example opentofu-0-2-0.init --wait
 ```
@@ -51,7 +51,7 @@ or timing out a client wait does not cancel admitted work or roll back tool effe
 Creation inputs are immutable; use a new Instance name to change them.
 
 Blueprints are fetched through OCI. To check unpublished sources, run
-`task blueprint:check BLUEPRINT=pv-cloud`: it packages them into a disposable local
+`task blueprints:check BLUEPRINT=pv-cloud`: it packages them into a disposable local
 registry, starts a daemon, renders examples, checks Ansible syntax and runs OpenTofu
 provider mocks. Docker and the installed local tools are required.
 
