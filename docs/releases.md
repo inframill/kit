@@ -67,12 +67,13 @@ The bundle lock always pins the exact engine version and binary checksums.
 Development tags are also immutable here: changed binary bytes require a new
 version/tag, such as `0.3.0-dev.1`, rather than overwriting a published `0.3.0-dev`.
 
-The root `VERSION` selects `releases/kits/<version>.yaml`, whose `inframill_version`
-declares the exact engine target. There is no separate engine version constant in
-Go. Standalone Kit builds reject a different major/minor version from this target.
+The root `VERSION` selects one file, `releases/<version>.lock.json`, for both Kit
+and its image. Its `inframill.version` declares the exact engine target. There is
+no separate engine version constant in Go. Standalone Kit builds reject a
+different major/minor version from this target.
 For example, Kit `0.2.3` may target Inframill `0.2.1`, but cannot target `0.3.0`.
-Image builds, pushes and native engine copies additionally require the image and
-Kit versions to match exactly, and the locked engine to equal Kit's declared target. Run
+The release's `version` must match `VERSION`; Kit and the image use that same
+value. Image builds, pushes and native engine copies consume the same lock. Run
 `task release:check` to validate the selected release without building or pushing;
 `task check-fast` includes this check.
 
@@ -102,14 +103,26 @@ reject before building. `VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` task argum
 or environment values cannot override it. Direct `go build` uses `0.3.0-dev`;
 `task build` embeds the file's value.
 
-To prepare a Kit release, edit `VERSION` and add matching
-`releases/kits/<version>.yaml` and `releases/bundles/<version>.lock.yaml` files.
+To prepare a Kit release, edit `VERSION` and add `releases/<version>.lock.json`.
+The file contains one driver selection, the engine version and source revision,
+one `inframill.binaries` map keyed by OS/architecture (for example `linux/amd64`),
+and the image, Go toolchain and timestamp pins. Each binary entry retains its
+path relative to the sibling `dist` directory and its SHA-256 checksum.
+Shared tool/Python dependency locks remain under `runtime/`; the release pins
+`runtime/tools.lock.json` by checksum, which in turn pins the Python locks.
+Driver and blueprint descriptors retain their independent versions.
+
 Keep the declared core target aligned, then run `task release:check`, `task build`
 and `task bundle`. Commit the release inputs before publishing with
 `task bundle:push`. Builds never rewrite `VERSION`, infer a Git version or publish.
 The file does not automatically track the sibling project's development version.
 Release descriptors and OCI tags retain their exact version constraints (no build
 metadata suffix).
+
+Existing releases have been migrated from the two-file layout. Previously built
+images remain unchanged, but their build records contain the old lock checksum.
+Rebuild to a separate `KIT_DIST_DIR` before publishing with the new lock; existing
+outputs are never rewritten by the migration.
 
 | Variable | Selects | Default |
 | --- | --- | --- |

@@ -17,7 +17,9 @@ def bundle_lock(version=None):
     version = version or project_version()
     if '/' in version or version in ('', '.', '..'):
         raise ValueError('Invalid bundle version')
-    lock = json.loads((ROOT / f'releases/bundles/{version}.lock.yaml').read_text())
+    lock = json.loads((ROOT / f'releases/{version}.lock.json').read_text())
+    if lock['version'] != version:
+        raise ValueError('Release lock identity mismatch')
     path = pathlib.PurePosixPath(lock['toolchain']['path'])
     if path.is_absolute() or '..' in path.parts:
         raise ValueError('Toolchain path must be local')

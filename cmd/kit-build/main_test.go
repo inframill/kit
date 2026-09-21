@@ -16,10 +16,9 @@ func TestReleaseActionsRejectMismatchedLineBeforeEffects(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			root := t.TempDir()
 			for path, data := range map[string]string{
-				"scripts/read-version.sh":          string(script),
-				"VERSION":                          "0.7.1\n",
-				"releases/kits/0.7.1.yaml":         `{"version":"0.7.1","inframill_version":"0.6.2"}`,
-				"releases/bundles/0.7.1.lock.yaml": `{"version":"0.7.1","kit_version":"0.7.1","inframill":{"version":"0.6.2"}}`,
+				"scripts/read-version.sh":  string(script),
+				"VERSION":                  "0.7.1\n",
+				"releases/0.7.1.lock.json": `{"version":"0.7.1","inframill":{"version":"0.6.2"}}`,
 			} {
 				path = filepath.Join(root, path)
 				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

@@ -1,9 +1,11 @@
 package packaging
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,9 +15,26 @@ import (
 )
 
 type KitRelease struct {
-	Version          string            `yaml:"version"`
-	InframillVersion string            `yaml:"inframill_version"`
-	Drivers          []catalog.Release `yaml:"drivers"`
+	Version             string            `json:"version"`
+	Drivers             []catalog.Release `json:"drivers"`
+	Platforms           []string          `json:"platforms"`
+	BaseImage           string            `json:"base_image"`
+	BasePlatformDigests map[string]string `json:"base_platform_digests"`
+	SourceDateEpoch     int64             `json:"source_date_epoch"`
+	GoVersion           string            `json:"go_version"`
+	Inframill           struct {
+		Version  string `json:"version"`
+		Revision string `json:"revision"`
+		Binaries map[string]struct {
+			Path   string `json:"path"`
+			SHA256 string `json:"sha256"`
+		} `json:"binaries"`
+	} `json:"inframill"`
+	Toolchain struct {
+		Path   string `json:"path"`
+		SHA256 string `json:"sha256"`
+	} `json:"toolchain"`
+	raw []byte
 }
 
 // ProjectVersion reads the authoritative VERSION file using the shared validator.
@@ -36,19 +55,29 @@ func readKitRelease(root, version string) (KitRelease, error) {
 	if !catalog.ValidVersion(version) {
 		return release, errors.New("exact Kit SemVer required")
 	}
-	if err := ReadYAML(filepath.Join(root, "releases/kits", version+".yaml"), &release); err != nil {
+	data, err := os.ReadFile(filepath.Join(root, "releases", version+".lock.json"))
+	if err != nil {
 		return release, err
 	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&release); err != nil {
+		return release, err
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return release, errors.New("expected one JSON release document")
+	}
+	release.raw = data
 	if release.Version != version {
 		return release, errors.New("Kit release identity differs from selected version")
 	}
-	if !catalog.ValidVersion(release.InframillVersion) {
+	if !catalog.ValidVersion(release.Inframill.Version) {
 		return release, errors.New("exact Inframill SemVer required in Kit release")
 	}
 	kitParts := strings.Split(version, ".")
-	coreParts := strings.Split(release.InframillVersion, ".")
+	coreParts := strings.Split(release.Inframill.Version, ".")
 	if kitParts[0] != coreParts[0] || kitParts[1] != coreParts[1] {
-		return release, fmt.Errorf("Kit %s must match Inframill %s major/minor version", version, release.InframillVersion)
+		return release, fmt.Errorf("Kit %s must match Inframill %s major/minor version", version, release.Inframill.Version)
 	}
 	return release, nil
 }
@@ -61,7 +90,7 @@ func EngineVersion(root string) (string, error) {
 		return "", err
 	}
 	release, err := readKitRelease(root, version)
-	return release.InframillVersion, err
+	return release.Inframill.Version, err
 }
 
 // Kit validates the declared engine target and compiled driver catalog.
@@ -90,32 +119,9 @@ func Kit(root, version string) (KitRelease, error) {
 // Bundle validates the image identity before build, native copy or publication.
 // It returns the original lock bytes so publication can verify the build's pin.
 func Bundle(root, version string) ([]byte, error) {
-	if !catalog.ValidVersion(version) {
-		return nil, errors.New("exact bundle SemVer required")
-	}
-	data, err := os.ReadFile(filepath.Join(root, "releases/bundles", version+".lock.yaml"))
+	release, err := Kit(root, version)
 	if err != nil {
 		return nil, err
 	}
-	var lock struct {
-		Version    string `json:"version"`
-		KitVersion string `json:"kit_version"`
-		Inframill  struct {
-			Version string `json:"version"`
-		} `json:"inframill"`
-	}
-	if err = json.Unmarshal(data, &lock); err != nil {
-		return nil, err
-	}
-	if lock.Version != version || lock.KitVersion != version {
-		return nil, errors.New("bundle, Kit and selected release versions must match exactly")
-	}
-	kit, err := Kit(root, lock.KitVersion)
-	if err != nil {
-		return nil, err
-	}
-	if lock.Inframill.Version != kit.InframillVersion {
-		return nil, errors.New("bundle Inframill version differs from Kit target")
-	}
-	return data, nil
+	return release.raw, nil
 }

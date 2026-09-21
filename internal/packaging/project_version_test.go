@@ -15,8 +15,8 @@ func TestEngineVersionUsesSelectedDescriptor(t *testing.T) {
 	}
 	for path, data := range map[string]string{
 		"scripts/read-version.sh":  string(script),
-		"releases/kits/2.9.3.yaml": `{"version":"2.9.3","inframill_version":"2.9.7-rc.1"}`,
-		"releases/kits/3.1.2.yaml": `{"version":"3.1.2","inframill_version":"3.1.0"}`,
+		"releases/2.9.3.lock.json": `{"version":"2.9.3","inframill":{"version":"2.9.7-rc.1"}}`,
+		"releases/3.1.2.lock.json": `{"version":"3.1.2","inframill":{"version":"3.1.0"}}`,
 	} {
 		path = filepath.Join(root, path)
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

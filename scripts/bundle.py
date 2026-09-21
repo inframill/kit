@@ -9,12 +9,11 @@ version=project_version()
 image_reference=os.environ.get('REGISTRY','ghcr.io')+'/'+os.environ.get('NAMESPACE','inframill')+'/kit:'+version
 if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?',version):raise SystemExit('Exact bundle SemVer required')
 subprocess.run(['go','run','./cmd/kit-build','bundle:validate'],cwd=ROOT,check=True)
-lock_path=ROOT/f'releases/bundles/{version}.lock.yaml';lock=bundle_lock(version)
+lock_path=ROOT/f'releases/{version}.lock.json';lock=bundle_lock(version)
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
 source_revision=verify_source(ROOT,lock['inframill']['revision'])
 inframill_dist=(ROOT/os.environ.get('INFRAMILL_DIST_DIR','../inframill/dist')).resolve()
-inputs=lock['inframill']['binaries']
-if set(inputs)!={'amd64','arm64'}:raise SystemExit('Both prebuilt Inframill architectures required')
+inputs={arch:lock['inframill']['binaries']['linux/'+arch] for arch in ['amd64','arm64']}
 try:
     inframill_binaries={arch:read_binary(inframill_dist,inputs[arch],arch) for arch in ['amd64','arm64']}
 except (ValueError,OSError) as error:raise SystemExit(str(error))
@@ -23,9 +22,6 @@ if set(lock['platforms'])!={'linux/amd64','linux/arm64'}:raise SystemExit('Both 
 # Check the declared components against the executable that will be shipped.
 compiled=json.loads(subprocess.check_output(['go','run','./cmd/inframill-kit','drivers','list'],cwd=ROOT,text=True))
 catalog={(d['name'],d['version']):d['tool_version'] for d in compiled}
-kit=json.loads((ROOT/f"releases/kits/{lock['kit_version']}.yaml").read_text())
-if kit['inframill_version']!=lock['inframill']['version']:raise SystemExit('Kit/core version mismatch')
-if kit['version']!=lock['kit_version'] or {(d['name'],d['version']) for d in kit['drivers']}!=set(catalog):raise SystemExit('Kit release differs from compiled catalog')
 selected=set()
 for driver in lock['drivers']:
     key=(driver['name'],driver['version'])
@@ -35,7 +31,7 @@ for driver in lock['drivers']:
     installed={'opentofu':lock['opentofu']['version'],'ansible':lock['ansible_core']}.get(key[0])
     if release['name']!=key[0] or release['version']!=key[1] or release['tool_version']!=catalog[key] or installed!=catalog[key]:raise SystemExit('Driver/tool lock mismatch')
     if release['protocol']!=1 or set(release['platforms'])!=set(lock['platforms']):raise SystemExit('Driver platform/protocol mismatch')
-if not selected:raise SystemExit('Bundle must select at least one driver')
+if selected!=set(catalog):raise SystemExit('Release drivers differ from compiled catalog')
 output=(ROOT/os.environ.get('KIT_DIST_DIR','dist'))/f'bundles/{version}'
 if output.exists():raise SystemExit('Bundle output already exists; push it or select a new version. Explicitly move development output aside before rebuilding.')
 output.parent.mkdir(parents=True,exist_ok=True)
@@ -63,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     for arch in ['amd64','arm64']:
         bindir=context/f'bin/linux/{arch}';bindir.mkdir(parents=True)
         env={**os.environ,'GOOS':'linux','GOARCH':arch,'CGO_ENABLED':'0'}
-        run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['kit_version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
+        run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
         (bindir/'inframill').write_bytes(inframill_binaries[arch])
         (bindir/'inframill').chmod(0o755)
     shutil.copy2(ROOT/'runtime/inframill.yaml',context/'inframill.yaml')

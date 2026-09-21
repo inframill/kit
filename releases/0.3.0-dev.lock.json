@@ -1,6 +1,5 @@
 {
   "version": "0.3.0-dev",
-  "kit_version": "0.3.0-dev",
   "platforms": [
     "linux/amd64",
     "linux/arm64"
@@ -26,16 +25,6 @@
     "version": "0.3.0-dev",
     "revision": "07440bac8583f0b3d0dcce7be0656a8272595c4d",
     "binaries": {
-      "amd64": {
-        "path": "0.3.0-dev/inframill_0.3.0-dev_linux_amd64",
-        "sha256": "7c4995f8a3b0267e6e5fa555a4c9d37c68be95fe21a1f676fb9ed6a3e03b9b9c"
-      },
-      "arm64": {
-        "path": "0.3.0-dev/inframill_0.3.0-dev_linux_arm64",
-        "sha256": "9a76c8c8127cd260fce0941e1dee01b5eedef568330c11caac18c5c223c92175"
-      }
-    },
-    "native_binaries": {
       "darwin/amd64": {
         "path": "0.3.0-dev/inframill_0.3.0-dev_darwin_amd64",
         "sha256": "c5fd8d6cf37129d494db236d5932bd20b7099ff2f960cd797de0fe49c2a296f9"

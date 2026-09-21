@@ -82,7 +82,7 @@ tasks:
       - task: inframill:copy
       - python3 scripts/check.py full
   release:check:
-    desc: Enforce Kit/core major-minor alignment and exact Kit/image version matching
+    desc: Validate the selected release identity, engine version and driver catalog
     cmds: ['go run ./cmd/kit-build bundle:validate']
   driver:check:
     desc: Check discovery and tests for DRIVER=opentofu|ansible (DRIVER_VERSION)

@@ -90,15 +90,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		var lock struct {
-			Inframill struct {
-				Version  string `json:"version"`
-				Binaries map[string]struct {
-					Path   string `json:"path"`
-					SHA256 string `json:"sha256"`
-				} `json:"native_binaries"`
-			} `json:"inframill"`
-		}
+		var lock packaging.KitRelease
 		if err = json.Unmarshal(lockBytes, &lock); err != nil {
 			return err
 		}

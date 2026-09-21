@@ -147,7 +147,7 @@ ARM64 support.
 
 Keep the Inframill checkout alongside this repository at `../inframill`. Kit imports
 its public driver package through a local Go replacement. Image builds require the
-clean source revision pinned in [the bundle lock](releases/bundles/0.3.0-dev.lock.yaml).
+clean source revision pinned in [the release lock](releases/0.3.0-dev.lock.json).
 
 ```sh
 task setup

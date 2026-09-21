@@ -15,15 +15,26 @@ class ReleaseConfigTests(unittest.TestCase):
         self.assertIn('linux/arm64', lock['opentofu']['assets'])
         self.assertIn('linux/amd64', lock['opentofu']['assets'])
         self.assertEqual({d['version'] for d in lock['drivers']}, {'0.2.0'})
+        self.assertEqual(set(lock['inframill']['binaries']),
+                         {'linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64'})
+
+    def test_rejects_mismatched_release_identity(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            (root/'releases').mkdir()
+            (root/'releases/0.5.0.lock.json').write_text('{"version":"0.5.1"}')
+            with patch.object(release_config, 'ROOT', root):
+                with self.assertRaisesRegex(ValueError, 'identity mismatch'):
+                    release_config.bundle_lock('0.5.0')
 
     def test_toolchain_changes_require_a_new_pin(self):
         with tempfile.TemporaryDirectory() as td:
             root = pathlib.Path(td)
-            (root/'releases/bundles').mkdir(parents=True)
+            (root/'releases').mkdir(parents=True)
             data = b'{}'
             (root/'tools.json').write_bytes(data+b' ')
-            lock = {'toolchain': {'path': 'tools.json', 'sha256': hashlib.sha256(data).hexdigest()}}
-            (root/'releases/bundles/0.5.0-dev.lock.yaml').write_text(json.dumps(lock))
+            lock = {'version': '0.5.0-dev', 'toolchain': {'path': 'tools.json', 'sha256': hashlib.sha256(data).hexdigest()}}
+            (root/'releases/0.5.0-dev.lock.json').write_text(json.dumps(lock))
             with patch.object(release_config, 'ROOT', root):
                 with self.assertRaisesRegex(ValueError, 'Toolchain lock checksum'):
                     release_config.bundle_lock('0.5.0-dev')

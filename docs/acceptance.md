@@ -5,7 +5,27 @@ is pinned to sibling revision `07440bac8583f0b3d0dcce7be0656a8272595c4d`.
 The bundle lock records checksums for all four supplied engine binaries.
 Blueprint and driver versions remain `0.2.0`.
 
-## Kit 0.3.0-dev release verification
+## Single-file release migration
+
+Kit `0.2.0-dev`, `0.2.1-dev` and `0.3.0-dev` now each use
+`releases/<version>.lock.json`. The migration preserves every dependency selection,
+binary path and checksum, with one version, driver selection and engine binary map.
+
+`task check-fast`, the native engine copy, both image builds and `task check-full`
+passed. Full checks covered the consolidated lock in runtime workflows on Linux
+ARM64 and emulated AMD64, plus publication to a disposable local registry.
+The final release-schema regression check also passed.
+
+The verified image is in `dist/bundles/0.3.0-dev/` with index
+`sha256:66bda43370ece90fdeadb0b0b4d9b498c7f4b17a00a39e8cfa2a32dee4671718`.
+The earlier image is preserved in `.cache/pre-single-release-0.3.0-dev/`.
+Builds and full checks used `KIT_DIST_DIR=.cache/single-release-dist` before the
+verified artifact was moved to the normal output directory. No GHCR publication
+was performed. Logs: `.cache/single-release-fast.log`,
+`.cache/single-release-bundle.log` and `.cache/single-release-full.log`.
+This report and the historical-lock schema test were updated after the image snapshot.
+
+## Previous Kit 0.3.0-dev release verification
 
 Both release versions and all engine binary pins are updated. Driver and blueprint
 versions remain `0.2.0`.
