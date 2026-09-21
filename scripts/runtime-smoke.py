@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     config = yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text())
     config['engine']['dataDir'] = str(tmp / 'data')
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
+        assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
         for case in json.loads(os.environ['KIT_TEST_FIXTURES']):
             version = case['version']
             reference = f'{registry}/inframill/blueprints/local-resource:{version}'

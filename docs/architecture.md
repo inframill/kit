@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit 0.2.0-dev targets the Inframill 0.2.0-dev API. The `inframill-kit` executable hosts
+Kit 0.3.0-dev targets the Inframill 0.3.0-dev API. The `inframill-kit` executable hosts
 drivers. The `ghcr.io/inframill/kit` image bundles that executable with the engine
 and tools; build tasks call this image a bundle. Blueprints are separate OCI packages.
 
@@ -72,14 +72,17 @@ manual; local acceptance uses a disposable registry.
 
 ## Container configuration and storage
 
-The bundle generates `/etc/inframill/inframill.yaml` through the shared configuration
-builder, selecting the locked drivers and absolute executable/data paths. Its default
+The bundle copies the checked-in `runtime/inframill.yaml` unchanged to
+`/etc/inframill/inframill.yaml`. It declares HTTP defaults, logging and all bundled
+drivers with absolute executable, tool and data paths. Update this file when
+changing bundled driver or tool versions. Local `task config` output is generated
+separately with workstation paths. The image's default
 command is `inframill server start --config /etc/inframill/inframill.yaml`. Users may replace
 that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.2.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.3.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while namespace secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).

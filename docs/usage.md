@@ -14,6 +14,8 @@ falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
 
 `inframill server driver list` reports the daemon's cached startup availability.
 Restart the daemon after changing its driver configuration.
+`inframill server version` reports the selected daemon's build version;
+`inframill --version` reports the local CLI version.
 
 ## Running a deployment
 
@@ -56,6 +58,7 @@ provider mocks. Docker and the installed local tools are required.
 Inspect drivers, Instances and command history with:
 
 ```sh
+bin/inframill server version
 bin/inframill server driver list
 bin/inframill server instance list --namespace production
 bin/inframill server command execution list --instance-id INSTANCE_UUID -o json

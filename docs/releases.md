@@ -37,15 +37,35 @@ task blueprint:verify BLUEPRINT=pv-cloud REFERENCE=ghcr.io/inframill/blueprints/
 task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ```
 
+## Kit 0.3.0-dev
+
+Kit and its image now target Inframill `0.3.0-dev`, pinned to revision
+`07440bac8583f0b3d0dcce7be0656a8272595c4d`. The engine adds `inframill server version`
+and the `GetServerVersion` RPC; image checks verify that the running daemon matches
+the release pin. All four engine binary paths and checksums have been refreshed.
+The default configuration remains included. Driver and blueprint versions stay
+`0.2.0`, with blueprint engine requirements updated to `0.3.0-dev`.
+
+## Previous Kit 0.2.1-dev
+
+This Kit patch release includes the checked-in default `runtime/inframill.yaml`
+with HTTP settings, logging, persistent storage and all bundled driver/tool paths.
+The image copies it unchanged to `/etc/inframill/inframill.yaml` and uses it at
+startup. Image checks verify the exact file and both configured drivers.
+
+The engine remains pinned to Inframill `0.2.0-dev` at revision
+`e012760daf7fa759a0b1c106ab6d3d3ec0e46770`. OpenTofu/Ansible drivers and the pv-cloud
+blueprint remain `0.2.0`; tool versions and binary checksums are unchanged.
+
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
-The current development baseline is Kit `0.2.0-dev` with Inframill `0.2.0-dev`.
+The current development baseline is Kit `0.3.0-dev` with Inframill `0.3.0-dev`.
 Kit patch releases may differ from the engine within the same major/minor line.
-Moving to Inframill `0.3.x` requires a Kit `0.3.x` release after compatibility checks.
+Moving to Inframill `0.4.x` requires a Kit `0.4.x` release after compatibility checks.
 The bundle lock always pins the exact engine version and binary checksums.
 Development tags are also immutable here: changed binary bytes require a new
-version/tag, such as `0.2.0-dev.1`, rather than overwriting a published `0.2.0-dev`.
+version/tag, such as `0.3.0-dev.1`, rather than overwriting a published `0.3.0-dev`.
 
 The root `VERSION` selects `releases/kits/<version>.yaml`, whose `inframill_version`
 declares the exact engine target. There is no separate engine version constant in
@@ -79,7 +99,7 @@ The root [`VERSION`](../VERSION) file is authoritative for Kit builds, image bui
 and pushes, native engine copies and full checks. It contains one SemVer value with
 an optional final newline. Missing/invalid content, whitespace and a `v` prefix
 reject before building. `VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` task arguments
-or environment values cannot override it. Direct `go build` uses `0.2.0-dev`;
+or environment values cannot override it. Direct `go build` uses `0.3.0-dev`;
 `task build` embeds the file's value.
 
 To prepare a Kit release, edit `VERSION` and add matching

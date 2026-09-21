@@ -1,11 +1,71 @@
 # Local acceptance — 2026-09-21
 
-Kit and the prebuilt Inframill engine are `0.2.0-dev`. The public Go dependency
-is pinned to sibling revision `e012760daf7fa759a0b1c106ab6d3d3ec0e46770`.
+Current Kit and the prebuilt Inframill engine are `0.3.0-dev`. The public Go dependency
+is pinned to sibling revision `07440bac8583f0b3d0dcce7be0656a8272595c4d`.
 The bundle lock records checksums for all four supplied engine binaries.
 Blueprint and driver versions remain `0.2.0`.
 
-## Executed checks
+## Kit 0.3.0-dev release verification
+
+Both release versions and all engine binary pins are updated. Driver and blueprint
+versions remain `0.2.0`.
+
+- `task check-fast` passed, including Python/Go tests, the native Kit build and
+  release version checks.
+- `task inframill:copy` verified and copied the supplied Darwin ARM64 engine.
+- `task bundle` built Linux ARM64 and AMD64 images with the default configuration.
+- `task check-full` passed, including native daemon workflows, namespace secrets,
+  blueprint registry/cache checks, container persistence and custom configuration.
+- Both container architectures passed real local-resource workflows and all four
+  pv-cloud provider-mock cases. AMD64 ran under emulation.
+- `GetServerVersion` reports the locked engine version; both image variants also
+  pass plain-text and JSON `inframill server version` checks.
+
+Local artifacts are in `dist/bundles/0.3.0-dev/`; the image index is
+`sha256:295972e759a8c9b39b25b965656534d16e1829dfeae2ce3a57260487fc3be078`.
+The release was built locally without publication to GHCR. Logs:
+`.cache/0.3-fast.log`, `.cache/0.3-bundle.log` and `.cache/0.3-full.log`.
+This report was updated after the image snapshot. The following sections retain
+the prior release results.
+
+## Previous Kit 0.2.1-dev release verification
+
+Release descriptors retain the engine, driver, blueprint and tool pins from
+0.2.0-dev. The image includes the checked-in default configuration.
+
+- `task check-fast` passed, including all Python/Go tests, the native Kit build
+  and release version checks.
+- `task bundle` built Linux ARM64 and AMD64 images.
+- Both image variants report Kit `0.2.1-dev` and Inframill `0.2.0-dev`.
+- Targeted image checks passed for the exact bundled config, both drivers,
+  startup, persistent command history, custom configurations and invalid/read-only
+  storage rejection. Full provider-mock workflows were not repeated for this patch.
+
+Local artifacts are in `dist/bundles/0.2.1-dev/`; the image index is
+`sha256:53fcd124b578bd0011380033061b7afff388260620478ffab440fd55ec8deb59`. The release was built locally without
+publication to GHCR. Logs: `.cache/0.2.1-fast.log`, `.cache/0.2.1-bundle.log` and
+`.cache/0.2.1-image.log`. This report was updated after the image snapshot.
+
+The following sections retain the previous 0.2.0-dev verification results.
+
+## Previous 0.2.0-dev default configuration checks
+
+`runtime/inframill.yaml` is now copied unchanged to
+`/etc/inframill/inframill.yaml`. It includes explicit HTTP defaults, JSON logging,
+the persistent data path, and both Kit drivers with their exact tool paths.
+
+`task check-fast` and the image build passed. Targeted image checks passed on Linux
+ARM64 and emulated AMD64, proving exact configuration bytes, both drivers available,
+server startup, persistent command history, custom configuration and rejection of
+invalid configuration/read-only storage. Full provider-mock workflows were not
+repeated for this configuration-only change.
+
+The previous image is in `dist/bundles/0.2.0-dev/` with index `sha256:72041350e5d4354c74e6bd37f05d7678905a1b062b4f7ac438900a773083b029`.
+Logs: `.cache/config-fast.log`, `.cache/default-config-bundle.log` and
+`.cache/default-config-image.log`. The prior image is preserved in
+`.cache/pre-default-config-bundle/`. This report was updated after the image build.
+
+## Previous version-alignment checks
 
 - `task check-fast` passed: 18 Python tests, Go package and integration tests with
   vet disabled, Kit build and release version validation.
@@ -42,8 +102,9 @@ Blueprint and driver versions remain `0.2.0`.
 
 The pv-cloud OCI digest remains
 `sha256:a3b4eb5ea3da749d795a9d921dce37be6c62c610982790fd98ce462859988f13`.
-The local image is in `dist/bundles/0.2.0-dev/`; its `build.json` records the exact
-OCI index digest, binary hashes and bundled source snapshot. The final index is
+The prior version-alignment image is in `.cache/pre-default-config-bundle/`;
+its `build.json` records the exact
+OCI index digest, binary hashes and bundled source snapshot. Its index is
 `sha256:57a80c088a63cc9013e0fdfd29c5ed7fe3f6ea56620dc6db41bd74682222dc5e`.
 This report was updated after the final image snapshot. Publication during
 acceptance uses only disposable registries. Containers, networks and test volumes

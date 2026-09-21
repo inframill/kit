@@ -1,0 +1,42 @@
+# Default configuration for the Inframill Kit image.
+# Mount a replacement at /etc/inframill/inframill.yaml to customize it.
+main:
+  port: 8080
+  shutdownTimeout: 10s
+  readHeaderTimeout: 5s
+  readTimeout: 15s
+  writeTimeout: 30s
+  idleTimeout: 60s
+
+logger:
+  type: slog
+  settings:
+    level: info
+    format: json
+
+engine:
+  dataDir: /var/lib/inframill
+  drivers:
+    opentofu-0-2-0:
+      path: /usr/local/bin/inframill-kit
+      args:
+        - driver
+        - opentofu
+        - --driver-version
+        - 0.2.0
+        - --tool
+        - /opt/inframill/tools/opentofu/1.11.5/tofu
+    ansible-0-2-0:
+      path: /usr/local/bin/inframill-kit
+      args:
+        - driver
+        - ansible
+        - --driver-version
+        - 0.2.0
+        - --tool
+        - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
+
+handlers:
+  - type: connect-engine
+
+workers: []

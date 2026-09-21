@@ -14,8 +14,8 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
 | Component | Version |
 | --- | --- |
-| Kit executable and image | 0.2.0-dev |
-| Inframill engine | 0.2.0-dev |
+| Kit executable and image | 0.3.0-dev |
+| Inframill engine | 0.3.0-dev |
 | OpenTofu driver / tool | 0.2.0 / 1.11.5 |
 | Ansible driver / Ansible Core | 0.2.0 / 2.20.1 |
 | pv-cloud blueprint | 0.2.0 |
@@ -31,15 +31,16 @@ drivers support multiple names and versions, with explicit implementation select
 
 ## Run with Docker
 
-The image starts the Inframill server with both Kit drivers configured. Docker
+The image includes [`runtime/inframill.yaml`](runtime/inframill.yaml) unchanged at
+`/etc/inframill/inframill.yaml` and starts the server with both Kit drivers configured. Docker
 selects the AMD64 or ARM64 variant for your machine. No local Go or Python setup is
 needed to use the image.
 
 ```sh
-docker run -d --name inframill --restart unless-stopped \
+docker run -d --name inframill --rm \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  ghcr.io/inframill/kit:0.2.0-dev
+  ghcr.io/inframill/kit:0.3.0-dev
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -48,9 +49,10 @@ published on loopback because the engine has no built-in authentication; remote
 access requires an authenticated gateway or private tunnel.
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
-With the Inframill 0.2.0-dev CLI installed locally, query the running server with:
+With the Inframill 0.3.0-dev CLI installed locally, query the running server with:
 
 ```sh
+inframill server version --endpoint http://localhost:8080
 inframill server instance list --endpoint http://localhost:8080
 ```
 
@@ -74,10 +76,18 @@ daemon to probe drivers again.
 
 ### Use your own configuration
 
+The checked-in [default configuration](runtime/inframill.yaml) includes HTTP port
+and timeouts, JSON logging, the data directory, and executable/tool paths for
+OpenTofu 0.2.0 and Ansible 0.2.0. Copy it to start a custom configuration:
+
+```sh
+cp runtime/inframill.yaml inframill.yaml
+```
+
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.2.0-dev \
+docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.3.0-dev \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
@@ -95,7 +105,7 @@ docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
   --mount type=bind,src="$PWD/inframill.yaml",dst=/etc/inframill/inframill.yaml,readonly \
-  ghcr.io/inframill/kit:0.2.0-dev
+  ghcr.io/inframill/kit:0.3.0-dev
 ```
 
 The existing named volume is reused. To keep data in a host directory instead,
@@ -106,7 +116,7 @@ create it with `mkdir -p data` and replace the data mount with:
 ```
 
 Changing mount sources selects different storage; it does not copy existing data.
-Inframill 0.2.0-dev resolves relative YAML paths from the configuration file's directory
+Inframill 0.3.0-dev resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
 ### Logs, restarts and upgrades
@@ -137,7 +147,7 @@ ARM64 support.
 
 Keep the Inframill checkout alongside this repository at `../inframill`. Kit imports
 its public driver package through a local Go replacement. Image builds require the
-clean source revision pinned in [the bundle lock](releases/bundles/0.2.0-dev.lock.yaml).
+clean source revision pinned in [the bundle lock](releases/bundles/0.3.0-dev.lock.yaml).
 
 ```sh
 task setup
@@ -151,8 +161,8 @@ task check-fast
 alongside the system Python if needed, or select one with `PYTHON=/path/to/python3.14`.
 Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides must match the pinned tool versions.
 
-Prebuilt engine binaries must exist in `../inframill/dist/0.2.0-dev/`, named
-`inframill_0.2.0-dev_<os>_<arch>`. Image builds need both `linux_amd64` and `linux_arm64`;
+Prebuilt engine binaries must exist in `../inframill/dist/0.3.0-dev/`, named
+`inframill_0.3.0-dev_<os>_<arch>`. Image builds need both `linux_amd64` and `linux_arm64`;
 `inframill:copy` needs the host binary, such as `darwin_arm64`. Set
 `INFRAMILL_DIST_DIR` to override the parent `dist` directory. Kit verifies these
 binaries and copies them directly; it compiles only its own driver executable.
@@ -169,7 +179,7 @@ task bundle:push
 ```
 
 These publish pv-cloud to `ghcr.io/inframill/blueprints/pv-cloud:0.2.0` and the Kit
-image to `ghcr.io/inframill/kit:0.2.0-dev`. Builds never push automatically.
+image to `ghcr.io/inframill/kit:0.3.0-dev`. Builds never push automatically.
 See [releases](docs/releases.md) for individual packages, registry overrides,
 verification and adding versions.
 

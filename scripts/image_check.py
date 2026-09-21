@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from release_config import bundle_lock, configuration, driver_ids
+from release_config import ROOT, bundle_lock, configuration, driver_ids
 
 CONFIG = '/etc/inframill/inframill.yaml'
 DATA = '/var/lib/inframill'
@@ -64,6 +64,12 @@ def image_check(tmp, image, arch, network):
         drivers = poll(ready)['drivers']
         assert {d['id'] for d in drivers} == set(ids.values()), drivers
         assert all(d['status'] == 'DRIVER_STATUS_AVAILABLE' for d in drivers), drivers
+        expected_version = {'version': lock['inframill']['version']}
+        assert rpc(endpoint, 'GetServerVersion') == expected_version
+        version_cli = ['docker', 'exec', name, 'inframill', 'server', 'version',
+                       '--endpoint', 'http://127.0.0.1:' + str(port)]
+        assert docker(version_cli).stdout == expected_version['version'] + '\n'
+        assert json.loads(docker(version_cli + ['-o', 'json']).stdout) == expected_version
         return name, endpoint
 
     def stop(name):
@@ -109,6 +115,8 @@ def image_check(tmp, image, arch, network):
 
     docker(['docker', 'volume', 'create', volume])
     try:
+        bundled = docker(prefix + ['--entrypoint', 'cat', image, CONFIG]).stdout
+        assert bundled == (ROOT / 'runtime/inframill.yaml').read_text(), 'Bundled configuration differs from runtime/inframill.yaml'
         # Parse the actual bundled YAML using the image's already-pinned PyYAML.
         raw = docker(prefix + ['--entrypoint', python, image, '-c',
                      'import json,yaml; print(json.dumps(yaml.safe_load(open("' + CONFIG + '"))))']).stdout

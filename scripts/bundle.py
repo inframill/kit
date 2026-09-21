@@ -2,7 +2,7 @@
 """Build both platforms to a local OCI layout. Never authenticate or push."""
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
 from bundle_inputs import read_binary
-from release_config import bundle_lock, configuration, project_version
+from release_config import bundle_lock, project_version
 from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 version=project_version()
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
         run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['kit_version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
         (bindir/'inframill').write_bytes(inframill_binaries[arch])
         (bindir/'inframill').chmod(0o755)
-    (context/'inframill.yaml').write_text(configuration('/usr/local/bin/inframill-kit','/var/lib/inframill',drivers=lock['drivers'],format='yaml'))
+    shutil.copy2(ROOT/'runtime/inframill.yaml',context/'inframill.yaml')
     for name in ['Dockerfile','requirements.lock','python-sources.lock.json','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
     shutil.copy2(ROOT/'scripts/fetch-runtime.py',context/'fetch-runtime.py');(context/'bundle.lock.json').write_text(json.dumps(lock,indent=2)+'\n')
     tar=stage/'image.tar'

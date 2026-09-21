@@ -73,6 +73,7 @@ def daemon_check(tmp, registry, env):
             except (urllib.error.URLError, ConnectionError):
                 return None
         poll(ready)
+        assert rpc('GetServerVersion') == {'version': bundle_lock()['inframill']['version']}
 
     def stop():
         nonlocal process
