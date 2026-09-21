@@ -93,7 +93,7 @@ multiple versions using the current protocol; they are not historical production
 
 ## Adding releases
 
-New blueprint sources go in `blueprints/<name>/versions/<version>`. Add their
+New blueprint sources go in `blueprints/<name>/<version>`. Add their
 metadata and sealed source digest to `blueprints/releases.json`, following the
 [Blueprint release instructions](../blueprints/README.md#add-a-release).
 New drivers require both an explicit implementation factory and an entry in the

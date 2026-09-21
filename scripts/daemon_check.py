@@ -20,7 +20,7 @@ def daemon_check(tmp, registry, env):
     binary = tmp / 'kit-fixtures'
     subprocess.run(['go', 'build', '-tags=kit_testdrivers', '-o', str(binary), './cmd/inframill-kit'], cwd=ROOT, check=True)
     # This blueprint and driver exist only in test builds, never the release set.
-    source = tmp / 'blueprints/protocol-fixture/versions/0.1.0'
+    source = tmp / 'blueprints/protocol-fixture/0.1.0'
     (source / 'template/fixture').mkdir(parents=True)
     (source / 'template/fixture/readme.txt').write_text('secret snapshot test\n')
     (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'driver_settings': {'fixture': {'id': 'fixture', 'required_driver_version': '0.1.0', 'contract': '0.1.0'}}}))
