@@ -15,8 +15,8 @@ prebuilt driver outputs with the engine and tools. Blueprints are separate OCI p
   bounded output and filtered diagnostics.
 - `drivers/build.py` verifies the pinned SDK checkout and builds separate AMD64 and
   ARM64 executables. The subproject has its own Go module, tasks and tests.
-- Root `scripts/bundle.py`, `cmd/kit-build` and `internal/packaging` own image
-  assembly, input verification and publication. They do not compile drivers.
+- Root `build.py` owns image assembly, input verification and publication in one
+  standard-library Python script. Root acceptance tests live in `tests/`.
 
 ## Command lifecycle
 

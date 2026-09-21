@@ -11,12 +11,12 @@ RUN printf "deb [check-valid-until=no] https://snapshot.debian.org/archive/debia
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-client ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.lock bundle.lock.json fetch-runtime.py /build/
+COPY requirements.lock bundle.lock.json build.py /build/
 ARG ANSIBLE_VERSION
 ARG OPENTOFU_VERSION
 RUN python3 -m venv /opt/inframill/tools/ansible/${ANSIBLE_VERSION} \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/pip install --no-cache-dir --require-hashes -r /build/requirements.lock \
-    && python3 /build/fetch-runtime.py ${TARGETARCH}
+    && python3 /build/build.py fetch-runtime ${TARGETARCH}
 COPY bin/linux/${TARGETARCH}/ /usr/local/bin/
 COPY drivers/${TARGETARCH}/ /opt/inframill/drivers/
 COPY inframill.yaml /etc/inframill/inframill.yaml

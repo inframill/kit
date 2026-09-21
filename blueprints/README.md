@@ -133,10 +133,10 @@ its `task setup`, `task drivers:build -- --native`, `task inframill:copy`, and D
 Run them from the Kit repository root:
 
 ```sh
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 scripts/check.py blueprint:check
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 tests/check.py blueprint:check
 BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
   REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:... \
-  python3 scripts/check.py blueprint:verify
+  python3 tests/check.py blueprint:verify
 ```
 
 Integration fixtures and example Values live under `tests/fixtures/` and

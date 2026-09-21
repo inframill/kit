@@ -52,8 +52,10 @@ task bundle:push
 
 This publishes the existing image to `REGISTRY/NAMESPACE/kit:<VERSION>`. Image
 publication verifies the local OCI graph and image lock and rejects a remote tag
-pointing to different content. `PLAIN_HTTP=true` is restricted to explicit local
-integration registries. Image builds never log in or publish automatically.
+pointing to different content. It loads the verified OCI artifact into Docker and
+uses `docker push`. Configure credentials and any insecure local registries in
+Docker yourself; the script never logs in or creates registries. Image builds
+never publish automatically.
 
 Blueprints use their own workflow:
 
@@ -103,7 +105,7 @@ are required; changed published bytes require a new tag, including development t
 the root file. Builds do not infer versions from Git or change release metadata.
 
 Image builds render pip's `requirements.lock` from `python_dependencies` in a
-temporary directory. `python3 scripts/lock-python.py REPORT.json` explicitly
+temporary directory. `python3 build.py lock-python REPORT.json` explicitly
 updates those pins in the selected image lock from a resolved pip report. It
 rejects an Ansible version differing from `ansible_core`; ordinary builds never
 resolve new dependencies. The selected lock ships at

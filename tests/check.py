@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Acceptance checks using disposable daemons, OCI registries and local resources."""
 import contextlib
-import io
 import json
 import os
 import pathlib
 import subprocess
 import sys
-import tarfile
 import tempfile
 import urllib.error
 import uuid
@@ -21,7 +19,7 @@ from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_im
 from drivers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from image_check import image_check
-from release_config import ROOT, local_tools, configuration, bundle_output, bundle_lock, drivers_dist, native_platform
+from build import load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, drivers_dist, native_platform
 
 
 def run(args, **kwargs):
@@ -55,24 +53,28 @@ def registry():
     # Docker Desktop's daemon cannot use the Mac's published loopback port.
     # Two disposable endpoints share storage: native/containers read through the
     # bridge endpoint, while docker push writes through the daemon's loopback.
-    push_address = '127.0.0.1:' + str(49152 + int(uuid.uuid4().hex[:4], 16) % 16384)
+    # Matching ports let the native Docker CLI inspect the same image reference.
+    push_address = None
     try:
         run(['docker', 'run', '-d', '--network', name, '--network-alias', 'registry',
              '--name', name, '-p', '127.0.0.1::5000', '-v', volume + ':/var/lib/registry',
              '-e', 'OTEL_TRACES_EXPORTER=none', registry_image()], stdout=subprocess.DEVNULL)
         started.append(name)
-        run(['docker', 'run', '-d', '--network', 'host', '--name', name + '-push',
-             '-e', 'REGISTRY_HTTP_ADDR=' + push_address, '-e', 'REGISTRY_HTTP_DEBUG_ADDR=127.0.0.1:0',
-             '-e', 'OTEL_TRACES_EXPORTER=none',
-             '-v', volume + ':/var/lib/registry', registry_image()], stdout=subprocess.DEVNULL)
-        started.append(name + '-push')
         address = run(['docker', 'port', name, '5000/tcp'], capture_output=True).stdout.strip()
+        push_address = address
+        if native_platform().startswith('darwin/'):
+            run(['docker', 'run', '-d', '--network', 'host', '--name', name + '-push',
+                 '-e', 'REGISTRY_HTTP_ADDR=' + push_address, '-e', 'REGISTRY_HTTP_DEBUG_ADDR=127.0.0.1:0',
+                 '-e', 'OTEL_TRACES_EXPORTER=none',
+                 '-v', volume + ':/var/lib/registry', registry_image()], stdout=subprocess.DEVNULL)
+            started.append(name + '-push')
         yield address, name, push_address
     finally:
         # Remove only tags belonging to this temporary publication endpoint.
         tagged = run(['docker', 'image', 'ls', '--format', '{{.Repository}}:{{.Tag}}',
+                      '--filter', 'reference=' + push_address + '/inframill/kit',
                       '--filter', 'reference=' + push_address + '/inframill/blueprints/*'],
-                     capture_output=True).stdout.splitlines()
+                     capture_output=True).stdout.splitlines() if push_address else []
         if tagged:
             run(['docker', 'image', 'rm', *tagged], stdout=subprocess.DEVNULL)
         if started:
@@ -83,7 +85,7 @@ def registry():
 
 def registry_env(tmp, address, push_address):
     return {**os.environ, 'KIT_DIST_DIR': str(tmp / 'dist'), 'REGISTRY': push_address,
-            'NAMESPACE': 'inframill', 'PLAIN_HTTP': 'true', 'INFRAMILL_HTTP_REGISTRIES': address}
+            'NAMESPACE': 'inframill', 'INFRAMILL_HTTP_REGISTRIES': address}
 
 
 def blueprint_check(name, version):
@@ -137,34 +139,20 @@ def cache_check(tmp, address, env):
 def container_checks(tmp, network, env):
     if not (bundle_output() / 'build.json').is_file():
         raise RuntimeError('Run task bundle before check-full container verification')
-    run(['go', 'run', './cmd/kit-build', 'bundle:push'], cwd=ROOT,
-        env={**env, 'REGISTRY': env['INFRAMILL_HTTP_REGISTRIES'],
-             'KIT_DIST_DIR': str(bundle_output().parent.parent)})
+    verify_image()
+    run([sys.executable, ROOT / 'build.py', 'push'], cwd=ROOT,
+        env={**env, 'KIT_DIST_DIR': str(bundle_output().parent.parent)})
     image = 'docker.io/library/inframill-kit-test:' + uuid.uuid4().hex
-    layout = bundle_output() / 'oci'
-    index = json.loads((layout / 'index.json').read_text())
-    for manifest in index['manifests']:
-        manifest.setdefault('annotations', {})['org.opencontainers.image.ref.name'] = image.rsplit(':', 1)[1]
-        manifest['annotations']['io.containerd.image.name'] = image
-    archive = tmp / 'runtime.tar'
-    with tarfile.open(archive, 'w') as tar:
-        for path in sorted(layout.rglob('*')):
-            if path.name != 'index.json':
-                tar.add(path, arcname=str(path.relative_to(layout)), recursive=False)
-        data = json.dumps(index).encode()
-        header = tarfile.TarInfo('index.json')
-        header.size = len(data)
-        tar.addfile(header, io.BytesIO(data))
-    run(['docker', 'load', '-i', archive])
+    load_image(bundle_output(), image)
     try:
         python = '/opt/inframill/tools/ansible/' + bundle_lock()['ansible_core'] + '/bin/python3'
         for arch in ['arm64', 'amd64']:
             image_check(tmp, image, arch, network)
             run(['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch,
                  '--network', network, '-e', 'KIT_TEST_REGISTRY=registry:5000',
-                 '--mount', 'type=bind,src=' + str(ROOT / 'scripts') + ',dst=/verify,readonly',
+                 '--mount', 'type=bind,src=' + str(ROOT / 'tests') + ',dst=/verify,readonly',
                  '--mount', 'type=bind,src=' + str(BLUEPRINTS) + ',dst=/blueprints,readonly',
-                 '--entrypoint', python, image, '/verify/runtime-smoke.py'])
+                 '--entrypoint', python, image, '/verify/runtime_smoke.py'])
     finally:
         subprocess.run(['docker', 'image', 'rm', image], stdout=subprocess.DEVNULL, check=False)
 
@@ -186,39 +174,9 @@ def registry_check():
         container_checks(tmp, network, env)
 
 
-def bundle_verify(reference):
-    data = json.loads(run(['docker', 'buildx', 'imagetools', 'inspect', '--raw', reference], capture_output=True).stdout)
-    platforms = {(m.get('platform', {}).get('os'), m.get('platform', {}).get('architecture')) for m in data.get('manifests', [])}
-    if not {('linux', 'amd64'), ('linux', 'arm64')} <= platforms:
-        raise RuntimeError('Missing runtime architecture')
-    for arch in ['arm64', 'amd64']:
-        name = 'kit-verify-' + uuid.uuid4().hex
-        for driver in bundle_lock()['drivers']:
-            executable = '/opt/inframill/drivers/' + driver['name'] + '/' + driver['version'] + '/driver'
-            run(['docker', 'run', '--rm', '--platform', 'linux/' + arch, '--entrypoint', executable, reference, 'version'])
-        run(['docker', 'run', '-d', '--rm', '--platform', 'linux/' + arch, '--name', name, reference])
-        try:
-            def ready():
-                state = run(['docker', 'inspect', '--format', '{{.State.Running}}', name], capture_output=True)
-                if state.stdout.strip() != 'true':
-                    raise RuntimeError('Published image exited')
-                response = subprocess.run(['docker', 'exec', name, 'inframill', 'server', 'driver', 'list', '-o', 'json'], capture_output=True, text=True)
-                return json.loads(response.stdout) if response.returncode == 0 else None
-            drivers = Engine.poll(ready, 45)['drivers']
-            expected = {d['name'] + '-' + d['version'].replace('.', '-') for d in bundle_lock()['drivers']}
-            assert {d['id'] for d in drivers} == expected, drivers
-            assert all(d['status'] == 'DRIVER_STATUS_AVAILABLE' for d in drivers), drivers
-        finally:
-            run(['docker', 'stop', name], stdout=subprocess.DEVNULL)
-
-
 def main():
     action = sys.argv[1]
-    if action == 'config':
-        tofu, ansible = local_tools()
-        print(json.dumps(configuration(drivers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
-                                       {'opentofu': tofu, 'ansible': ansible}, target=native_platform()), indent=2))
-    elif action in ('registry', 'full'):
+    if action in ('registry', 'full'):
         registry_check()
     elif action == 'blueprint:check':
         blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0'))
@@ -230,11 +188,6 @@ def main():
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             with engine(pathlib.Path(td)) as client:
                 verify(client, name, version, reference)
-    elif action == 'bundle:verify':
-        reference = os.environ['REFERENCE']
-        if '@sha256:' not in reference:
-            raise RuntimeError('REFERENCE must be digest-pinned')
-        bundle_verify(reference)
     else:
         raise RuntimeError('Unknown check')
 

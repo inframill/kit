@@ -3,13 +3,15 @@ import io
 import json
 import pathlib
 import os
-import runpy
-import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-import release_config
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import build as release_config
 
 
 class ReleaseConfigTests(unittest.TestCase):
@@ -64,7 +66,6 @@ class ReleaseConfigTests(unittest.TestCase):
     def test_python_pin_update_accepts_a_new_release_target(self):
         lock = release_config.bundle_lock()
         lock['ansible_core'] = '2.21.0'
-        script = release_config.ROOT / 'scripts/lock-python.py'
         metadata = {'urls': [{'packagetype': 'sdist', 'url': 'https://example.invalid/source.tar.gz',
                               'digests': {'sha256': 'a' * 64}}]}
         with tempfile.TemporaryDirectory() as td:
@@ -76,9 +77,8 @@ class ReleaseConfigTests(unittest.TestCase):
             report.write_text(json.dumps({'install': [{'metadata': {'name': 'ansible-core', 'version': '2.21.0'}}]}))
             with patch.object(release_config, 'ROOT', root), \
                  patch.object(release_config, 'project_version', return_value=lock['version']), \
-                 patch.object(sys, 'argv', [str(script), str(report)]), \
                  patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(metadata).encode())):
-                runpy.run_path(str(script), run_name='__main__')
+                release_config.lock_python(report)
             updated = json.loads(path.read_text())
             self.assertEqual(updated['python_dependencies'][0]['version'], '2.21.0')
             self.assertNotIn('blueprints', updated)

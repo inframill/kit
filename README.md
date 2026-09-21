@@ -14,15 +14,15 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
 | Component | Version |
 | --- | --- |
-| Kit executable and image | 0.3.0-dev |
+| Kit image | 0.3.0-dev |
 | Inframill engine | 0.3.0-dev |
 | OpenTofu driver / tool | 0.2.0 / 1.11.5 |
 | Ansible driver / Ansible Core | 0.2.0 / 2.20.1 |
 | pv-cloud blueprint | 0.2.0 |
 
 Kit and its image follow Inframill's major/minor release line, with independent Kit
-patch releases. The root [`VERSION`](VERSION) file selects the Kit executable and
-image version for builds, pushes and checks. Task arguments and environment values
+patch releases. The root [`VERSION`](VERSION) file selects the Kit image
+version for builds, pushes and checks. Task arguments and environment values
 cannot override it. Blueprint releases are selected by `blueprints/releases.json`
 and optional `--name` / `--version` flags. Driver releases are selected independently in `drivers/releases.json`.
 
@@ -149,14 +149,26 @@ task drivers:build         # all drivers, Linux AMD64 and ARM64
 task bundle                # assemble the image from drivers/dist
 ```
 
-The root project assembles and verifies the Kit Docker image. It never compiles
+The root project uses a single [`build.py`](build.py) script to assemble, verify
+and push the Kit Docker image. It never compiles
 or implicitly rebuilds drivers. It checks the prebuilt binaries, source snapshots,
 checksums, platforms and engine/tool compatibility before copying them into the
-image. `task build` is an alias for image assembly.
+image. Task wraps these commands (`task bundle` remains an alias for `task build`):
+
+```sh
+python3 build.py build     # both Linux architectures, local output only
+python3 build.py verify    # verify the existing local image
+python3 build.py push      # push that image; run docker login yourself first
+python3 build.py test      # root builder tests
+```
+
+`publish` runs build then push; `push` uses the existing image. The root script
+also provides `validate`, `setup`, `config` and `copy-engine` for release checks
+and local acceptance setup. Drivers and blueprints retain their own builders.
 
 Driver builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
 (default `../inframill` beside this repository). Image assembly needs Docker Buildx
-with Linux AMD64/ARM64 support, Go for the image tooling, and the checksum-pinned
+with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
 prebuilt engine binaries in `../inframill/dist/0.3.0-dev/`. It does not need driver
 sources or the SDK checkout. Set `DRIVERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
 other prebuilt artifact locations.

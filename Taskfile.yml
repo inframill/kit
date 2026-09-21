@@ -15,7 +15,6 @@ env:
   KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
   REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
   NAMESPACE: '{{default "inframill" .NAMESPACE}}'
-  PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}' # Local test registries only.
   REFERENCE: '{{default "" .REFERENCE}}'
 
 tasks:
@@ -49,26 +48,21 @@ tasks:
       Uses the current interpreter when supported, otherwise tries python3.14,
       python3.13 and python3.12 on PATH. Set PYTHON=/path/to/python to override.
       Installs tools locally in .cache; leaves the system Python unchanged.
-    cmds: ['python3 scripts/setup-dev.py']
-  build:
-    desc: Assemble the Kit image from prebuilt drivers/dist outputs
-    cmds:
-      - task: bundle
+    cmds: ['python3 build.py setup']
   inframill:copy:
     desc: Verify and copy the prebuilt host engine from the sibling dist (VERSION file)
-    cmds: ['go run ./cmd/kit-build inframill:copy']
+    cmds: ['python3 build.py copy-engine']
   config:
     desc: Print local engine JSON configuration using native drivers/dist outputs
-    cmds: ['python3 scripts/check.py config']
+    cmds: ['python3 build.py config']
 
   # Verification: full checks require an already-built image.
   check-fast:
     desc: Run image tooling, driver and blueprint tests and validate release versions
     cmds:
-      - python3 -m unittest discover -s scripts -p "test_*.py"
+      - python3 build.py test
       - task: blueprints:test
       - task: drivers:test
-      - go test -vet=off ./...
       - task: release:check
   check-full:
     desc: Run fast checks, native workflows and both Linux images in a disposable registry
@@ -79,29 +73,36 @@ tasks:
     cmds:
       - task: check-fast
       - task: inframill:copy
-      - python3 scripts/check.py full
+      - python3 tests/check.py full
   release:check:
     desc: Validate the selected image release and driver selections
-    cmds: ['go run ./cmd/kit-build bundle:validate']
+    cmds: ['python3 build.py validate']
   # The bundle is the Kit image: engine, drivers and pinned tools for both platforms.
-  bundle:
+  build:
+    aliases: [bundle]
     desc: Build the local Linux AMD64/ARM64 Kit image (VERSION file)
     summary: |
       Requires Docker Buildx, prebuilt drivers under DRIVERS_DIST_DIR (drivers/dist),
       and Linux engine binaries under INFRAMILL_DIST_DIR. Never compiles drivers.
       Includes /etc/inframill/inframill.yaml; mount data at /var/lib/inframill.
       Writes KIT_DIST_DIR/bundles/<VERSION>; never pushes or replaces an output.
-    cmds: ['python3 scripts/bundle.py']
-  bundle:push:
+    cmds: ['python3 build.py build']
+  push:
+    aliases: [bundle:push]
     desc: Push the existing Kit image to REGISTRY/NAMESPACE/kit (VERSION file)
     summary: |
       Authenticate first with docker login REGISTRY, then run task bundle:push.
       Validates release versions and the build lock, uploads existing OCI bytes,
       and rejects a version tag that already points to different content.
-    cmds: ['go run ./cmd/kit-build bundle:push']
-  bundle:verify:
+    cmds: ['python3 build.py push']
+  verify:
+    aliases: [bundle:verify]
     desc: Check published image platforms and driver discovery (REFERENCE)
     summary: |
       Uses Docker to inspect and run the published image. REFERENCE must be pinned:
         task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
-    cmds: ['python3 scripts/check.py bundle:verify']
+    cmds: ['python3 build.py verify --reference "{{.REFERENCE}}"']
+
+  test:
+    desc: Test the root Python image builder
+    cmds: ['python3 build.py test']

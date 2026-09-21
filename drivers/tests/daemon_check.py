@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 
 from blueprints.tests.integration import publish_protocol_fixture
-from release_config import ROOT, configuration, local_tools, bundle_lock, drivers_dist, native_platform
+from build import ROOT, configuration, local_tools, bundle_lock, drivers_dist, native_platform
 
 
 def daemon_check(tmp, registry, env):

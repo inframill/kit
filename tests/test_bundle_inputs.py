@@ -5,7 +5,11 @@ import struct
 import tempfile
 import unittest
 
-from bundle_inputs import read_binary, read_driver
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from build import read_binary, read_driver
 
 
 class BinaryFixture:
