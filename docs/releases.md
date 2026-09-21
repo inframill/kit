@@ -69,7 +69,7 @@ task blueprints:push
 Blueprint build loads each artifact into Docker; push invokes `docker push` for
 its tag. Authentication and remote tag policy are handled by Docker and the
 registry. `task blueprints:publish` performs build followed by push. Use
-`-- --name pv-cloud --version 0.2.0` to select one release. Driver builds publish
+`-- --name pv-cloud --version 0.1.0` to select one release. Driver builds publish
 no registry artifacts; their output is consumed by image assembly.
 
 After publication, verify the immutable reference:

@@ -2,7 +2,8 @@
 
 Kit and the prebuilt Inframill engine are `0.3.0-dev`, targeting engine revision
 `07440bac8583f0b3d0dcce7be0656a8272595c4d`. Driver and production blueprint versions
-remain `0.2.0`.
+were `0.2.0` for this recorded run. pv-cloud was subsequently reset to `0.1.0`;
+its release metadata, source seal and package build were revalidated separately.
 
 ## Python Kit builder and isolated subprojects
 

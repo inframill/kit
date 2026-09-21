@@ -18,7 +18,7 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 | Inframill engine | 0.3.0-dev |
 | OpenTofu driver / tool | 0.2.0 / 1.11.5 |
 | Ansible driver / Ansible Core | 0.2.0 / 2.20.1 |
-| pv-cloud blueprint | 0.2.0 |
+| pv-cloud blueprint | 0.1.0 |
 
 Kit and its image follow Inframill's major/minor release line, with independent Kit
 patch releases. The root [`VERSION`](VERSION) file selects the Kit image

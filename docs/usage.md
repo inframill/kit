@@ -20,7 +20,7 @@ Restart the daemon after changing its driver configuration.
 ## Running a deployment
 
 Run these commands from the repository root. Files under `blueprints/examples/` contain plain
-Values JSON: `pv-cloud-0.2.0.json` uses mixed architectures; `pv-cloud-amd64.json`
+Values JSON: `pv-cloud-0.1.0.json` uses mixed architectures; `pv-cloud-amd64.json`
 and `pv-cloud-arm64.json` each use one architecture. Generate configuration using
 the installed local tools and `task drivers:build -- --native` outputs, then start the daemon:
 
@@ -35,10 +35,10 @@ In another terminal, fetch a published blueprint and initialize an Instance.
 Initialization validates Values and renders files without executing a driver:
 
 ```sh
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.1.0
 bin/inframill server instance init production/example \
-  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
-  --values-file blueprints/examples/pv-cloud-0.2.0.json
+  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.1.0 \
+  --values-file blueprints/examples/pv-cloud-0.1.0.json
 bin/inframill server secret replace production --file /private/path/secrets.json
 bin/inframill server instance exec production/example opentofu-0-2-0.init --wait
 ```
@@ -83,7 +83,7 @@ snapshot; queued commands obtain the set current when they start.
 The `InitInstance` RPC accepts these top-level fields:
 
 ```json
-{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.2.0","values":{}}
+{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.1.0","values":{}}
 ```
 
 Replace the empty Values object with configured Values. Fetch the blueprint before

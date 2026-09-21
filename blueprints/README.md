@@ -49,8 +49,8 @@ they also work from other working directories.
 Select a name and optionally a version:
 
 ```sh
-.venv/bin/python build.py build --name pv-cloud --version 0.2.0
-task build -- --name pv-cloud --version 0.2.0
+.venv/bin/python build.py build --name pv-cloud --version 0.1.0
+task build -- --name pv-cloud --version 0.1.0
 ```
 
 Every entry in `releases.json` is selected by default. Test fixtures are excluded.
@@ -133,8 +133,8 @@ its `task setup`, `task drivers:build -- --native`, `task inframill:copy`, and D
 Run them from the Kit repository root:
 
 ```sh
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 tests/check.py blueprint:check
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0 python3 tests/check.py blueprint:check
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0 \
   REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:... \
   python3 tests/check.py blueprint:verify
 ```

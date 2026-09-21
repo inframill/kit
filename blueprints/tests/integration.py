@@ -100,9 +100,9 @@ def local_flow(client, version, reference, name=None, fetch=True):
 
 def pv_flow(client, reference, tofu):
     client.fetch(reference)
-    ids = driver_ids('pv-cloud', '0.2.0')
+    ids = driver_ids('pv-cloud', '0.1.0')
     instances = []
-    for suffix in ['arm64', 'amd64', '0.2.0']:
+    for suffix in ['arm64', 'amd64', '0.1.0']:
         values = json.loads((BLUEPRINTS / f'examples/pv-cloud-{suffix}.json').read_text())
         iid = client.initialize('test/pv-' + suffix.replace('.', '-'), reference, values)
         instances.append(iid)
@@ -141,11 +141,11 @@ def runtime_flows(client, registry, arch, tofu):
         client.execute(iid, ansible + '.apply', {'playbook': 'site'})
         plan = client.execute(iid, prefix + '.plan', {'destroy': True})
         client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = registry + '/inframill/blueprints/pv-cloud:0.2.0'
-    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.2.0.json').read_text())
+    reference = registry + '/inframill/blueprints/pv-cloud:0.1.0'
+    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.1.0.json').read_text())
     client.fetch(reference)
     iid = client.initialize('smoke/pv-cloud', reference, values)
-    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
+    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.1.0')
     ids = {d['name']: d['id'] for d in release['drivers']}
     client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     work = pathlib.Path(client.config['engine']['dataDir']) / 'instances' / iid / 'workspace' / ids['opentofu']

@@ -1,6 +1,6 @@
 {
   "api_version": "inframill.dev/blueprint/v1",
-  "description": "pv-cloud 0.2.0",
+  "description": "pv-cloud 0.1.0",
   "values_schema": {
     "title": "pv-cloud Instance",
     "type": "object",

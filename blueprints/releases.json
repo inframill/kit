@@ -3,7 +3,7 @@
   "blueprints": [
     {
       "name": "pv-cloud",
-      "version": "0.2.0",
+      "version": "0.1.0",
       "protocol": 1,
       "platforms": [
         "linux/amd64",
@@ -26,7 +26,7 @@
         }
       ],
       "status": "supported",
-      "source_sha256": "sha256:fc6e52dddba0dff5ad3ff4b0aa0ece214dbd447315c5bc358dac30b181746d30",
+      "source_sha256": "sha256:ae18ba9707e8f5fb09a8819ae7bd06cdef0249a5b0c76d61158eb26bd50945f5",
       "inframill_version": "0.3.0-dev"
     }
   ]

@@ -89,7 +89,7 @@ def registry_env(tmp, address, push_address):
 
 
 def blueprint_check(name, version):
-    if name != 'local-resource' and (name, version) != ('pv-cloud', '0.2.0'):
+    if name != 'local-resource' and (name, version) != ('pv-cloud', '0.1.0'):
         raise RuntimeError('No declared integration fixture for this blueprint version')
     with registry() as (address, _, push_address), tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
@@ -168,7 +168,7 @@ def registry_check():
         with engine(tmp / 'workflows', env) as client:
             for case in fixture_cases():
                 local_flow(client, case['version'], f"{address}/inframill/blueprints/local-resource:{case['version']}")
-            pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.2.0', tools()[0])
+            pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.1.0', tools()[0])
         daemon_check(tmp, address, env)
         cache_check(tmp, address, env)
         container_checks(tmp, network, env)
@@ -179,12 +179,12 @@ def main():
     if action in ('registry', 'full'):
         registry_check()
     elif action == 'blueprint:check':
-        blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0'))
+        blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.1.0'))
     elif action == 'blueprint:verify':
         reference = os.environ['REFERENCE']
         if '@sha256:' not in reference:
             raise RuntimeError('REFERENCE must be digest-pinned')
-        name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0')
+        name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.1.0')
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             with engine(pathlib.Path(td)) as client:
                 verify(client, name, version, reference)
