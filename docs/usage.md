@@ -40,7 +40,7 @@ bin/inframill server instance init production/example \
   --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.1.0 \
   --values-file blueprints/examples/pv-cloud-0.1.0.json
 bin/inframill server secret replace production --file /private/path/secrets.json
-bin/inframill server instance exec production/example opentofu-0-2-0.init --wait
+bin/inframill server instance exec production/example opentofu.init --wait
 ```
 
 Use your published tag or digest reference. Commands such as init/plan/apply contact
@@ -94,10 +94,29 @@ preserves existing Instances and their source snapshots.
 ## Drivers
 
 A blueprint has a static `blueprint.yaml` containing `api_version`, `description`,
-an inline `values_schema`, and `driver_settings`, alongside `template/`.
-Each entry in `driver_settings` pins its exact implementation and a `settings_file`. Templates
-render nonsecret backend/address/user settings into `kit-driver.json` within that
-driver's workspace. Secret references are names in this file, never credentials.
+an inline `values_schema`, and `driver_settings`, alongside `templates/`.
+Each entry has a required major.minor version and nested driver settings:
+
+```yaml
+driver_settings:
+  opentofu:
+    version: "0.2"
+    settings:
+      id: opentofu
+      settings_file: kit-driver.json
+      backend: s3
+      node_output: inframill_nodes
+      artifact: opentofu-nodes-v1.json
+```
+
+Inframill checks the connected driver's major/minor before accepting the Blueprint.
+Release manifests pin exact driver binaries; the Blueprint binding declares the
+compatible major/minor line.
+Templates render nonsecret settings into `kit-driver.json` within
+`workspace/opentofu/` and `workspace/ansible/`. Sources live in matching
+`templates/opentofu/` and `templates/ansible/` directories. The engine supplies
+each driver's directory directly; drivers do not append another directory.
+Secret references are names in settings files, never credentials.
 Settings validation uses no files; Prepare reads and validates rendered inputs with
 no tool execution, writes, network or secrets. Execute performs and verifies effects.
 

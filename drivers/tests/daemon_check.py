@@ -101,16 +101,16 @@ def daemon_check(tmp, registry, env):
     try:
         start()
         statuses = {d['id']: d['status'] for d in rpc('ListDrivers')['drivers']}
-        assert statuses['opentofu-0-2-0'] == 'DRIVER_STATUS_AVAILABLE', statuses
-        assert statuses['ansible-0-2-0'] == 'DRIVER_STATUS_AVAILABLE', statuses
+        assert statuses['opentofu'] == 'DRIVER_STATUS_AVAILABLE', statuses
+        assert statuses['ansible'] == 'DRIVER_STATUS_AVAILABLE', statuses
         assert statuses['unavailable'] == 'DRIVER_STATUS_UNAVAILABLE', statuses
         iid = initialize('acceptance/local', registry + '/inframill/blueprints/local-resource:0.1.0', {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
-        run(iid, 'opentofu-0-2-0.init')
-        plan = run(iid, 'opentofu-0-2-0.plan')
-        run(iid, 'opentofu-0-2-0.apply', {'plan_id': plan['plan_id']})
-        run(iid, 'ansible-0-2-0.apply', {'playbook': 'site'})
-        plan = run(iid, 'opentofu-0-2-0.plan', {'destroy': True})
-        run(iid, 'opentofu-0-2-0.destroy', {'plan_id': plan['plan_id']})
+        run(iid, 'opentofu.init')
+        plan = run(iid, 'opentofu.plan')
+        run(iid, 'opentofu.apply', {'plan_id': plan['plan_id']})
+        run(iid, 'ansible.apply', {'playbook': 'site'})
+        plan = run(iid, 'opentofu.plan', {'destroy': True})
+        run(iid, 'opentofu.destroy', {'plan_id': plan['plan_id']})
         assert len(rpc('ListCommandExecutions', {'instance_id': iid})['executions']) == 6
         ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
         first = initialize('alpha/one', ref, {})

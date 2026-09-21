@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit 0.3.0-dev targets the Inframill 0.3.0-dev API. The `drivers/` subproject builds
+Kit 0.5.0-dev targets the Inframill 0.5.0-dev API. The `drivers/` subproject builds
 independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
 prebuilt driver outputs with the engine and tools. Blueprints are separate OCI packages.
 
@@ -21,8 +21,8 @@ prebuilt driver outputs with the engine and tools. Blueprints are separate OCI p
 ## Command lifecycle
 
 `ValidateSettings` examines only the driver's static settings object. Engine
-renders Values into each configured driver's workspace, including a strict
-`kit-driver.json`. `Prepare` validates arguments/settings and reads required files
+renders `templates/<configured-id>/` into the matching driver workspace, each
+with its own `kit-driver.json`. Kit configures IDs `opentofu` and `ansible`. `Prepare` validates arguments/settings and reads required files
 without effects or credentials. For run, the fresh driver process prepares again,
 then Execute receives the namespace's secret snapshot.
 
@@ -88,7 +88,7 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.3.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.5.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while namespace secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).

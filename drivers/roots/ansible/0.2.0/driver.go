@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -14,7 +13,6 @@ import (
 
 type Driver struct{ Version, ToolVersion, Tool string }
 type StaticSettings struct {
-	Version         string            `json:"required_driver_version"`
 	ID              string            `json:"id"`
 	SettingsFile    string            `json:"settings_file"`
 	ProducerID      string            `json:"producer_id"`
@@ -67,8 +65,8 @@ func (d Driver) parseSettings(config driver.Settings) (StaticSettings, error) {
 	if e = artifacts.Decode(data, &m); e != nil {
 		return m, e
 	}
-	if m.Version != d.Version || !driver.ValidID(m.ID) || !driver.ValidID(m.ProducerID) || m.ProducerVersion == "" || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ProducerID+"-nodes-") || m.Connection != "local" && m.Connection != "ssh" || m.HostKeyPolicy != "strict" && m.HostKeyPolicy != "accept-new" || len(m.Playbooks) == 0 {
-		return m, errors.New("invalid Ansible static or version")
+	if !driver.ValidID(m.ID) || !driver.ValidID(m.ProducerID) || m.ProducerVersion == "" || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ProducerID+"-nodes-") || m.Connection != "local" && m.Connection != "ssh" || m.HostKeyPolicy != "strict" && m.HostKeyPolicy != "accept-new" || len(m.Playbooks) == 0 {
+		return m, errors.New("invalid Ansible static settings")
 	}
 	for name, path := range m.Playbooks {
 		if !artifacts.Identifier.MatchString(name) || !artifacts.Relative(path) {
@@ -95,9 +93,6 @@ func (d Driver) Prepare(ctx context.Context, scope driver.ExecutionContext, comm
 	m, err := d.parseSettings(scope.DriverSettings)
 	if err != nil {
 		return nil, err
-	}
-	if filepath.Base(scope.WorkspaceDirectory) != m.ID {
-		return nil, errors.New("static id must match workspace driver id")
 	}
 	var s Settings
 	data, err := artifacts.Read(scope.WorkspaceDirectory, m.SettingsFile, artifacts.SettingsLimit)

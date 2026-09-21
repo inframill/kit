@@ -17,12 +17,12 @@ logger:
 engine:
   dataDir: /var/lib/inframill
   drivers:
-    opentofu-0-2-0:
+    opentofu:
       path: /opt/inframill/drivers/opentofu/0.2.0/driver
       args:
         - --tool
         - /opt/inframill/tools/opentofu/1.11.5/tofu
-    ansible-0-2-0:
+    ansible:
       path: /opt/inframill/drivers/ansible/0.2.0/driver
       args:
         - --tool

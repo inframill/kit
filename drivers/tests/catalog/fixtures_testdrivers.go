@@ -36,7 +36,7 @@ func (d fixtureDriver) ValidateSettings(ctx context.Context, c driver.Settings) 
 		return errors.New("fixture contract mismatch")
 	}
 	for key := range c {
-		if key != "contract" && key != "id" && key != "required_driver_version" {
+		if key != "contract" && key != "id" {
 			return errors.New("unexpected fixture settings field")
 		}
 	}

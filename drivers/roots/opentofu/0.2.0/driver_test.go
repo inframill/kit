@@ -15,10 +15,11 @@ import (
 
 func fixture(t *testing.T) (Driver, driver.ExecutionContext) {
 	t.Helper()
-	work := filepath.Join(t.TempDir(), "tofu")
+	shared := t.TempDir()
+	work := filepath.Join(shared, "opentofu")
 	os.Mkdir(work, 0700)
 	artifacts.Write(work, "kit-driver.json", Settings{Schema: 1, Backend: map[string]any{}, Environment: map[string]string{}})
-	return Driver{Version: "0.2.0", ToolVersion: "1.11.5", Tool: "/missing"}, driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/demo", BlueprintReference: "local@sha256:" + strings.Repeat("a", 64)}, DriverSettings: driver.Settings{"required_driver_version": "0.2.0", "id": "tofu", "settings_file": "kit-driver.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
+	return Driver{Version: "0.2.0", ToolVersion: "1.11.5", Tool: "/missing"}, driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/demo", BlueprintReference: "local@sha256:" + strings.Repeat("a", 64)}, DriverSettings: driver.Settings{"id": "tofu", "settings_file": "kit-driver.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
 }
 func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 	d, s := fixture(t)
@@ -125,5 +126,28 @@ esac
 	}
 	if _, e = d.Prepare(t.Context(), s, "apply", args); e == nil {
 		t.Fatal("partially applied plan replayed")
+	}
+}
+
+func TestUsesEngineSuppliedDriverDirectory(t *testing.T) {
+	d, s := fixture(t)
+	s.DriverSettings["id"] = "custom"
+	s.DriverSettings["artifact"] = "custom-nodes-v1.json"
+	expected := filepath.Join(filepath.Dir(s.WorkspaceDirectory), "custom")
+	if err := os.Rename(s.WorkspaceDirectory, expected); err != nil {
+		t.Fatal(err)
+	}
+	s.WorkspaceDirectory = expected
+	// The driver must not append its own name to the engine-supplied root.
+	nested := filepath.Join(expected, "opentofu")
+	os.Mkdir(nested, 0700)
+	os.WriteFile(filepath.Join(nested, "kit-driver.json"), []byte("wrong nested root"), 0600)
+	command, err := d.Prepare(t.Context(), s, "plan", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := command.(*prepared).scope
+	if scope.WorkspaceDirectory != expected || scope.ArtifactDirectory != s.ArtifactDirectory {
+		t.Fatal("driver changed engine-supplied workspace or artifact paths")
 	}
 }

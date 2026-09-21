@@ -93,11 +93,11 @@ def archive(source):
     with tarfile.open(fileobj=output, mode='w', format=tarfile.PAX_FORMAT) as tar:
         for path in sorted(source.rglob('*')):
             name = path.relative_to(source).as_posix()
-            require(name in ('blueprint.yaml', 'template') or name.startswith('template/'),
+            require(name in ('blueprint.yaml', 'templates') or name.startswith('templates/'),
                     'blueprint contains files outside its source contract: ' + name)
             require('\\' not in name and '\x00' not in name, 'invalid source path')
             for part in path.relative_to(source).parts:
-                require(part not in ('.terraform', '.inframill', 'runtime', '.git') and
+                require(part not in ('.terraform', '.git') and
                         not part.startswith(('.env', '.kit-')) and
                         not part.endswith(('.tfstate', '.tfplan', '.tfvars', '.tfvars.json', '.pem', '.key')),
                         'blueprint contains runtime or credential files: ' + name)
@@ -117,8 +117,8 @@ def archive(source):
             header.size = len(data)
             tar.addfile(header, None if directory else io.BytesIO(data))
             entries[name] = None if directory else data
-    require(isinstance(entries.get('blueprint.yaml'), bytes) and 'template' in entries and
-            entries['template'] is None, 'blueprint.yaml and template directory are required')
+    require(isinstance(entries.get('blueprint.yaml'), bytes) and 'templates' in entries and
+            entries['templates'] is None, 'blueprint.yaml and templates directory are required')
     compressed = io.BytesIO()
     with gzip.GzipFile(fileobj=compressed, mode='wb', filename='', mtime=0, compresslevel=9) as stream:
         stream.write(output.getvalue())
@@ -186,12 +186,22 @@ def validate_definition(entries, release):
     settings = definition['driver_settings']
     require(isinstance(settings, dict) and set(settings) == {d['id'] for d in release['drivers']},
             'blueprint settings and release drivers differ')
+    children = {name.split('/')[1] for name in entries if name.startswith('templates/')}
+    require(children == set(settings), 'template directories must match configured driver IDs')
     for driver in release['drivers']:
-        config = settings[driver['id']]
-        require(isinstance(config, dict) and config.get('id') == driver['id'] and
-                config.get('required_driver_version') == driver['version'], 'driver requirements disagree')
-        prefix = 'template/' + driver['id']
-        require(prefix in entries and entries[prefix] is None, 'missing driver template directory')
+        binding = settings[driver['id']]
+        require(isinstance(binding, dict) and set(binding) == {'version', 'settings'},
+                'driver binding requires version and settings')
+        required = binding['version']
+        require(isinstance(required, str) and len(required) <= 128 and
+                re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', required),
+                'driver binding version must be a major.minor string')
+        require(required == '.'.join(driver['version'].split('.')[:2]),
+                'driver binding version differs from the release')
+        config = binding['settings']
+        require(isinstance(config, dict) and config.get('id') == driver['id'], 'driver settings ID differs from its binding')
+        prefix = 'templates/' + driver['id']
+        require(entries.get(prefix, False) is None, 'missing configured driver template directory')
         if 'settings_file' in config:
             filename = config['settings_file']
             require(isinstance(filename, str) and filename not in ('', '.', '..') and

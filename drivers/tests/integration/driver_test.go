@@ -90,7 +90,7 @@ func TestManagerVersionsRepliesAndCancellation(t *testing.T) {
 	work := filepath.Join(t.TempDir(), "opentofu")
 	os.Mkdir(work, 0700)
 	os.WriteFile(filepath.Join(work, "kit-driver.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0600)
-	scope := driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/example", BlueprintReference: "local@example"}, DriverSettings: driver.Settings{"id": "opentofu", "required_driver_version": "0.2.0", "backend": "local", "node_output": "nodes", "settings_file": "kit-driver.json", "artifact": "opentofu-nodes-v1.json"}}
+	scope := driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/example", BlueprintReference: "local@example"}, DriverSettings: driver.Settings{"id": "opentofu", "backend": "local", "node_output": "nodes", "settings_file": "kit-driver.json", "artifact": "opentofu-nodes-v1.json"}}
 	p, e := m.Prepare(t.Context(), driver.CommandRequest{DriverID: "opentofu", Command: "plan", Scope: scope})
 	if e != nil {
 		t.Fatal(e)

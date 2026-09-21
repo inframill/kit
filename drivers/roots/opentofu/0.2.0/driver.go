@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -15,7 +14,6 @@ import (
 
 type Driver struct{ Version, ToolVersion, Tool string }
 type StaticSettings struct {
-	Version      string `json:"required_driver_version"`
 	ID           string `json:"id"`
 	SettingsFile string `json:"settings_file"`
 	Backend      string `json:"backend"`
@@ -73,8 +71,8 @@ func (d Driver) parseSettings(config driver.Settings) (StaticSettings, error) {
 	if err = artifacts.Decode(b, &m); err != nil {
 		return m, err
 	}
-	if m.Version != d.Version || !driver.ValidID(m.ID) || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ID+"-nodes-") || !artifacts.Identifier.MatchString(m.NodeOutput) || m.Backend != "local" && m.Backend != "s3" {
-		return m, errors.New("invalid OpenTofu settings or implementation version")
+	if !driver.ValidID(m.ID) || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ID+"-nodes-") || !artifacts.Identifier.MatchString(m.NodeOutput) || m.Backend != "local" && m.Backend != "s3" {
+		return m, errors.New("invalid OpenTofu settings")
 	}
 	return m, nil
 }
@@ -134,9 +132,6 @@ func (d Driver) Prepare(ctx context.Context, scope driver.ExecutionContext, comm
 	m, err := d.parseSettings(scope.DriverSettings)
 	if err != nil {
 		return nil, err
-	}
-	if filepath.Base(scope.WorkspaceDirectory) != m.ID {
-		return nil, errors.New("static id must match workspace driver id")
 	}
 	var a Arguments
 	data, err := json.Marshal(args)

@@ -113,3 +113,11 @@ their checksums, architecture, engine compatibility and tool requirements, then
 copies them into `/opt/inframill/drivers/<name>/<version>/`. It fails if a required
 output is missing and never compiles a driver. `DRIVERS_DIST_DIR` overrides that
 input directory for image assembly.
+
+## Driver workspaces
+
+Inframill 0.5.0-dev passes each driver its `workspace/<configured-id>/` directory.
+Drivers use that supplied directory directly for settings, tools, playbooks and
+roles. Kit configures IDs `opentofu` and `ansible`, so Blueprint sources belong
+under `templates/opentofu/` and `templates/ansible/`. Configured aliases work when
+Blueprint directory names match those IDs. Shared artifacts remain separate.

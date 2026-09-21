@@ -12,11 +12,12 @@ import (
 
 func fixture(t *testing.T) (Driver, driver.ExecutionContext, artifacts.Nodes) {
 	t.Helper()
-	work := filepath.Join(t.TempDir(), "ansible")
+	shared := t.TempDir()
+	work := filepath.Join(shared, "ansible")
 	os.Mkdir(work, 0700)
 	artifacts.Write(work, "kit-driver.json", Settings{1, "public_ipv4", "root"})
 	artifacts.WriteBytes(work, "site.yml", []byte("[]"))
-	s := driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/demo", BlueprintReference: "local@sha256:" + strings.Repeat("a", 64)}, DriverSettings: driver.Settings{"required_driver_version": "0.2.0", "id": "ansible", "settings_file": "kit-driver.json", "producer_id": "tofu", "producer_version": "0.2.0", "artifact": "tofu-nodes-v1.json", "connection": "local", "host_key_policy": "strict", "roles": []string{"local"}, "playbooks": map[string]string{"site": "site.yml"}}}
+	s := driver.ExecutionContext{WorkspaceDirectory: work, ArtifactDirectory: t.TempDir(), CommandID: "22222222-2222-4222-8222-222222222222", Binding: driver.Binding{InstanceID: "11111111-1111-4111-8111-111111111111", Name: "test/demo", BlueprintReference: "local@sha256:" + strings.Repeat("a", 64)}, DriverSettings: driver.Settings{"id": "ansible", "settings_file": "kit-driver.json", "producer_id": "tofu", "producer_version": "0.2.0", "artifact": "tofu-nodes-v1.json", "connection": "local", "host_key_policy": "strict", "roles": []string{"local"}, "playbooks": map[string]string{"site": "site.yml"}}}
 	nodes := artifacts.Nodes{Schema: 1, Valid: true, Binding: s.Binding, ProducerID: "tofu", ProducerVersion: "0.2.0", CommandID: s.CommandID, Nodes: []artifacts.Node{{Name: "local", Roles: []string{"local"}, Architecture: "arm64", PublicIPv4: "127.0.0.1"}}}
 	return Driver{"0.2.0", "2.20.1", "/missing"}, s, nodes
 }
@@ -60,5 +61,28 @@ func TestExecutionVerifiesRecap(t *testing.T) {
 				t.Fatal(e)
 			}
 		})
+	}
+}
+
+func TestUsesEngineSuppliedDriverDirectory(t *testing.T) {
+	d, s, _ := fixture(t)
+	s.DriverSettings["id"] = "custom"
+
+	expected := filepath.Join(filepath.Dir(s.WorkspaceDirectory), "custom")
+	if err := os.Rename(s.WorkspaceDirectory, expected); err != nil {
+		t.Fatal(err)
+	}
+	s.WorkspaceDirectory = expected
+	// The driver must not append its own name to the engine-supplied root.
+	nested := filepath.Join(expected, "ansible")
+	os.Mkdir(nested, 0700)
+	os.WriteFile(filepath.Join(nested, "kit-driver.json"), []byte("wrong nested root"), 0600)
+	command, err := d.Prepare(t.Context(), s, "syntax-check", map[string]any{"playbook": "site"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := command.(*prepared).scope
+	if scope.WorkspaceDirectory != expected || scope.ArtifactDirectory != s.ArtifactDirectory {
+		t.Fatal("driver changed engine-supplied workspace or artifact paths")
 	}
 }

@@ -69,8 +69,9 @@ def configuration(driver_root, workspace, tools=None, drivers=None, target=None)
     selected = {}
     for release in drivers or bundle_lock()['drivers']:
         name, version = release['name'], release['version']
-        base, _, pre = version.partition('-')
-        identity = name + '-' + base.replace('.', '-') + ('-pre-' + pre.encode().hex() if pre else '')
+        identity = name
+        if identity in selected:
+            raise ValueError('Default configuration requires one version per driver name')
         path = pathlib.Path(driver_root) / name / version
         if target:
             path = path / target

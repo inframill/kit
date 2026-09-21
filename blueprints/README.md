@@ -5,8 +5,14 @@ single `build.py` script owns source validation, deterministic archives, OCI
 packaging and calls to `docker load` / `docker push`. It does not import Kit scripts, compile Go,
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
+The current packages target Inframill **0.5.0-dev** and its driver binding
+contract. pv-cloud remains **0.1.0**. OpenTofu files live in `templates/opentofu/`;
+Ansible playbooks and roles live in `templates/ansible/`. Each directory contains
+its own `kit-driver.json.gotmpl`. These directory names match the configured driver IDs. Each `driver_settings`
+entry wraps a major.minor `version` string and a nested `settings` object.
+
 Each release is **one architecture-independent OCI artifact** containing
-`blueprint.yaml` and `template/`. The same tag and digest work on Linux AMD64 and
+`blueprint.yaml` and `templates/`. The same tag and digest work on Linux AMD64 and
 ARM64. There is no base image, executable, architecture-specific build or manifest
 index to select. These are source packages consumed by Inframill, not containers
 that can be started with `docker run`.
@@ -82,8 +88,10 @@ versions for changed packages. Build and push never modify release metadata.
 
 ## Add a release
 
-1. Add source under `<name>/<version>/blueprint.yaml` and `template/`.
-   Each driver has a `template/<driver-id>/` directory. Keep binaries out of these
+1. Add source under `<name>/<version>/blueprint.yaml` and `templates/`.
+   Use exactly one `templates/<configured-id>/` directory per driver binding,
+   such as `templates/opentofu/` and `templates/ansible/`. Top-level files and extra
+   directories under `templates/` are rejected. Keep binaries out of these
    portable packages; driver tools belong in the Kit runtime.
 2. Print the source seal (this works before adding release metadata):
 
@@ -93,12 +101,12 @@ versions for changed packages. Build and push never modify release metadata.
 
 3. Add an entry to `releases.json` following the existing pv-cloud entry. Include
    the exact name/version, engine compatibility target (`inframill_version`),
-   driver IDs/names/versions, protocol `1`, both platforms/architectures, status,
+   driver IDs/names/versions, matching major.minor Blueprint bindings, protocol `1`, both platforms/architectures, status,
    and the printed `source_sha256`.
 4. Run the tests below and `task build`. Publish after testing the release
    against its intended engine and drivers.
 
-Only `blueprint.yaml` and `template/` may occur in a source version. Links, special
+Only `blueprint.yaml` and `templates/` may occur in a source version. Links, special
 files, credentials, state and runtime directories are rejected. Source timestamps,
 file ownership and host architecture do not enter the archive. Executable bits
 are preserved. `blueprint.yaml` supports JSON or YAML without aliases, duplicate

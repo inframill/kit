@@ -59,9 +59,9 @@ def publish(name, version, env):
 def publish_protocol_fixture(tmp, env, engine_version):
     # This blueprint and driver exist only in test builds, never the release set.
     source = tmp / 'blueprints/protocol-fixture/0.1.0'
-    (source / 'template/fixture').mkdir(parents=True)
-    (source / 'template/fixture/readme.txt').write_text('secret snapshot test\n')
-    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'driver_settings': {'fixture': {'id': 'fixture', 'required_driver_version': '0.1.0', 'contract': '0.1.0'}}}))
+    (source / 'templates/fixture').mkdir(parents=True)
+    (source / 'templates/fixture/readme.txt').write_text('secret snapshot test\n')
+    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'driver_settings': {'fixture': {'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'}}}}))
     prefix = [str(BLUEPRINT_PYTHON), str(BLUEPRINTS / 'build.py')]
     selectors = ['--root', str(tmp / 'blueprints'), '--name', 'protocol-fixture', '--version', '0.1.0',
                  '--dist', str(tmp / 'dist')]
@@ -108,7 +108,7 @@ def pv_flow(client, reference, tofu):
         instances.append(iid)
         client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     data = pathlib.Path(client.config['engine']['dataDir'])
-    workspaces = [data / 'instances' / iid / 'workspace' / ids['opentofu'] for iid in instances]
+    workspaces = [data / 'instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
     for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
                  ['validate', '-no-color'], ['test', '-no-color']]:
@@ -148,7 +148,7 @@ def runtime_flows(client, registry, arch, tofu):
     release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.1.0')
     ids = {d['name']: d['id'] for d in release['drivers']}
     client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
-    work = pathlib.Path(client.config['engine']['dataDir']) / 'instances' / iid / 'workspace' / ids['opentofu']
+    work = pathlib.Path(client.config['engine']['dataDir']) / 'instances' / iid / 'workspace' / 'opentofu'
     for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
                  ['validate', '-no-color'], ['test', '-no-color']]:
         subprocess.run([tofu, *args], cwd=work, env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'}, check=True)

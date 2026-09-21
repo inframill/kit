@@ -63,13 +63,13 @@ class BuildTests(unittest.TestCase):
                 self.assertEqual(member.mtime, 0)
                 self.assertEqual(member.uid, 0)
                 self.assertEqual(member.mode, 0o755 if member.isdir() else 0o644)
-        source_file = self.source / 'template/opentofu-0-2-0/main.tf.gotmpl'
+        source_file = self.source / 'templates/opentofu/main.tf.gotmpl'
         source_file.chmod(0o755)
         self.assertNotEqual(build.digest(build.archive(self.source)[0]), self.entry['source_sha256'])
 
     def test_changed_source_and_immutable_outputs(self):
         build.build(self.root, self.dist, self.entry)
-        (self.source / 'template/extra.txt').write_text('changed')
+        (self.source / 'templates/opentofu/extra.txt').write_text('changed')
         with self.assertRaisesRegex(ValueError, 'source differs'):
             build.build(self.root, self.dist, self.entry)
         self.seal()
@@ -89,20 +89,75 @@ class BuildTests(unittest.TestCase):
             path.write_bytes(original)
 
     def test_rejects_unsafe_sources(self):
-        for name in ['unexpected.txt', 'template/private.pem', 'template/state.tfstate', 'template/.env']:
+        for name in ['unexpected.txt', 'templates/private.pem', 'templates/state.tfstate', 'templates/.env']:
             path = self.source / name
             path.write_text('private')
             with self.subTest(name=name), self.assertRaises(ValueError):
                 build.archive(self.source)
             path.unlink()
-        link = self.source / 'template/link'
+        link = self.source / 'templates/link'
         link.symlink_to('/etc/passwd')
         with self.assertRaisesRegex(ValueError, 'links'):
             build.archive(self.source)
         link.unlink()
-        (self.source / 'template/link').symlink_to(self.source, target_is_directory=True)
+        (self.source / 'templates/link').symlink_to(self.source, target_is_directory=True)
         with self.assertRaisesRegex(ValueError, 'links'):
             build.archive(self.source)
+
+    def test_driver_directories_allow_arbitrary_nested_content(self):
+        for name in ['runtime/input.txt', '.inframill/input.txt', 'artifacts/input.txt']:
+            path = self.source / 'templates/opentofu' / name
+            path.parent.mkdir(parents=True)
+            path.write_text('ordinary template input')
+        _, entries = build.archive(self.source)
+        build.validate_definition(entries, self.entry)
+        self.assertIn('templates/opentofu/kit-driver.json.gotmpl', entries)
+        self.assertIn('templates/ansible/kit-driver.json.gotmpl', entries)
+        self.assertNotIn('templates/opentofu-0-2-0', entries)
+        missing = {k: v for k, v in entries.items() if k != 'templates/ansible/kit-driver.json.gotmpl'}
+        with self.assertRaisesRegex(ValueError, 'missing driver settings template'):
+            build.validate_definition(missing, self.entry)
+
+    def test_rejects_singular_and_mixed_template_roots(self):
+        (self.source / 'templates').rename(self.source / 'template')
+        with self.assertRaisesRegex(ValueError, 'outside its source contract'):
+            build.archive(self.source)
+        (self.source / 'templates').mkdir()
+        with self.assertRaisesRegex(ValueError, 'outside its source contract'):
+            build.archive(self.source)
+
+    def test_driver_bindings_require_matching_major_minor_and_nested_settings(self):
+        _, entries = build.archive(self.source)
+        original = json.loads(entries['blueprint.yaml'])
+        binding = original['driver_settings']['opentofu']
+        invalid = [binding['settings'], {'version': '0.2'},
+                   {**binding, 'extra': True}, {**binding, 'settings': []}]
+        invalid.extend({**binding, 'version': version}
+                       for version in ['0.2.0', '00.2', '0.2-dev', '1.2', ' 0.2', 0.2, None])
+        for value in invalid:
+            definition = json.loads(json.dumps(original))
+            definition['driver_settings']['opentofu'] = value
+            with self.subTest(binding=value), self.assertRaises(ValueError):
+                build.validate_definition({**entries, 'blueprint.yaml': json.dumps(definition).encode()}, self.entry)
+
+    def test_template_children_match_configured_ids_including_aliases(self):
+        _, entries = build.archive(self.source)
+        for modified in [
+            {**entries, 'templates/extra': None},
+            {**entries, 'templates/readme.txt': b'root file'},
+            {**entries, 'templates/opentofu': b'not a directory'},
+            {k: v for k, v in entries.items() if not k.startswith('templates/opentofu')},
+        ]:
+            with self.assertRaises(ValueError):
+                build.validate_definition(modified, self.entry)
+        definition = json.loads(entries['blueprint.yaml'])
+        definition['driver_settings']['provisioner'] = definition['driver_settings'].pop('opentofu')
+        definition['driver_settings']['provisioner']['settings']['id'] = 'provisioner'
+        release = json.loads(json.dumps(self.entry))
+        next(d for d in release['drivers'] if d['name'] == 'opentofu')['id'] = 'provisioner'
+        aliased = {k.replace('templates/opentofu', 'templates/provisioner'): v for k, v in entries.items()}
+        aliased['blueprint.yaml'] = json.dumps(definition).encode()
+        build.validate_definition(aliased, release)
 
     def test_definition_validation(self):
         _, entries = build.archive(self.source)

@@ -85,8 +85,15 @@ not enable private blueprint consumption. Kit image pulls use Docker credentials
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.3.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.5.0-dev`, with OpenTofu and Ansible
 drivers `0.2.0`. Driver and blueprint versions are independent of the image.
+
+Inframill 0.5.0-dev requires `driver_settings.<id>` bindings containing a
+major.minor `version` string and a nested `settings` object. `templates/` must
+contain exactly one directory per configured ID, and the engine passes that
+individual workspace to its driver. Kit uses IDs `opentofu` and `ansible`;
+pv-cloud remains `0.1.0`. Old Instances with direct settings entries or obsolete
+layouts must be recreated; the engine rejects them and preserves their data.
 
 The image lock selects driver **names and versions**, engine binaries/checksums,
 base image, Debian snapshot, timestamps, and the exact runtime tool dependencies.
