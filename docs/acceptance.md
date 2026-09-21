@@ -1,88 +1,61 @@
-# Local acceptance — 2026-09-16
+# Local acceptance — 2026-09-21
 
-Local acceptance passed with Kit 0.6.0-dev and prebuilt Inframill 0.6.0-dev.
-The public Go dependency was checked against sibling source revision
-`783640e5e56c0efa39417e7749aaaf635787cbc9`. The checks used the supplied sibling
-source and prebuilt binaries.
-
-## Recorded artifacts
-
-| Artifact | Digest |
-| --- | --- |
-| pv-cloud 0.2.0 | `sha256:a3b4eb5ea3da749d795a9d921dce37be6c62c610982790fd98ce462859988f13` |
-| Kit image 0.6.0-dev index | `sha256:db05156c2e0f0314920066b4e01adfb5f77ab313e991cc4412d7870a3cf1b8c5` |
-
-Outputs are in `dist/blueprints/pv-cloud/0.2.0/` and `dist/bundles/0.6.0-dev/`.
-Their build records contain the component locks, source identity and checksums.
-The image was built as `ghcr.io/inframill/kit:0.6.0-dev`. Publication to the disposable
-registry used `/inframill/kit` and returned the same index digest. Both image variants
-reported Kit 0.6.0-dev; blueprint and driver versions are 0.2.0.
-
-Both image variants verify that `/usr/local/bin/inframill` is a byte-for-byte copy
-of the corresponding locked sibling input:
-
-| Architecture | Inframill SHA-256 |
-| --- | --- |
-| Linux AMD64 | `00854b8ce46b35448b9bd9bec99149fee3919e297debddc16639ebd3778c8447` |
-| Linux ARM64 | `712ab6a0162bef18d05c393207706d2d3aadaf3e2e4fc077703dab8665d3ff90` |
+Kit and the prebuilt Inframill engine are `0.2.0-dev`. The public Go dependency
+is pinned to sibling revision `e012760daf7fa759a0b1c106ab6d3d3ec0e46770`.
+The bundle lock records checksums for all four supplied engine binaries.
+Blueprint and driver versions remain `0.2.0`.
 
 ## Executed checks
 
-`task check-fast` passed: eighteen Python tests, all Go packages/integration tests
-with vet disabled, the Kit build and release validation. `task bundle` and
-`task check-full` passed for Kit 0.6.0-dev, including blueprint packaging to the disposable
-registry. Python syntax, documentation links and `git diff --check` also passed.
+- `task check-fast` passed: 18 Python tests, Go package and integration tests with
+  vet disabled, Kit build and release version validation.
+- `task inframill:copy` verified and copied the supplied Darwin ARM64 binary.
+- `task blueprint:check` passed for local-resource 0.1.0 and pv-cloud 0.2.0 via
+  disposable registries and daemons. pv-cloud rendered ARM64, AMD64 and mixed
+  inputs and passed all four OpenTofu provider-mock cases.
+- `task blueprint:verify` passed against a digest-pinned local-resource fixture
+  in the disposable registry, including release requirement validation.
+- `task bundle` built both Linux architectures from the supplied engine binaries.
+- `task check-full` passed using native ARM64 and emulated AMD64 containers on
+  the initial image (`sha256:a0dee86c68c7956274762b0dc6ac4b4ecd365fd0bfd8fd755239b4a086a83585`).
+- The final image refresh includes the completed verification script and source
+  documentation. Its runtime binary hashes are identical to the initial image.
+  Configuration, persistence, CLI and failure checks passed again on both
+  architectures using `.cache/verify-final-image.py`.
+- Two full-suite attempts on the final image were blocked by GitHub HTTP 504
+  responses while downloading the pinned hcloud 1.68.0 checksum file. The first
+  reached ARM64 runtime provider initialization; the retry stopped at native
+  provider initialization. No code or dependency pin was changed for that error.
+  Final-image provider-mock revalidation remains incomplete; those mocks passed
+  on both architectures in the initial full run.
 
-Version-policy tests reject mismatched major/minor versions, descriptor identities,
-image/Kit versions and core targets. Independent Kit and engine patches/prereleases
-within the same major/minor line pass. The selected Kit descriptor supplies the
-engine target; no Go version constant is required. Command tests reject mismatched
-lines before builds, pushes, packaging or native copying can proceed.
+## Coverage
 
-After that version-selection change, `task check-fast`, `task blueprints:package`
-and `task inframill:copy` passed again (fast-check log: `.cache/alignment-fast.log`).
-The blueprint digest stayed unchanged. The image and full runtime checks recorded
-here precede this tooling change; the image was not rebuilt for it.
-
-| Acceptance area | Evidence |
+| Area | Evidence |
 | --- | --- |
-| Protocol | Real upstream Manager/Serve discovery and JSON dispatch; distinct version schemas; structured messages/results; rejection of `validate_manifest`, the retired `config` field, protocol argv, missing/contradictory final replies and nonzero exit after success; process-group cancellation |
-| Blueprint definition | Unified `blueprint.yaml` with inline Values schema and flat driver settings; strict rejection of unknown/duplicate fields, multiple documents, aliases/merge keys, invalid tags/types and retired source filenames; offline schema compilation and source sealing |
-| Preparation | Static settings validation without files, command-specific file requirements, no preparation writes/tools/secrets, syntax checks without node inventory |
-| Secrets | Required-secret errors before effects, restricted child environment, chunked/multiline/escaped output filtering, credential-bearing result rejection; daemon/local snapshot tests and checks for synthetic secrets in saved daemon files |
-| Outcomes | Saved-plan source/reference/mode/integrity checks, failed-apply inventory invalidation and plan retirement; Ansible complete-host recap validation; real local tool lifecycles |
-| Versions | Two production driver names, distinct test driver versions/contracts, multiple local-resource blueprint versions, generic packaging of pv-cloud and fixtures; exact selection and mismatches |
-| Engine | New Instance and Command IDs verified as UUIDv7 on both architectures; real daemon runs Kit init/plan/apply/Ansible/destroy; history and JSON reply logs; available/unavailable health; project isolation, replace/clear, running/queued snapshots, restart loss; timed-out remote wait leaves execution running; reused local Instance receives no previous invocation's secrets |
-| Packages | Deterministic packaging and graph integrity tests; disposable registry tag/digest pulls, idempotent pushes and conflicting-tag rejection; new Instance initialization from cache without authorized network acquisition; tampered cached source rejected without creating an Instance |
-| Architectures | Local-resource workflows and four pv-cloud provider mocks pass inside both Linux images; native ARM64 and emulated AMD64; core byte hashes match supplied inputs |
-| CLI | `server start`, `local exec` and `server command execution wait` use 0.6.0-dev paths; both images run `local driver list`, `local history` against active daemon storage and `server instance list` and `server driver list` with an explicit endpoint, using default and custom configurations |
-| Container configuration | Default YAML and unchanged image command; named-volume persistence of Instances and successful command history across container replacement; read-only custom YAML with a changed server port; host-bound data resolved relative to the config while working in `/tmp`; unchanged config bytes; rejection of malformed YAML and read-only data on both architectures |
-| Release | Root `VERSION` selects `0.6.0-dev` for builds, image tags, pushes and checks; eighteen Python tests include strict file validation and ignored overrides; `BLUEPRINT_VERSION` independently selects multiple fixture packages; manual-only publication, sealed production source and core requirements, sibling source pin and prebuilt binary verification, isolated tests |
+| Current API | Flat InitInstance requests, namespace filtering and secret RPCs, daemon command execution and history, fixed handler configuration without settings |
+| Secrets | Namespace isolation; replace/clear; separate running and queued snapshots; restart loss; timed-out CLI wait leaves admitted work running; synthetic credentials absent from saved files |
+| Blueprints | Two fixture versions and pv-cloud package/fetch/init; idempotent pushes and conflicting-tag rejection; offline cache reuse after restart; corrupt sources become failed catalogue entries; rejected initialization creates no Instance; deleting a failed revision preserves existing Instances |
+| Containers | Default YAML and unchanged image command; named-volume history survives replacement; read-only custom YAML and config-relative bound data; malformed YAML and read-only data reject on both architectures |
+| Workflows | Real built-in OpenTofu resources and loopback Ansible through daemons; plan/apply/destroy outcomes; both container architectures repeat fixture workflows and all four pv-cloud provider mocks |
+| Identity | Instance and command UUIDv7 checks; runtime engine hashes match the supplied locked binaries; both images report Kit 0.2.0-dev |
 
-Native pv-cloud checks rendered ARM64, AMD64 and mixed Values, ran Ansible syntax
-checks and passed four OpenTofu provider-mock cases. Container verification repeated
-real fixture workflows and provider mocks on both architectures. Test images,
-registry containers, networks and daemon processes were cleaned up.
+The pv-cloud OCI digest remains
+`sha256:a3b4eb5ea3da749d795a9d921dce37be6c62c610982790fd98ce462859988f13`.
+The local image is in `dist/bundles/0.2.0-dev/`; its `build.json` records the exact
+OCI index digest, binary hashes and bundled source snapshot. The final index is
+`sha256:57a80c088a63cc9013e0fdfd29c5ed7fe3f6ea56620dc6db41bd74682222dc5e`.
+This report was updated after the final image snapshot. Publication during
+acceptance uses only disposable registries. Containers, networks and test volumes
+are cleaned up after verification.
 
-Logs: `.cache/0.6-bundle.log` and `.cache/0.6-full.log`. This report was
-updated after verification; the image's source snapshot contains the earlier report.
-Current contracts are documented in [architecture](architecture.md) and [usage](usage.md).
-
-Retired production sources, descriptors and examples have been removed from the
-working tree. Test fixtures retain multiple versions using the current blueprint
-layout and driver protocol. The image recorded above predates this cleanup and
-still contains its original source snapshot.
-
-Cleanup verification passed `task check-fast`, an uncached run of
-`go test -vet=off -count=1 ./tests/integration`, blueprint packaging, driver discovery
-and documentation file-link checks. Packaging retained the pv-cloud digest above.
-The catalog test now requires every embedded driver descriptor to have an executable
-implementation. Fast-check log: `.cache/cleanup-fast.log`.
+Logs: `.cache/0.2-native.log`, `.cache/0.2-pv.log`, `.cache/0.2-verify.log`,
+`.cache/0.2-bundle.log`, `.cache/0.2-final-image.log`,
+`.cache/0.2-full-network-error.log` and `.cache/0.2-full.log` (latest retry).
+The initial verified image is preserved in `.cache/0.2-first-bundle/`.
 
 ## External release checks
 
-These were not performed: native AMD64 hardware execution, real ARM64/AMD64 SSH
-guests and service checks, live Hetzner/S3 interoperability, and GHCR publication
-with anonymous blueprint retrieval. Emulation and provider mocks do not substitute
-for those checks. Local verification created no cloud resources and published only
-to disposable local registries.
+Native AMD64 hardware, real SSH guests, live Hetzner/S3 interoperability and GHCR
+publication are outside these local checks. Test workflows use built-in local
+resources, provider mocks and disposable registries; they create no cloud resources.

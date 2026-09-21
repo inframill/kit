@@ -1,33 +1,49 @@
 #!/usr/bin/env python3
-"""Executed inside the built runtime against disposable built-in OpenTofu resources."""
-import hashlib,json,os,pathlib,platform,subprocess,tempfile,uuid
+"""Run daemon workflows inside each runtime using disposable built-in resources."""
+import hashlib
+import json
+import os
+import pathlib
+import platform
+import subprocess
+import tempfile
+
 import yaml
-registry=os.environ['KIT_TEST_REGISTRY'];os.environ['INFRAMILL_HTTP_REGISTRIES']=registry
-arch='arm64' if platform.machine() in ('arm64','aarch64') else 'amd64'
-lock=json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
-assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest()==lock['inframill']['binaries'][arch]['sha256']
-assert json.loads(subprocess.check_output(['inframill-kit','version']))['version']==lock['kit_version']==lock['version']
+from engine_client import Engine
+
+registry = os.environ['KIT_TEST_REGISTRY']
+os.environ['INFRAMILL_HTTP_REGISTRIES'] = registry
+arch = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
+lock = json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
+assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest() == lock['inframill']['binaries'][arch]['sha256']
+assert json.loads(subprocess.check_output(['inframill-kit', 'version']))['version'] == lock['kit_version'] == lock['version']
 with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
-    tmp=pathlib.Path(td);conf=yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text());conf['engine']['dataDir']=str(tmp/'data');config=tmp/'config.json';config.write_text(json.dumps(conf))
-    for case in json.loads(os.environ['KIT_TEST_FIXTURES']):
-        version=case['version']
-        fixture_name='smoke/v'+version.replace('.','-');reference=f'{registry}/inframill/blueprints/local-resource:{version}'
-        instance=tmp/f'instance-{version}.json';instance.write_text(json.dumps({'architecture':arch}))
-        def execute(command,args=None):
-            token=uuid.uuid4().hex;result=tmp/(token+'.json');cmd=['inframill','local','exec',command,'--config',str(config),'--values-file',str(instance),'--blueprint',reference,'--name',fixture_name,'--result-file',str(result)]
-            if args is not None:
-                argfile=tmp/(token+'-args.json');argfile.write_text(json.dumps(args));cmd+=['--args-file',str(argfile)]
-            subprocess.run(cmd,check=True,stdout=subprocess.DEVNULL)
-            return json.loads(result.read_text())['result']
-        prefix=case['drivers']['opentofu'];ap=case['drivers']['ansible']
-        execute(prefix+'.init');plan=execute(prefix+'.plan');execute(prefix+'.apply',{'plan_id':plan['plan_id']});execute(ap+'.apply',{'playbook':'site'});plan=execute(prefix+'.plan',{'destroy':True});execute(prefix+'.destroy',{'plan_id':plan['plan_id']})
-    version='0.2.0';fixture_name='smoke/pv-cloud';instance=tmp/'pv.json'
-    data=json.loads(pathlib.Path('/pv-example.json').read_text());reference=registry+'/inframill/blueprints/pv-cloud:0.2.0';instance.write_text(json.dumps(data))
-    release=json.loads(pathlib.Path('/usr/share/inframill/sources/kit/releases/blueprints/pv-cloud/0.2.0.yaml').read_text());ids={d['name']:d['id'] for d in release['drivers']}
-    execute(ids['ansible']+'.syntax-check',{'playbook':'site'})
-    work=next(p.parent for p in (tmp/'data').glob('instances/*/workspace/'+ids['opentofu']+'/main.tf') if 'hcloud' in p.read_text())
-    lock=json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
-    tofu='/opt/inframill/tools/opentofu/'+lock['opentofu']['version']+'/tofu'
-    for args in [['init','-backend=false','-input=false','-lockfile=readonly','-no-color'],['validate','-no-color'],['test','-no-color']]:
-        subprocess.run([tofu]+args,cwd=work,env={**os.environ,'HCLOUD_TOKEN':'mock-only'},check=True)
-print('Runtime workflow and provider mocks passed on '+arch)
+    tmp = pathlib.Path(td)
+    config = yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text())
+    config['engine']['dataDir'] = str(tmp / 'data')
+    with Engine(tmp, config, '/usr/local/bin/inframill') as client:
+        for case in json.loads(os.environ['KIT_TEST_FIXTURES']):
+            version = case['version']
+            reference = f'{registry}/inframill/blueprints/local-resource:{version}'
+            client.fetch(reference)
+            iid = client.initialize('smoke/v' + version.replace('.', '-'), reference, {'architecture': arch})
+            prefix, ansible = case['drivers']['opentofu'], case['drivers']['ansible']
+            client.execute(iid, prefix + '.init')
+            plan = client.execute(iid, prefix + '.plan')
+            client.execute(iid, prefix + '.apply', {'plan_id': plan['plan_id']})
+            client.execute(iid, ansible + '.apply', {'playbook': 'site'})
+            plan = client.execute(iid, prefix + '.plan', {'destroy': True})
+            client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
+        reference = registry + '/inframill/blueprints/pv-cloud:0.2.0'
+        values = json.loads(pathlib.Path('/pv-example.json').read_text())
+        client.fetch(reference)
+        iid = client.initialize('smoke/pv-cloud', reference, values)
+        release = json.loads(pathlib.Path('/usr/share/inframill/sources/kit/releases/blueprints/pv-cloud/0.2.0.yaml').read_text())
+        ids = {d['name']: d['id'] for d in release['drivers']}
+        client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
+        work = tmp / 'data/instances' / iid / 'workspace' / ids['opentofu']
+        tofu = '/opt/inframill/tools/opentofu/' + lock['opentofu']['version'] + '/tofu'
+        for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
+                     ['validate', '-no-color'], ['test', '-no-color']]:
+            subprocess.run([tofu, *args], cwd=work, env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'}, check=True)
+print('Runtime workflow and provider mocks passed on ' + arch)

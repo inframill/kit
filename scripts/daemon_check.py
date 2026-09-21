@@ -87,7 +87,7 @@ def daemon_check(tmp, registry, env):
 
     def initialize(name, reference, values):
         rpc('FetchBlueprint', {'reference': reference})
-        return rpc('InitInstance', {'name': name, 'instance': {'blueprint_reference': reference, 'values': values}})['instance']['id']
+        return rpc('InitInstance', {'name': name, 'blueprint_reference': reference, 'values': values})['instance']['id']
 
     def submit(instance, command, args=None):
         return rpc('SubmitCommand', {'instance_id': instance, 'command': command, 'args': args or {}})['commandId']
@@ -103,8 +103,8 @@ def daemon_check(tmp, registry, env):
     def run(instance, command, args=None):
         return done(instance, submit(instance, command, args))
 
-    def replace(project, secrets):
-        rpc('ReplaceProjectSecrets', {'project': project, 'secrets': secrets})
+    def replace(namespace, secrets):
+        rpc('ReplaceNamespaceSecrets', {'namespace': namespace, 'secrets': secrets})
 
     def expected(secret):
         return hashlib.sha256(secret.encode()).hexdigest()
@@ -124,33 +124,11 @@ def daemon_check(tmp, registry, env):
         run(iid, 'opentofu-0-2-0.destroy', {'plan_id': plan['plan_id']})
         assert len(rpc('ListCommandExecutions', {'instance_id': iid})['executions']) == 6
         ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
-        # Local exec uses a new Backend per invocation, including reused Instances.
-        local_config = json.loads(json.dumps(config))
-        local_config['engine']['dataDir'] = str(tmp / 'local-data')
-        local_path = tmp / 'local-config.json'
-        local_path.write_text(json.dumps(local_config))
-        values_path = tmp / 'values.json'
-        values_path.write_text('{}')
-        args_path = tmp / 'args.json'
-        args_path.write_text('{"text":"local snapshot"}')
-        secrets_path = tmp / 'secrets.json'
-        secrets_path.write_text('{"token":"synthetic-local"}')
-        ids = []
-        for index in range(2):
-            result_path = tmp / f'local-result-{index}.json'
-            argv = [str(ROOT / 'bin/inframill'), 'local', 'exec', 'fixture.probe', '--config', str(local_path), '--blueprint-dir', str(source), '--values-file', str(values_path), '--args-file', str(args_path), '--name', 'local/demo', '--result-file', str(result_path)]
-            if index == 0:
-                argv += ['--secrets-file', str(secrets_path)]
-            subprocess.run(argv, env=env, check=True, stdout=subprocess.DEVNULL)
-            result = json.loads(result_path.read_text())
-            assert result['status'] == 'succeeded', result
-            assert result['result']['secret_count'] == (1 if index == 0 else 0), result
-            ids.append(result['instance_id'])
-        assert ids[0] == ids[1]
         first = initialize('alpha/one', ref, {})
         other = initialize('beta/one', ref, {})
+        assert [i['id'] for i in rpc('ListInstances', {'namespace': 'alpha'})['instances']] == [first]
         replace('alpha', {'token': 'synthetic-first'})
-        assert rpc('ListProjectSecretNames', {'project': 'alpha'})['names'] == ['token']
+        assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == ['token']
         assert run(other, 'fixture.probe', {'text': 'isolation'})['secret_count'] == 0
         waiting = submit(first, 'fixture.probe', {'text': 'snapshot', 'wait': True})
         artifacts = data_root / 'instances' / first / 'artifacts'
@@ -174,7 +152,7 @@ def daemon_check(tmp, registry, env):
         replace('alpha', {'token': 'synthetic-restart'})
         stop()
         start()
-        assert rpc('ListProjectSecretNames', {'project': 'alpha'}).get('names', []) == []
+        assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'}).get('names', []) == []
         assert run(first, 'fixture.probe', {'text': 'restart'})['secret_count'] == 0
         for path in data_root.rglob('*'):
             if path.is_file():

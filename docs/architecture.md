@@ -1,12 +1,12 @@
 # Kit architecture
 
-Kit 0.6.0-dev targets the Inframill 0.6.0-dev API. The `inframill-kit` executable hosts
+Kit 0.2.0-dev targets the Inframill 0.2.0-dev API. The `inframill-kit` executable hosts
 drivers. The `ghcr.io/inframill/kit` image bundles that executable with the engine
 and tools; build tasks call this image a bundle. Blueprints are separate OCI packages.
 
 ## Ownership
 
-- Inframill owns Instances, Values validation/rendering, project secret snapshots,
+- Inframill owns Instances, Values validation/rendering, namespace secret snapshots,
   queues, persistence, history and the external driver transport.
 - `cmd/inframill-kit` consumes the configured prefix and calls upstream `driver.Serve`.
   `internal/catalog` selects explicit implementation factories by exact name/version.
@@ -24,7 +24,7 @@ and tools; build tasks call this image a bundle. Blueprints are separate OCI pac
 renders Values into each configured driver's workspace, including a strict
 `kit-driver.json`. `Prepare` validates arguments/settings and reads required files
 without effects or credentials. For run, the fresh driver process prepares again,
-then Execute receives the project's secret snapshot.
+then Execute receives the namespace's secret snapshot.
 
 Only Execute can create artifacts or launch tools. Known required credentials are
 resolved before effects and passed through a selected child environment. No secrets
@@ -79,10 +79,10 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.6.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.2.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
-while project secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).
+while namespace secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).
 
 See [usage](usage.md) for command behavior and [releases](releases.md) for build and
 publication commands.

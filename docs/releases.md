@@ -40,17 +40,17 @@ task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ## Version policy
 
 Kit and its image share a version and follow Inframill's major/minor release line.
-The current development baseline is Kit `0.6.0-dev` with Inframill `0.6.0-dev`.
+The current development baseline is Kit `0.2.0-dev` with Inframill `0.2.0-dev`.
 Kit patch releases may differ from the engine within the same major/minor line.
-Moving to Inframill `0.7.x` requires a Kit `0.7.x` release after compatibility checks.
+Moving to Inframill `0.3.x` requires a Kit `0.3.x` release after compatibility checks.
 The bundle lock always pins the exact engine version and binary checksums.
 Development tags are also immutable here: changed binary bytes require a new
-version/tag, such as `0.6.0-dev.1`, rather than overwriting a published `0.6.0-dev`.
+version/tag, such as `0.2.0-dev.1`, rather than overwriting a published `0.2.0-dev`.
 
 The root `VERSION` selects `releases/kits/<version>.yaml`, whose `inframill_version`
 declares the exact engine target. There is no separate engine version constant in
 Go. Standalone Kit builds reject a different major/minor version from this target.
-For example, Kit `0.6.3` may target Inframill `0.6.1`, but cannot target `0.7.0`.
+For example, Kit `0.2.3` may target Inframill `0.2.1`, but cannot target `0.3.0`.
 Image builds, pushes and native engine copies additionally require the image and
 Kit versions to match exactly, and the locked engine to equal Kit's declared target. Run
 `task release:check` to validate the selected release without building or pushing;
@@ -79,7 +79,7 @@ The root [`VERSION`](../VERSION) file is authoritative for Kit builds, image bui
 and pushes, native engine copies and full checks. It contains one SemVer value with
 an optional final newline. Missing/invalid content, whitespace and a `v` prefix
 reject before building. `VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` task arguments
-or environment values cannot override it. Direct `go build` uses `0.0.0-dev`;
+or environment values cannot override it. Direct `go build` uses `0.2.0-dev`;
 `task build` embeds the file's value.
 
 To prepare a Kit release, edit `VERSION` and add matching

@@ -2,86 +2,91 @@
 
 ## Inframill CLI
 
-`inframill local` operates on this machine using application configuration;
-`inframill server start` starts the daemon; other `inframill server` commands send
-requests to a daemon. Utilities live under `inframill other`. Kit drivers use the
-`inframill-kit driver` prefix.
+`inframill server start` starts the daemon. All Instance, blueprint, secret,
+command and history operations use `inframill server` requests. Utilities live
+under `inframill other`; Kit drivers use the `inframill-kit driver` prefix.
 
-Local operations and server startup accept `--config` (default `.inframill.yaml`).
-Relative data and driver paths resolve beside that file. Server requests accept
-`--endpoint` and `--timeout`, falling back to `INFRAMILL_ENDPOINT` and
-`INFRAMILL_TIMEOUT`, then `http://127.0.0.1:8080` and `2m`. They reject `--config`
-and never load YAML. Client connection settings are separate from application YAML.
+Only server startup accepts `--config` (default `.inframill.yaml`). Relative data
+and driver paths resolve beside that file. The `connect-engine` handler accepts
+no settings; its route is fixed. Server requests accept `--endpoint` and `--timeout`,
+falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
+`http://127.0.0.1:8080` and `2m`. Requests reject `--config` and never load YAML.
 
-`inframill server driver list` reports the selected
-daemon's cached driver availability without loading local configuration or probing
-drivers again. `inframill local driver list` performs fresh local probes instead.
+`inframill server driver list` reports the daemon's cached startup availability.
+Restart the daemon after changing its driver configuration.
 
-## Local execution and secrets
+## Running a deployment
 
 Run these commands from the repository root. Files under `examples/` contain plain
 Values JSON: `pv-cloud-0.2.0.json` uses mixed architectures; `pv-cloud-amd64.json`
 and `pv-cloud-arm64.json` each use one architecture. Generate configuration using
-the installed local tools:
+the installed local tools, then start the daemon:
 
 ```sh
 OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
 ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
   task --silent config > /tmp/kit-config.json
+bin/inframill server start --config /tmp/kit-config.json
 ```
 
-A pv-cloud invocation has this form; commands such as init/plan/apply contact real
-services and require your chosen credentials and infrastructure inputs:
+In another terminal, fetch a published blueprint and initialize an Instance.
+Initialization validates Values and renders files without executing a driver:
 
 ```sh
-bin/inframill local exec opentofu-0-2-0.init \
-  --config /tmp/kit-config.json \
-  --blueprint-dir blueprints/pv-cloud/versions/0.2.0 \
-  --values-file examples/pv-cloud-0.2.0.json \
-  --name production/example --secrets-file /private/path/secrets.json
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0
+bin/inframill server instance init production/example \
+  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
+  --values-file examples/pv-cloud-0.2.0.json
+bin/inframill server secret replace production --file /private/path/secrets.json
+bin/inframill server instance exec production/example opentofu-0-2-0.init --wait
 ```
 
-For a published source replace `--blueprint-dir` with `--blueprint` and its tag or
-digest reference. These source flags are mutually exclusive. Use `--args-file` for
-command arguments and `--result-file` with a new path outside source/data/input
-locations for machine results. Stdout is a stream of JSON reply records; tool
-diagnostics go to stderr. A result record's status, not mere file existence, decides
-success. Cancellation does not roll back tool effects.
+Use your published tag or digest reference. Commands such as init/plan/apply contact
+real services and require your chosen credentials and infrastructure inputs.
+Use `--args-file` for execution arguments, `--wait` to wait for an outcome and
+`-o json` for structured output. A failed command has a failed outcome; cancelling
+or timing out a client wait does not cancel admitted work or roll back tool effects.
+Creation inputs are immutable; use a new Instance name to change them.
 
-Inspect the configured drivers or an existing Instance's history with:
+Blueprints are fetched through OCI. To check unpublished sources, run
+`task blueprint:check BLUEPRINT=pv-cloud`: it packages them into a disposable local
+registry, starts a daemon, renders examples, checks Ansible syntax and runs OpenTofu
+provider mocks. Docker and the installed local tools are required.
+
+Inspect drivers, Instances and command history with:
 
 ```sh
-bin/inframill local driver list --config /tmp/kit-config.json
-bin/inframill local history --config /tmp/kit-config.json --name production/example -o json
+bin/inframill server driver list
+bin/inframill server instance list --namespace production
+bin/inframill server command execution list --instance-id INSTANCE_UUID -o json
+bin/inframill server command execution stdout INSTANCE_UUID COMMAND_UUID
 ```
 
-History uses the configured `engine.dataDir`. It reads existing records without
-probing drivers or changing execution state,
-including while a daemon uses the same data directory. Local execution requires
-exclusive storage access; use a separate data directory from a running daemon.
+## Namespace secrets
 
 Secret files are JSON maps of local names to strings. The example's names are
 `hetzner`, `s3_access` and `s3_secret`. Values select these names, never credential
-values. Inframill supplies a project snapshot only to driver Execute; Kit does not
+values. Inframill supplies a namespace snapshot only to driver Execute; Kit does not
 read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
 credentials must be nonempty and are checked before effects. Only selected values
 reach the tool environment. Known injected values are filtered from tool diagnostics;
 Kit results and shared artifacts contain only verified projections. Arbitrary
 provider/playbook output must not intentionally emit transformed secrets.
 
-For daemon use, manage the in-memory project set with Inframill's `server secret replace`,
-`server secret list` and `server secret clear`. Restart discards sets. Running commands retain their
-snapshot; queued commands obtain the set current when they start. Local exec needs
-`--secrets-file` on each invocation; omission means an empty set.
+Manage the in-memory namespace set with `server secret replace`, `server secret list`
+and `server secret clear`. Restart discards sets. Running commands retain their
+snapshot; queued commands obtain the set current when they start.
 
-Remote Instance initialization uses:
+The `InitInstance` RPC accepts these top-level fields:
 
 ```json
-{"blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.2.0","values":{}}
+{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.2.0","values":{}}
 ```
 
-Replace the empty Values object with the example's configured Values. The daemon
-must fetch the blueprint before initializing the Instance.
+Replace the empty Values object with configured Values. Fetch the blueprint before
+initializing the Instance. Blueprint list/show reports ready and failed catalogue
+entries; get requires a usable revision. Deleting a cached revision by its digest pin
+preserves existing Instances and their source snapshots.
 
 ## Drivers
 

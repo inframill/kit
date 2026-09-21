@@ -88,7 +88,7 @@ tasks:
     desc: Check discovery and tests for DRIVER=opentofu|ansible (DRIVER_VERSION)
     cmds: ['python3 scripts/check.py driver:check']
   blueprint:check:
-    desc: Check a blueprint locally (BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0)
+    desc: Check a blueprint via a disposable registry and daemon (requires Docker)
     cmds: ['python3 scripts/check.py blueprint:check']
 
   # Blueprint packages are architecture-independent OCI sources.

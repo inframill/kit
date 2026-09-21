@@ -73,9 +73,9 @@ def image_check(tmp, image, arch, network):
     def persist(mounts, port=8080, workdir=DATA):
         name, endpoint = start(mounts, port, workdir)
         rpc(endpoint, 'FetchBlueprint', {'reference': reference})
-        instance = rpc(endpoint, 'InitInstance', {'name': 'image/persistence', 'instance': {
+        instance = rpc(endpoint, 'InitInstance', {'name': 'image/persistence',
             'blueprint_reference': reference, 'values': {'architecture': arch},
-        }})['instance']['id']
+        })['instance']['id']
         command = rpc(endpoint, 'SubmitCommand', {'instance_id': instance,
                       'command': ids['ansible'] + '.syntax-check', 'args': {'playbook': 'site'}})['commandId']
         assert uuid.UUID(instance).version == 7 and uuid.UUID(command).version == 7
@@ -92,13 +92,11 @@ def image_check(tmp, image, arch, network):
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
         assert len(history) == 1 and history[0]['status'] == 'COMMAND_STATUS_SUCCEEDED', history
-        # Local inspection can read a running daemon's storage.
         cli = ['docker', 'exec', name, 'inframill']
-        local = json.loads(docker(cli + ['local', 'history', '--config', CONFIG,
-                           '--name', 'image/persistence', '-o', 'json']).stdout)['executions']
-        assert len(local) == 1 and local[0]['command_id'] == command and local[0]['status'] == 'succeeded', local
-        drivers = json.loads(docker(cli + ['local', 'driver', 'list', '--config', CONFIG, '-o', 'json']).stdout)['drivers']
-        assert {d['id'] for d in drivers} == set(ids.values()), drivers
+        history_cli = json.loads(docker(cli + ['server', 'command', 'execution', 'list',
+                                 '--instance-id', instance, '--endpoint',
+                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
+        assert len(history_cli) == 1 and history_cli[0]['request']['id'] == command, history_cli
         remote = json.loads(docker(cli + ['server', 'instance', 'list', '--endpoint',
                             'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['instances']
         assert any(i['id'] == instance for i in remote), remote
@@ -115,6 +113,7 @@ def image_check(tmp, image, arch, network):
         raw = docker(prefix + ['--entrypoint', python, image, '-c',
                      'import json,yaml; print(json.dumps(yaml.safe_load(open("' + CONFIG + '"))))']).stdout
         config = json.loads(raw)
+        assert config['handlers'] == [{'type': 'connect-engine'}], config
         assert config['engine']['dataDir'] == DATA and config['main']['port'] == 8080, config
         assert all(d['path'] == '/usr/local/bin/inframill-kit' for d in config['engine']['drivers'].values())
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
@@ -136,16 +135,10 @@ def image_check(tmp, image, arch, network):
         assert hashlib.sha256(custom.read_bytes()).hexdigest() == original
         print('Read-only custom YAML, bind data and config-relative paths passed on ' + arch, flush=True)
 
-        values = root / 'values.json'
-        values.write_text(json.dumps({'architecture': arch}))
-        args = root / 'args.json'
-        args.write_text('{"playbook":"site"}')
-        rejected = docker(prefix + ['--network', network, '-e', 'INFRAMILL_HTTP_REGISTRIES=registry:5000',
+        # Starting the daemon on read-only storage must fail before it can serve.
+        rejected = docker(prefix + ['--network', network,
                           '--mount', 'type=volume,src=' + volume + ',dst=' + DATA + ',readonly',
-                          '--mount', 'type=bind,src=' + str(values) + ',dst=/values.json,readonly',
-                          '--mount', 'type=bind,src=' + str(args) + ',dst=/args.json,readonly', image,
-                          'local', 'exec', ids['ansible'] + '.syntax-check', '--config', CONFIG,
-                          '--blueprint', reference, '--values-file', '/values.json', '--args-file', '/args.json', '--name', 'image/readonly'], check=False)
+                          image], check=False, timeout=20)
         assert rejected.returncode != 0 and any(message in rejected.stderr.lower() for message in
                ('read-only', 'permission denied', 'cannot be locked')), rejected.stderr
 
