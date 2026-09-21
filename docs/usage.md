@@ -4,7 +4,7 @@
 
 `inframill server start` starts the daemon. All Instance, blueprint, secret,
 command and history operations use `inframill server` requests. Utilities live
-under `inframill other`; Kit drivers use the `inframill-kit driver` prefix.
+under `inframill other`; each Kit driver is a separate versioned executable.
 
 Only server startup accepts `--config` (default `.inframill.yaml`). Relative data
 and driver paths resolve beside that file. The `connect-engine` handler accepts
@@ -19,10 +19,10 @@ Restart the daemon after changing its driver configuration.
 
 ## Running a deployment
 
-Run these commands from the repository root. Files under `examples/` contain plain
+Run these commands from the repository root. Files under `blueprints/examples/` contain plain
 Values JSON: `pv-cloud-0.2.0.json` uses mixed architectures; `pv-cloud-amd64.json`
 and `pv-cloud-arm64.json` each use one architecture. Generate configuration using
-the installed local tools, then start the daemon:
+the installed local tools and `task drivers:build -- --native` outputs, then start the daemon:
 
 ```sh
 OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
@@ -117,7 +117,7 @@ agent, batch mode and explicit host-key policy; Kit does not write private keys.
 The executable's configured prefix is:
 
 ```text
-inframill-kit driver opentofu --driver-version 0.2.0
+/opt/inframill/drivers/opentofu/0.2.0/driver
 ```
 
 Inframill sends one JSON request on stdin, without adding protocol arguments. Kit

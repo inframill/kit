@@ -19,7 +19,12 @@ os.environ['INFRAMILL_HTTP_REGISTRIES'] = registry
 arch = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
 lock = json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
 assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest() == lock['inframill']['binaries']['linux/'+arch]['sha256']
-assert json.loads(subprocess.check_output(['inframill-kit', 'version']))['version'] == lock['version']
+for release in lock['drivers']:
+    folder = pathlib.Path('/opt/inframill/drivers') / release['name'] / release['version']
+    record = json.loads((folder / 'build.json').read_text())
+    assert hashlib.sha256((folder / 'driver').read_bytes()).hexdigest() == record['files']['driver']
+    metadata = json.loads(subprocess.check_output([str(folder / 'driver'), 'version']))
+    assert (metadata['name'], metadata['version']) == (release['name'], release['version'])
 with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     tmp = pathlib.Path(td)
     config = yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text())

@@ -10,18 +10,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/inframill/kit/internal/catalog"
 )
+
+type DriverSelection struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
 
 type KitRelease struct {
 	Version             string            `json:"version"`
-	Drivers             []catalog.Release `json:"drivers"`
+	Drivers             []DriverSelection `json:"drivers"`
 	Platforms           []string          `json:"platforms"`
 	BaseImage           string            `json:"base_image"`
 	BasePlatformDigests map[string]string `json:"base_platform_digests"`
 	SourceDateEpoch     int64             `json:"source_date_epoch"`
-	GoVersion           string            `json:"go_version"`
 	Inframill           struct {
 		Version  string `json:"version"`
 		Revision string `json:"revision"`
@@ -53,7 +55,7 @@ func ProjectVersion(root string) (string, error) {
 // readKitRelease validates identity and the explicitly declared engine target.
 func readKitRelease(root, version string) (KitRelease, error) {
 	var release KitRelease
-	if !catalog.ValidVersion(version) {
+	if !ValidVersion(version) {
 		return release, errors.New("exact Kit SemVer required")
 	}
 	data, err := os.ReadFile(filepath.Join(root, "releases", version+".lock.json"))
@@ -72,7 +74,7 @@ func readKitRelease(root, version string) (KitRelease, error) {
 	if release.Version != version {
 		return release, errors.New("Kit release identity differs from selected version")
 	}
-	if !catalog.ValidVersion(release.Inframill.Version) {
+	if !ValidVersion(release.Inframill.Version) {
 		return release, errors.New("exact Inframill SemVer required in Kit release")
 	}
 	kitParts := strings.Split(version, ".")
@@ -83,14 +85,14 @@ func readKitRelease(root, version string) (KitRelease, error) {
 	return release, nil
 }
 
-// Kit validates the declared engine target and compiled driver catalog.
+// Kit validates image metadata. Driver artifacts are verified by the image assembler.
 func Kit(root, version string) (KitRelease, error) {
 	release, err := readKitRelease(root, version)
 	if err != nil {
 		return release, err
 	}
-	if len(release.Drivers) != len(catalog.List()) {
-		return release, errors.New("Kit descriptor differs from compiled driver catalog")
+	if len(release.Drivers) == 0 {
+		return release, errors.New("Kit release has no selected drivers")
 	}
 	seen := map[string]bool{}
 	for _, d := range release.Drivers {
@@ -99,8 +101,8 @@ func Kit(root, version string) (KitRelease, error) {
 			return release, errors.New("duplicate Kit driver requirement")
 		}
 		seen[key] = true
-		if _, err := catalog.Get(d.Name, d.Version); err != nil {
-			return release, err
+		if !ValidName(d.Name) || !ValidVersion(d.Version) {
+			return release, errors.New("invalid driver selection")
 		}
 	}
 	return release, nil

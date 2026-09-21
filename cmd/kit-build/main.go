@@ -17,9 +17,6 @@ import (
 	"runtime"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
-	"github.com/inframill/kit/internal/catalog"
 	"github.com/inframill/kit/internal/packaging"
 )
 
@@ -35,14 +32,6 @@ func env(k, d string) string {
 	}
 	return d
 }
-func command(dir, program string, args ...string) error {
-	cmd := exec.Command(program, args...)
-	cmd.Dir = dir
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
 func run() error {
 	if len(os.Args) != 2 {
 		return errors.New("one build action required")
@@ -54,7 +43,7 @@ func run() error {
 	ctx := context.Background()
 	action := os.Args[1]
 	var version string
-	if action == "build" || action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
+	if action == "bundle:push" || action == "bundle:validate" || action == "inframill:copy" {
 		version, e = packaging.ProjectVersion(root)
 		if e != nil {
 			return e
@@ -63,19 +52,10 @@ func run() error {
 	registry := env("REGISTRY", "ghcr.io")
 	ns := env("NAMESPACE", "inframill")
 	plain := os.Getenv("PLAIN_HTTP") == "true"
-	if !catalog.ValidName(ns) {
+	if !packaging.ValidName(ns) {
 		return errors.New("invalid namespace")
 	}
 	switch action {
-	case "build":
-		kv := version
-		if _, e = packaging.Kit(root, kv); e != nil {
-			return e
-		}
-		if e = os.MkdirAll("bin", 0755); e != nil {
-			return e
-		}
-		return command(root, "go", "build", "-trimpath", "-ldflags=-X main.version="+kv, "-o", "bin/inframill-kit", "./cmd/inframill-kit")
 	case "inframill:copy":
 		lockBytes, err := packaging.Bundle(root, version)
 		if err != nil {
@@ -86,7 +66,7 @@ func run() error {
 			return err
 		}
 		iv := lock.Inframill.Version
-		if !catalog.ValidVersion(iv) {
+		if !packaging.ValidVersion(iv) {
 			return errors.New("invalid Inframill release version")
 		}
 		entry, ok := lock.Inframill.Binaries[runtime.GOOS+"/"+runtime.GOARCH]
@@ -142,42 +122,6 @@ func run() error {
 			return err
 		}
 		return os.Chmod(destination, 0755)
-	case "config":
-		selected := catalog.List()
-		if input := os.Getenv("CONFIG_DRIVERS"); input != "" {
-			var requirements []catalog.Release
-			if e = json.Unmarshal([]byte(input), &requirements); e != nil {
-				return e
-			}
-			selected = nil
-			for _, requirement := range requirements {
-				r, err := catalog.Get(requirement.Name, requirement.Version)
-				if err != nil {
-					return err
-				}
-				selected = append(selected, r)
-			}
-		}
-		tools := map[string]string{}
-		for _, r := range selected {
-			if tool := os.Getenv(strings.ToUpper(r.Name) + "_PATH"); tool != "" {
-				tools[r.Name], e = filepath.Abs(tool)
-				if e != nil {
-					return e
-				}
-			}
-		}
-		config := catalog.Configuration(env("KIT_EXECUTABLE", filepath.Join(root, "bin/inframill-kit")), env("DATA_DIR", filepath.Join(root, ".inframill")), selected, tools)
-		switch env("CONFIG_FORMAT", "json") {
-		case "json":
-			return json.NewEncoder(os.Stdout).Encode(config)
-		case "yaml":
-			encoder := yaml.NewEncoder(os.Stdout)
-			encoder.SetIndent(2)
-			return encoder.Encode(config)
-		default:
-			return errors.New("CONFIG_FORMAT must be json or yaml")
-		}
 	case "bundle:validate":
 		_, e := packaging.Bundle(root, version)
 		return e

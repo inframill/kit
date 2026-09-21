@@ -7,27 +7,11 @@
   "drivers": [
     {
       "name": "opentofu",
-      "version": "0.2.0",
-      "tool_version": "1.11.5",
-      "protocol": 1,
-      "platforms": [
-        "linux/amd64",
-        "linux/arm64"
-      ],
-      "artifact_schema": 1,
-      "status": "supported"
+      "version": "0.2.0"
     },
     {
       "name": "ansible",
-      "version": "0.2.0",
-      "tool_version": "2.20.1",
-      "protocol": 1,
-      "platforms": [
-        "linux/amd64",
-        "linux/arm64"
-      ],
-      "artifact_schema": 1,
-      "status": "supported"
+      "version": "0.2.0"
     }
   ],
   "base_image": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
@@ -36,7 +20,6 @@
     "arm64": "sha256:fcf02c9e248b995ae2ca9aac6fa24b489f34b589dbfdc44698ad245d2ad41d1e"
   },
   "source_date_epoch": 1759190400,
-  "go_version": "go1.27.0",
   "inframill": {
     "version": "0.3.0-dev",
     "revision": "07440bac8583f0b3d0dcce7be0656a8272595c4d",

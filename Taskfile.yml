@@ -1,19 +1,21 @@
 version: '3'
 
 includes:
+  drivers:
+    taskfile: ./drivers/Taskfile.yml
+    dir: ./drivers
   blueprints:
     taskfile: ./blueprints/Taskfile.yml
     dir: ./blueprints
 
 # Kit and image releases always use the root VERSION file.
 env:
-  DRIVER_VERSION: '{{default "0.2.0" .DRIVER_VERSION}}'
+  DRIVERS_DIST_DIR: '{{default "drivers/dist" .DRIVERS_DIST_DIR}}'
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
   KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
   REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
   NAMESPACE: '{{default "inframill" .NAMESPACE}}'
   PLAIN_HTTP: '{{default "false" .PLAIN_HTTP}}' # Local test registries only.
-  DRIVER: '{{default "" .DRIVER}}'
   REFERENCE: '{{default "" .REFERENCE}}'
 
 tasks:
@@ -26,14 +28,14 @@ tasks:
       - |
         printf '%s\n' \
           '' \
-          'Start:     task setup && task build && task inframill:copy' \
+          'Start:     task drivers:build && task bundle' \
           'Check:     task check-fast' \
           'Image:     task bundle && task check-full' \
           'Publish:   docker login ghcr.io && task bundle:push' \
           'Blueprint: task blueprints:build' \
           '' \
           'Versions: root VERSION file=Kit/image; blueprints/releases.json=blueprints;' \
-          '          DRIVER_VERSION=driver. Kit/image version overrides are ignored.' \
+          '          drivers/releases.json=drivers. Kit/image version overrides are ignored.' \
           'Registry: REGISTRY=ghcr.io NAMESPACE=inframill; image repository is /kit.' \
           'Builds stay local. Push tasks upload existing artifacts.' \
           '' \
@@ -49,35 +51,29 @@ tasks:
       Installs tools locally in .cache; leaves the system Python unchanged.
     cmds: ['python3 scripts/setup-dev.py']
   build:
-    desc: Build bin/inframill-kit (VERSION file)
-    cmds: ['go run ./cmd/kit-build build']
+    desc: Assemble the Kit image from prebuilt drivers/dist outputs
+    cmds:
+      - task: bundle
   inframill:copy:
     desc: Verify and copy the prebuilt host engine from the sibling dist (VERSION file)
     cmds: ['go run ./cmd/kit-build inframill:copy']
   config:
-    desc: Print local engine configuration (CONFIG_FORMAT=json|yaml)
-    env:
-      CONFIG_FORMAT: '{{default "json" .CONFIG_FORMAT}}'
-    summary: |
-      Generate configuration with absolute tool paths, for example:
-        OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
-        ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
-          task --silent config > /tmp/kit-config.json
-    cmds: ['go run ./cmd/kit-build config']
+    desc: Print local engine JSON configuration using native drivers/dist outputs
+    cmds: ['python3 scripts/check.py config']
 
   # Verification: full checks require an already-built image.
   check-fast:
-    desc: Run Python/Go tests, build Kit and validate release versions
+    desc: Run image tooling, driver and blueprint tests and validate release versions
     cmds:
       - python3 -m unittest discover -s scripts -p "test_*.py"
       - task: blueprints:test
+      - task: drivers:test
       - go test -vet=off ./...
-      - task: build
       - task: release:check
   check-full:
     desc: Run fast checks, native workflows and both Linux images in a disposable registry
     summary: |
-      Prerequisites: task setup, Docker, and task bundle for the VERSION file.
+      Prerequisites: task setup, task drivers:build -- --native, Docker, and task bundle.
       Runs local resources, provider mocks, daemon and registry checks, then
       ARM64/AMD64 image workflows. Creates no cloud resources or GHCR packages.
     cmds:
@@ -85,17 +81,14 @@ tasks:
       - task: inframill:copy
       - python3 scripts/check.py full
   release:check:
-    desc: Validate the selected release identity, engine version and driver catalog
+    desc: Validate the selected image release and driver selections
     cmds: ['go run ./cmd/kit-build bundle:validate']
-  driver:check:
-    desc: Check discovery and tests for DRIVER=opentofu|ansible (DRIVER_VERSION)
-    cmds: ['python3 scripts/check.py driver:check']
   # The bundle is the Kit image: engine, drivers and pinned tools for both platforms.
   bundle:
     desc: Build the local Linux AMD64/ARM64 Kit image (VERSION file)
     summary: |
-      Requires Docker Buildx, the pinned sibling source revision and both prebuilt
-      Linux engine binaries under INFRAMILL_DIST_DIR. Builds Kit and copies the engine.
+      Requires Docker Buildx, prebuilt drivers under DRIVERS_DIST_DIR (drivers/dist),
+      and Linux engine binaries under INFRAMILL_DIST_DIR. Never compiles drivers.
       Includes /etc/inframill/inframill.yaml; mount data at /var/lib/inframill.
       Writes KIT_DIST_DIR/bundles/<VERSION>; never pushes or replaces an output.
     cmds: ['python3 scripts/bundle.py']

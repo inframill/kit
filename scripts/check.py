@@ -18,10 +18,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_image,
                                           blueprint_releases, publish, local_flow,
                                           pv_flow, verify)
-from daemon_check import daemon_check
+from drivers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from image_check import image_check
-from release_config import ROOT, local_tools, configuration, bundle_output, bundle_lock
+from release_config import ROOT, local_tools, configuration, bundle_output, bundle_lock, drivers_dist, native_platform
 
 
 def run(args, **kwargs):
@@ -31,7 +31,8 @@ def run(args, **kwargs):
 
 def tools():
     tofu, ansible = local_tools()
-    for tool in [tofu, ansible, ROOT / 'bin/inframill-kit', ROOT / 'bin/inframill']:
+    binaries = [drivers_dist() / d['name'] / d['version'] / native_platform() / 'driver' for d in bundle_lock()['drivers']]
+    for tool in [tofu, ansible, ROOT / 'bin/inframill', *binaries]:
         if not tool.is_file():
             raise RuntimeError(f'Missing prerequisite {tool}; see README setup')
     return tofu, ansible
@@ -39,8 +40,8 @@ def tools():
 
 def engine(tmp, env=None, data=None):
     tofu, ansible = tools()
-    config = configuration(ROOT / 'bin/inframill-kit', data or tmp / 'data',
-                           {'opentofu': tofu, 'ansible': ansible})
+    config = configuration(drivers_dist(), data or tmp / 'data',
+                           {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
     return Engine(tmp, config, ROOT / 'bin/inframill', env)
 
 
@@ -192,7 +193,9 @@ def bundle_verify(reference):
         raise RuntimeError('Missing runtime architecture')
     for arch in ['arm64', 'amd64']:
         name = 'kit-verify-' + uuid.uuid4().hex
-        run(['docker', 'run', '--rm', '--platform', 'linux/' + arch, '--entrypoint', 'inframill-kit', reference, 'version'])
+        for driver in bundle_lock()['drivers']:
+            executable = '/opt/inframill/drivers/' + driver['name'] + '/' + driver['version'] + '/driver'
+            run(['docker', 'run', '--rm', '--platform', 'linux/' + arch, '--entrypoint', executable, reference, 'version'])
         run(['docker', 'run', '-d', '--rm', '--platform', 'linux/' + arch, '--name', name, reference])
         try:
             def ready():
@@ -211,15 +214,14 @@ def bundle_verify(reference):
 
 def main():
     action = sys.argv[1]
-    if action in ('registry', 'full'):
+    if action == 'config':
+        tofu, ansible = local_tools()
+        print(json.dumps(configuration(drivers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
+                                       {'opentofu': tofu, 'ansible': ansible}, target=native_platform()), indent=2))
+    elif action in ('registry', 'full'):
         registry_check()
     elif action == 'blueprint:check':
         blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0'))
-    elif action == 'driver:check':
-        name, version = os.environ['DRIVER'], os.environ.get('DRIVER_VERSION', '0.2.0')
-        run([ROOT / 'bin/inframill-kit', 'driver', name, '--driver-version', version],
-            input=json.dumps({'protocol': 1, 'method': 'info', 'params': {}}))
-        run(['go', 'test', '-vet=off', './internal/drivers/' + name])
     elif action == 'blueprint:verify':
         reference = os.environ['REFERENCE']
         if '@sha256:' not in reference:

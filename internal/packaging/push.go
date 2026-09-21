@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/inframill/kit/internal/catalog"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
@@ -93,7 +92,7 @@ func verifyGraph(ctx context.Context, store oras.ReadOnlyTarget, d v1.Descriptor
 }
 func Push(ctx context.Context, layout, version, repository string, plain bool) (v1.Descriptor, error) {
 	var zero v1.Descriptor
-	if !catalog.ValidVersion(version) {
+	if !ValidVersion(version) {
 		return zero, errors.New("exact version required")
 	}
 	// A filesystem lock serializes manual publishers on this workstation. Across

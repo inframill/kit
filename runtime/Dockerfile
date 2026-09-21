@@ -18,6 +18,7 @@ RUN python3 -m venv /opt/inframill/tools/ansible/${ANSIBLE_VERSION} \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/pip install --no-cache-dir --require-hashes -r /build/requirements.lock \
     && python3 /build/fetch-runtime.py ${TARGETARCH}
 COPY bin/linux/${TARGETARCH}/ /usr/local/bin/
+COPY drivers/${TARGETARCH}/ /opt/inframill/drivers/
 COPY inframill.yaml /etc/inframill/inframill.yaml
 COPY sources/ /usr/share/inframill/sources/kit/
 COPY NOTICES.md /usr/share/inframill/NOTICES.md
@@ -26,9 +27,9 @@ RUN mkdir -p /var/lib/inframill \
     && cp /build/bundle.lock.json /usr/share/inframill/bundle.lock.json \
     && dpkg-query -W > /usr/share/inframill/os-packages.txt \
     && test "$(inframill --version)" = "$INFRAMILL_VERSION" \
-    && inframill-kit version \
     && /opt/inframill/tools/opentofu/${OPENTOFU_VERSION}/tofu version \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/ansible-playbook --version
+RUN for driver in /opt/inframill/drivers/*/*/driver; do "$driver" version || exit 1; done
 WORKDIR /var/lib/inframill
 EXPOSE 8080
 ENTRYPOINT ["inframill"]

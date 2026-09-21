@@ -1,22 +1,22 @@
 # Kit architecture
 
-Kit 0.3.0-dev targets the Inframill 0.3.0-dev API. The `inframill-kit` executable hosts
-drivers. The `ghcr.io/inframill/kit` image bundles that executable with the engine
-and tools; build tasks call this image a bundle. Blueprints are separate OCI packages.
+Kit 0.3.0-dev targets the Inframill 0.3.0-dev API. The `drivers/` subproject builds
+independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
+prebuilt driver outputs with the engine and tools. Blueprints are separate OCI packages.
 
 ## Ownership
 
 - Inframill owns Instances, Values validation/rendering, namespace secret snapshots,
   queues, persistence, history and the external driver transport.
-- `cmd/inframill-kit` consumes the configured prefix and calls upstream `driver.Serve`.
-  `internal/catalog` selects explicit implementation factories by exact name/version.
-- `internal/drivers/opentofu` and `internal/drivers/ansible` own separate typed
-  static settings, rendered settings, arguments, prepared commands and typed outcomes.
-- `internal/artifacts` owns bounded rooted file access, source hashes and the shared
-  node record. `internal/toolrun` owns subprocesses, restricted environments,
-  bounded machine output and filtered diagnostics.
-- `cmd/kit-build`, `internal/packaging` and `scripts/` own local configuration,
-  authoring, OCI packaging, Kit image assembly and manual publication.
+- `drivers/roots/<name>/<version>/` owns each implementation, release metadata, command
+  entrypoint and tests. `drivers/roots/internal/runner` calls upstream `driver.Serve`.
+- `drivers/roots/internal/artifacts` owns rooted file access, hashes and shared node
+  records. `drivers/roots/internal/toolrun` owns subprocesses, restricted environments,
+  bounded output and filtered diagnostics.
+- `drivers/build.py` verifies the pinned SDK checkout and builds separate AMD64 and
+  ARM64 executables. The subproject has its own Go module, tasks and tests.
+- Root `scripts/bundle.py`, `cmd/kit-build` and `internal/packaging` own image
+  assembly, input verification and publication. They do not compile drivers.
 
 ## Command lifecycle
 
@@ -53,9 +53,10 @@ which declares the exact Inframill target, drivers and dependency pins. Kit and 
 can differ. The image shares Kit's exact version and its lock must pin the declared
 engine target. The sibling checkout does not select either release version.
 
-The current catalog contains OpenTofu and Ansible 0.2.0. Explicit factories select
-code; the embedded selected release supplies versions/tool pins. Synthetic test factories
-have different settings and argument contracts to exercise future version coexistence.
+The current drivers are OpenTofu and Ansible 0.2.0. Each binary embeds its version's
+`release.json`; its executable path selects the implementation. Driver builds use
+`drivers/releases.json`, independently of the image release. Synthetic test drivers
+under `drivers/tests` exercise version coexistence and distinct contracts.
 Blueprints are a standalone subproject under `blueprints/`. Its `releases.json`
 selects production packages independently of Kit's version and declares each
 blueprint's engine and driver requirements. Fixtures, examples, test configuration,
@@ -66,10 +67,11 @@ The publisher does not handle credentials or registry lifecycle. Driver implemen
 Kit's engine integration checks. OCI sources are architecture-independent; Kit
 image indices contain both Linux architectures.
 
-Image assembly verifies the clean sibling source revision before compiling Kit,
-then copies checksum/architecture-verified core binaries from the versioned sibling
-dist. Native copying verifies the corresponding host binary too. The bundle task
-never compiles Inframill. Build records capture source, dependency and binary hashes.
+Image assembly reads prebuilt `drivers/dist/<name>/<version>/linux/<arch>/`
+outputs and engine binaries. It checks recorded hashes, ELF architectures and
+engine/tool compatibility without accessing driver source or the SDK checkout.
+Each driver ships with its build record, corresponding sources and dependency
+notices. Native development outputs use the same layout with the host OS/architecture.
 Kit image push verifies existing bytes and rejects conflicting version tags. Blueprint
 push uses standard Docker tag semantics. Publication is
 manual; local acceptance uses a disposable registry.

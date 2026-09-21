@@ -129,7 +129,7 @@ For a registry you have already configured, use matching build/push destinations
 ```
 
 The following optional checks integrate with the parent Kit project and require
-its `task setup`, `task build`, `task inframill:copy`, and Docker prerequisites.
+its `task setup`, `task drivers:build -- --native`, `task inframill:copy`, and Docker prerequisites.
 Run them from the Kit repository root:
 
 ```sh

@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import platform
 import re
 import subprocess
 
@@ -49,15 +50,28 @@ def python_requirements(lock):
 
 
 
-def configuration(executable, workspace, tools=None, drivers=None, format='json'):
-    env = {**os.environ, 'KIT_EXECUTABLE': str(executable), 'DATA_DIR': str(workspace), 'CONFIG_FORMAT': format}
-    for name in ('opentofu', 'ansible'):
-        env.pop(name.upper() + '_PATH', None)
-    for name, path in (tools or {}).items():
-        env[name.upper() + '_PATH'] = str(path)
-    env['CONFIG_DRIVERS'] = json.dumps(drivers or bundle_lock()['drivers'])
-    result = subprocess.check_output(['go', 'run', './cmd/kit-build', 'config'], cwd=ROOT, env=env, text=True)
-    return json.loads(result) if format == 'json' else result
+def native_platform():
+    arch = {'aarch64': 'arm64', 'arm64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
+    return platform.system().lower() + '/' + str(arch)
+
+
+def drivers_dist():
+    return (ROOT / os.environ.get('DRIVERS_DIST_DIR', 'drivers/dist')).resolve()
+
+
+def configuration(driver_root, workspace, tools=None, drivers=None, target=None):
+    selected = {}
+    for release in drivers or bundle_lock()['drivers']:
+        name, version = release['name'], release['version']
+        base, _, pre = version.partition('-')
+        identity = name + '-' + base.replace('.', '-') + ('-pre-' + pre.encode().hex() if pre else '')
+        path = pathlib.Path(driver_root) / name / version
+        if target:
+            path = path / target
+        args = ['--tool', str(tools[name])] if tools and name in tools else []
+        selected[identity] = {'path': str(path / 'driver'), 'args': args}
+    return {'main': {'port': 8080}, 'logger': {'type': 'slog', 'settings': {'level': 'info', 'format': 'json'}},
+            'engine': {'dataDir': str(workspace), 'drivers': selected}, 'handlers': [{'type': 'connect-engine'}]}
 
 
 def local_tools():

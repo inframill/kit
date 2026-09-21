@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Build both platforms to a local OCI layout. Never authenticate or push."""
 import hashlib,json,os,pathlib,re,shutil,subprocess,tarfile,tempfile
-from bundle_inputs import read_binary
+from bundle_inputs import read_binary, read_driver
 from release_config import bundle_lock, project_version, python_requirements
-from source_pin import verify_source
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 version=project_version()
 image_reference=os.environ.get('REGISTRY','ghcr.io')+'/'+os.environ.get('NAMESPACE','inframill')+'/kit:'+version
@@ -11,27 +10,19 @@ if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Z
 subprocess.run(['go','run','./cmd/kit-build','bundle:validate'],cwd=ROOT,check=True)
 lock_path=ROOT/f'releases/{version}.lock.json';lock=bundle_lock(version)
 if lock['version']!=version:raise SystemExit('Bundle lock identity mismatch')
-source_revision=verify_source(ROOT,lock['inframill']['revision'])
+source_revision=lock['inframill']['revision']
+drivers_dist=(ROOT/os.environ.get('DRIVERS_DIST_DIR','drivers/dist')).resolve()
 inframill_dist=(ROOT/os.environ.get('INFRAMILL_DIST_DIR','../inframill/dist')).resolve()
 inputs={arch:lock['inframill']['binaries']['linux/'+arch] for arch in ['amd64','arm64']}
 try:
     inframill_binaries={arch:read_binary(inframill_dist,inputs[arch],arch) for arch in ['amd64','arm64']}
 except (ValueError,OSError) as error:raise SystemExit(str(error))
-if subprocess.check_output(['go','env','GOVERSION'],text=True).strip()!=lock['go_version']:raise SystemExit('Go toolchain differs from bundle lock')
 if set(lock['platforms'])!={'linux/amd64','linux/arm64'}:raise SystemExit('Both platforms required')
-# Check the declared components against the executable that will be shipped.
-compiled=json.loads(subprocess.check_output(['go','run','./cmd/inframill-kit','drivers','list'],cwd=ROOT,text=True))
-catalog={(d['name'],d['version']):d['tool_version'] for d in compiled}
-selected=set()
-for driver in lock['drivers']:
-    key=(driver['name'],driver['version'])
-    if key not in catalog or key in selected:raise SystemExit('Unknown or duplicate bundle driver')
-    selected.add(key)
-    release=driver
-    installed={'opentofu':lock['opentofu']['version'],'ansible':lock['ansible_core']}.get(key[0])
-    if release['name']!=key[0] or release['version']!=key[1] or release['tool_version']!=catalog[key] or installed!=catalog[key]:raise SystemExit('Driver/tool lock mismatch')
-    if release['protocol']!=1 or set(release['platforms'])!=set(lock['platforms']):raise SystemExit('Driver platform/protocol mismatch')
-if selected!=set(catalog):raise SystemExit('Release drivers differ from compiled catalog')
+# Only prebuilt driver artifacts enter the image. No driver source checkout or compiler is used.
+try:
+    driver_inputs={(entry['name'],entry['version'],target):read_driver(drivers_dist,entry,target,lock)
+                   for entry in lock['drivers'] for target in lock['platforms']}
+except (ValueError,OSError,KeyError) as error:raise SystemExit(str(error))
 output=(ROOT/os.environ.get('KIT_DIST_DIR','dist'))/f'bundles/{version}'
 if output.exists():raise SystemExit('Bundle output already exists; push it or select a new version. Explicitly move development output aside before rebuilding.')
 output.parent.mkdir(parents=True,exist_ok=True)
@@ -39,29 +30,24 @@ def run(args,**kwargs):
     print('+',' '.join(map(str,args)),flush=True);subprocess.run(list(map(str,args)),check=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     stage=pathlib.Path(td);context=stage/'context';context.mkdir();sources=context/'sources';sources.mkdir()
-    for name in ['VERSION','release.go','go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
+    for name in ['VERSION','go.mod','go.sum','LICENSE','README.md','docs','cmd','internal','releases','scripts','runtime','Taskfile.yml']:
         p=ROOT/name
         if p.is_dir():shutil.copytree(p,sources/name,ignore=shutil.ignore_patterns('__pycache__'))
         else:shutil.copy2(p,sources/name)
-    # Collect notices using the sibling source module; Inframill itself is only
-    # copied from dist, never compiled here. No sibling source is embedded.
-    module_dirs=set()
-    for directory,target in [(ROOT,'./cmd/inframill-kit'),(ROOT.parent/'inframill','./cmd')]:
-        text=subprocess.check_output(['go','list','-deps','-f','{{if .Module}}{{.Module.Dir}}{{end}}',target],cwd=directory,text=True)
-        module_dirs.update(pathlib.Path(p) for p in text.splitlines() if p)
-    notices=sources/'go-dependency-notices';notices.mkdir()
-    for module in sorted(module_dirs):
-        if module == ROOT:continue
-        for pattern in ['LICENSE*','COPYING*','NOTICE*','AUTHORS*']:
-            for file in module.glob(pattern):
-                if file.is_file():
-                    destination=notices/module.name/file.name;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(file,destination)
     for arch in ['amd64','arm64']:
         bindir=context/f'bin/linux/{arch}';bindir.mkdir(parents=True)
-        env={**os.environ,'GOOS':'linux','GOARCH':arch,'CGO_ENABLED':'0'}
-        run(['go','build','-trimpath','-buildvcs=false','-ldflags=-X main.version='+lock['version'],'-o',bindir/'inframill-kit','./cmd/inframill-kit'],cwd=ROOT,env=env)
         (bindir/'inframill').write_bytes(inframill_binaries[arch])
         (bindir/'inframill').chmod(0o755)
+        for entry in lock['drivers']:
+            folder,record,data=driver_inputs[(entry['name'],entry['version'],'linux/'+arch)]
+            destination=context/'drivers'/arch/entry['name']/entry['version']
+            destination.mkdir(parents=True)
+            (destination/'driver').write_bytes(data)
+            (destination/'driver').chmod(0o755)
+            shutil.copy2(folder/'build.json',destination/'build.json')
+            # Each architecture's sources and dependency notices accompany its executable.
+            for name in ['sources','notices']:
+                if (folder/name).is_dir():shutil.copytree(folder/name,destination/name)
     shutil.copy2(ROOT/'runtime/inframill.yaml',context/'inframill.yaml')
     for name in ['Dockerfile','NOTICES.md']:shutil.copy2(ROOT/'runtime'/name,context/name)
     (context/'requirements.lock').write_text(python_requirements(lock))
@@ -81,6 +67,6 @@ with tempfile.TemporaryDirectory(prefix='.bundle-',dir=output.parent) as td:
     rootmanifest=json.loads((layout/'blobs/sha256'/descriptor['digest'].split(':')[1]).read_text())
     found={m.get('platform',{}).get('architecture') for m in rootmanifest['manifests']}
     if found!={'amd64','arm64'}:raise RuntimeError('Missing runtime platform')
-    record={'dependency_revision':source_revision,'inframill':lock['inframill'],'source_files':{str(p.relative_to(sources)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.rglob('*') if p.is_file()},'version':version,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),'descriptor':descriptor,'platforms':rootmanifest['manifests'],'binaries':{str(p.relative_to(context)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (context/'bin').rglob('*') if p.is_file()}}
+    record={'dependency_revision':source_revision,'inframill':lock['inframill'],'source_files':{str(p.relative_to(sources)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.rglob('*') if p.is_file()},'version':version,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),'descriptor':descriptor,'platforms':rootmanifest['manifests'],'drivers':{name+'@'+version+'/'+target:record for (name,version,target),(_,record,_) in driver_inputs.items()},'binaries':{str(p.relative_to(context)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (context/'bin').rglob('*') if p.is_file()}}
     output.mkdir();shutil.move(str(layout),output/'oci');(output/'build.json').write_text(json.dumps(record,indent=2)+'\n')
     print('Built local bundle:',output,'digest:',descriptor['digest'])

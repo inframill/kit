@@ -1,39 +1,44 @@
 # Local acceptance — 2026-09-21
 
 Kit and the prebuilt Inframill engine are `0.3.0-dev`, targeting engine revision
-`07440bac8583f0b3d0dcce7be0656a8272595c4d`. The current release lock pins all four
-engine binaries. Production blueprint and driver versions are `0.2.0`.
+`07440bac8583f0b3d0dcce7be0656a8272595c4d`. Driver and production blueprint versions
+remain `0.2.0`.
 
-## Current checks
+## Driver subproject and image assembly
 
-`task check-fast` passed after cleanup: 20 Kit Python tests, 11 blueprint tests,
-Go tests, the native Kit build and release validation. Blueprint tests exercise detached
-builds, both fixture versions, deterministic archives, unsafe sources, tampering,
-Docker command sequencing and push failures.
+Driver implementations now live under `drivers/roots/<name>/<version>/`, with
+shared production code under `drivers/roots/internal/`. The standalone Python
+builder, Go module, release selection, tests and README are contained in `drivers/`.
+The root image assembler consumes verified `drivers/dist` outputs and never
+compiles drivers or reads their implementation sources.
 
-Real Docker pushes of pv-cloud and both local-resource fixture versions passed
-after cleanup and preserved their exact OCI digests; repeat pushes also passed. The pv-cloud digest is
-`sha256:c4fedb716d3d10bf57e075ea336238ed65d6989aa2370235d33350758dfaf960`.
-The publisher invokes Docker only; authentication and registry configuration are
-managed by the user. Disposable registries belong to the integration harness.
+Checks passed after the final source move:
 
-## Runtime coverage
+- `task check-fast`: 23 image-tooling Python tests, 9 driver-builder Python tests,
+  11 blueprint tests, both Go test suites and image release validation.
+- Both drivers built and verified for Linux AMD64 and ARM64. Native Darwin ARM64
+  outputs also built and passed artifact verification.
+- `task bundle` assembled both image architectures from those prebuilt outputs.
+- Both image architectures passed exact default configuration, driver discovery,
+  engine version, persistent history, custom configuration, malformed configuration
+  and read-only storage checks.
+- Both architectures passed local-resource OpenTofu/Ansible workflows and all four
+  pv-cloud provider mocks. AMD64 ran under emulation.
+- The image and all blueprint fixture versions published successfully to disposable
+  local registries. Repeated blueprint pushes preserved their artifact digests.
 
-Before the Docker publication change and test-directory cleanup, `task check-full`
-passed with native ARM64 and emulated AMD64 Kit runtimes. These results cover the
-unchanged blueprint artifact bytes; the full runtime suite has not been rerun for
-those harness changes.
+The verified image is in `dist/bundles/0.3.0-dev/`, with index
+`sha256:9d0f977ad6138a29dc8025b0cdc03035b524e4ed6311e5988f6117a56c483ffc`.
+Each driver ships its executable, build record, source snapshot and available
+Go dependency notices under `/opt/inframill/drivers/<name>/<version>/`.
+This report was updated after the image's source snapshot was created.
 
-| Area | Coverage |
-| --- | --- |
-| API and secrets | Instance initialization, namespace isolation, replace/clear, running and queued secret snapshots, restart loss and command history |
-| Blueprint cache | Package/fetch/init, offline reuse, corrupt-source rejection, failed catalogue entries and safe deletion |
-| Containers | Default and custom configuration, both drivers, persistent history, malformed configuration and read-only storage rejection |
-| Workflows | Local OpenTofu resources and loopback Ansible, plan/apply/destroy and all four pv-cloud provider mocks on both architectures |
-| Identity | UUIDv7 checks, locked engine binary hashes and Kit/engine version reporting |
+## Scope
 
-To repeat the full checks, install the documented prerequisites, run `task bundle`,
-then `task check-full`. Test containers, networks and volumes are disposable.
+The full native daemon/cache/namespace-secret acceptance suite was not rerun for
+this extraction. Driver protocol tests, version coexistence, cancellation and
+shared artifact tests passed; the container workflows above used real local tools.
 
 Native AMD64 hardware, real SSH guests, live Hetzner/S3 interoperability and GHCR
-publication are outside these local checks. Tests create no cloud resources.
+publication remain outside these checks. Provider mocks create no cloud resources.
+Temporary registry containers, networks, volumes and image tags were cleaned up.

@@ -18,21 +18,13 @@ engine:
   dataDir: /var/lib/inframill
   drivers:
     opentofu-0-2-0:
-      path: /usr/local/bin/inframill-kit
+      path: /opt/inframill/drivers/opentofu/0.2.0/driver
       args:
-        - driver
-        - opentofu
-        - --driver-version
-        - 0.2.0
         - --tool
         - /opt/inframill/tools/opentofu/1.11.5/tofu
     ansible-0-2-0:
-      path: /usr/local/bin/inframill-kit
+      path: /opt/inframill/drivers/ansible/0.2.0/driver
       args:
-        - driver
-        - ansible
-        - --driver-version
-        - 0.2.0
         - --tool
         - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
 

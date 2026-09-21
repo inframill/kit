@@ -124,15 +124,17 @@ def image_check(tmp, image, arch, network):
         config = json.loads(raw)
         assert config['handlers'] == [{'type': 'connect-engine'}], config
         assert config['engine']['dataDir'] == DATA and config['main']['port'] == 8080, config
-        assert all(d['path'] == '/usr/local/bin/inframill-kit' for d in config['engine']['drivers'].values())
+        assert {d['path'] for d in config['engine']['drivers'].values()} == {
+            '/opt/inframill/drivers/' + d['name'] + '/' + d['version'] + '/driver' for d in lock['drivers']}
+        assert all(d['args'][0] == '--tool' for d in config['engine']['drivers'].values())
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
         print('Default YAML, named volume and container replacement passed on ' + arch, flush=True)
 
         # A different working directory proves the config-relative data rule.
         custom = root / 'inframill.yaml'
-        text = configuration('/usr/local/bin/inframill-kit', './data', drivers=lock['drivers'], format='yaml')
-        assert 'port: 8080' in text
-        custom.write_text(text.replace('port: 8080', 'port: 8081'))
+        custom_config = configuration('/opt/inframill/drivers', './data', drivers=lock['drivers'])
+        custom_config['main']['port'] = 8081
+        custom.write_text(json.dumps(custom_config))
         original = hashlib.sha256(custom.read_bytes()).hexdigest()
         data = root / 'data'
         data.mkdir()

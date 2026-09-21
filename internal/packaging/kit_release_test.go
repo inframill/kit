@@ -66,7 +66,7 @@ func TestReleaseRejectsObsoleteFieldsAndInvalidDrivers(t *testing.T) {
 	}{
 		{"obsolete version", `,"kit_version":"0.6.0"`, `[{"name":"opentofu","version":"0.2.0"},{"name":"ansible","version":"0.2.0"}]`, "", "unknown field"},
 		{"duplicate driver", "", `[{"name":"opentofu","version":"0.2.0"},{"name":"opentofu","version":"0.2.0"}]`, "", "duplicate Kit driver"},
-		{"missing driver", "", `[]`, "", "compiled driver catalog"},
+		{"missing driver", "", `[]`, "", "no selected drivers"},
 		{"extra document", "", `[]`, `{}`, "one JSON release document"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

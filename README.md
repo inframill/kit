@@ -3,7 +3,7 @@
 Kit provides versioned OpenTofu and Ansible drivers, reusable blueprints, and a
 ready-to-run image for Inframill.
 
-- **`inframill-kit`** runs the drivers used by the Inframill engine.
+- **[`drivers/`](drivers/README.md)** builds one executable per driver version and architecture.
 - **`ghcr.io/inframill/kit`** bundles Inframill, the drivers, OpenTofu and Ansible.
 - **`ghcr.io/inframill/blueprints/<name>`** contains separately published blueprint packages.
 
@@ -24,7 +24,7 @@ Kit and its image follow Inframill's major/minor release line, with independent 
 patch releases. The root [`VERSION`](VERSION) file selects the Kit executable and
 image version for builds, pushes and checks. Task arguments and environment values
 cannot override it. Blueprint releases are selected by `blueprints/releases.json`
-and optional `--name` / `--version` flags. `DRIVER_VERSION` selects a driver check.
+and optional `--name` / `--version` flags. Driver releases are selected independently in `drivers/releases.json`.
 
 Release descriptors select exact `MAJOR.MINOR.PATCH` versions. Blueprints and
 drivers support multiple names and versions, with explicit implementation selection.
@@ -72,7 +72,7 @@ daemon to probe drivers again.
 | --- | --- |
 | `/etc/inframill/inframill.yaml` | Default configuration; replace with a read-only file mount |
 | `/var/lib/inframill` | Persistent blueprint cache, Instances, workspaces and command history |
-| `/usr/local/bin/inframill-kit` | Driver executable referenced by the configuration |
+| `/opt/inframill/drivers/<name>/<version>/driver` | Versioned driver executable referenced by the configuration |
 
 ### Use your own configuration
 
@@ -136,75 +136,71 @@ storage compatibility. Run one engine against a data directory at a time.
 Without a data mount, data is lost when the container is removed. Namespace secrets
 are held in memory and must be supplied again after a restart, even with a volume.
 
-## Development setup
+## Build the subprojects and image
 
-Run `task` or `task help` for commands and examples. Use `task --summary <name>`
-for a task's prerequisites, options and behavior.
-
-Install Go 1.27.0, Task and Python 3.12–3.14. Blueprint checks require Docker.
-Image builds and full verification require Docker Buildx with Linux AMD64 and
-ARM64 support.
-
-Keep the Inframill checkout alongside this repository at `../inframill`. Kit imports
-its public driver package through a local Go replacement. Image builds require the
-clean source revision pinned in [the release lock](releases/0.3.0-dev.lock.json).
-Each Kit release file contains engine, driver and tool dependency pins.
-Blueprints are an independent [subproject](blueprints/README.md) with their own
-release metadata, build script, tasks and tests.
+Driver sources, release metadata, the Python builder and tests live in the
+[driver subproject](drivers/README.md). Each version has a root such as
+`drivers/roots/opentofu/0.2.0/`. Blueprint packaging remains in the independent
+[blueprint subproject](blueprints/README.md).
 
 ```sh
-task setup
-task blueprints:setup PYTHON=python3.14
-task build
-task inframill:copy
-task check-fast
+task drivers:test
+task drivers:build         # all drivers, Linux AMD64 and ARM64
+task bundle                # assemble the image from drivers/dist
 ```
 
-`task setup` installs pinned tools into `.cache` and automatically finds Python
-3.12–3.14, even when `python3` is Apple's Python 3.9. Install a supported interpreter
-alongside the system Python if needed, or select one with `PYTHON=/path/to/python3.14`.
-Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides must match the pinned tool versions.
+The root project assembles and verifies the Kit Docker image. It never compiles
+or implicitly rebuilds drivers. It checks the prebuilt binaries, source snapshots,
+checksums, platforms and engine/tool compatibility before copying them into the
+image. `task build` is an alias for image assembly.
 
-Prebuilt engine binaries must exist in `../inframill/dist/0.3.0-dev/`, named
-`inframill_0.3.0-dev_<os>_<arch>`. Image builds need both `linux_amd64` and `linux_arm64`;
-`inframill:copy` needs the host binary, such as `darwin_arm64`. Set
-`INFRAMILL_DIST_DIR` to override the parent `dist` directory. Kit verifies these
-binaries and copies them directly; it compiles only its own driver executable.
-
-## Build and publish
+Driver builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
+(default `../inframill` beside this repository). Image assembly needs Docker Buildx
+with Linux AMD64/ARM64 support, Go for the image tooling, and the checksum-pinned
+prebuilt engine binaries in `../inframill/dist/0.3.0-dev/`. It does not need driver
+sources or the SDK checkout. Set `DRIVERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
+other prebuilt artifact locations.
 
 ```sh
+task blueprints:setup PYTHON=python3.14
 task blueprints:build
-task bundle
-
-docker login ghcr.io -u YOUR_GITHUB_USERNAME
+docker login ghcr.io
 task blueprints:push
 task bundle:push
 ```
 
-These publish pv-cloud to `ghcr.io/inframill/blueprints/pv-cloud:0.2.0` and the Kit
-image to `ghcr.io/inframill/kit:0.3.0-dev`. Builds never push automatically.
-See the [Blueprint README](blueprints/README.md) for standalone commands,
-`publish` (build all, then push all), registry options and adding blueprint versions.
-See [releases](docs/releases.md) for Kit publication.
+Blueprints default to `ghcr.io/inframill/blueprints/<name>:<version>`; the Kit image
+defaults to `ghcr.io/inframill/kit:<VERSION>`. Builds do not publish automatically.
+See [releases](docs/releases.md) for image inputs and publishing.
 
 ## Verification
 
 ```sh
 task check-fast
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 scripts/check.py blueprint:check
-task bundle                 # build once before full verification
+```
+
+Fast checks run image tooling, driver and blueprint tests. For optional full
+acceptance, install Python 3.12–3.14 for Ansible and prepare native outputs:
+
+```sh
+task setup
+task drivers:build -- --native
+task inframill:copy
+task bundle                # requires prior task drivers:build for both Linux architectures
 task check-full
 ```
 
-Fast checks run Python and Go tests and build Kit. Full checks add local tool
-workflows, provider mocks, a disposable daemon and registry, and both Linux images.
-They use local resources and loopback Ansible. AMD64 can run under emulation.
-See [acceptance](docs/acceptance.md) for recorded results and remaining release checks.
+Full checks exercise native tools, blueprint workflows, disposable registries and
+both Linux runtime images. AMD64 can run under emulation. Use `task config` to
+print a local configuration pointing at native driver outputs in `drivers/dist`.
+Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides select installed tools matching
+the image lock. See [acceptance](docs/acceptance.md) for recorded verification.
 
 ## Documentation
 
+- [Drivers](drivers/README.md): independent version roots, Python builds and tests.
+- [Blueprints](blueprints/README.md): architecture-independent source packages.
 - [Usage](docs/usage.md): configuration, commands, secrets and driver behavior.
 - [Architecture](docs/architecture.md): ownership, execution and artifact contracts.
-- [Releases](docs/releases.md): manual packaging, publication and version selection.
+- [Releases](docs/releases.md): image assembly, publication and version selection.
 - [Distribution notices](runtime/NOTICES.md): bundled programs, licenses and sources.
