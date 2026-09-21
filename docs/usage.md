@@ -51,7 +51,7 @@ or timing out a client wait does not cancel admitted work or roll back tool effe
 Creation inputs are immutable; use a new Instance name to change them.
 
 Blueprints are fetched through OCI. To check unpublished sources, run
-`task blueprints:check BLUEPRINT=pv-cloud`: it packages them into a disposable local
+`BLUEPRINT=pv-cloud python3 scripts/check.py blueprint:check`: it packages them into a disposable local
 registry, starts a daemon, renders examples, checks Ansible syntax and runs OpenTofu
 provider mocks. Docker and the installed local tools are required.
 

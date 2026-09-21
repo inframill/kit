@@ -37,7 +37,8 @@ normal Docker authentication.
 After publication, use the printed immutable digests:
 
 ```sh
-task blueprints:verify BLUEPRINT=pv-cloud REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
+BLUEPRINT=pv-cloud REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:... \
+  python3 scripts/check.py blueprint:verify
 task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ```
 

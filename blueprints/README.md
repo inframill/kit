@@ -37,7 +37,8 @@ docker login ghcr.io
 .venv/bin/python build.py publish    # build all, then push all
 ```
 
-Equivalent tasks are `task list`, `task build`, `task push`, and `task publish`.
+The public tasks are `task setup`, `task build`, `task push`, and `task publish`.
+Listing releases and computing source digests use the Python script directly.
 From the Kit root, use `task blueprints:setup`, `task blueprints:build`,
 `task blueprints:push`, or `task blueprints:publish`. The root only includes this
 Taskfile. Direct script calls resolve project paths relative to the script, so
@@ -90,8 +91,8 @@ Old Kit release locks retain historical records; they no longer select builds.
    the exact name/version, engine compatibility target (`inframill_version`),
    driver IDs/names/versions, protocol `1`, both platforms/architectures, status,
    and the printed `source_sha256`.
-4. Run `task test` and `task build`. Use `task check BLUEPRINT=example BLUEPRINT_VERSION=0.1.0` when a Kit integration fixture is available. Publish
-   after testing the release against its intended engine and drivers.
+4. Run the tests below and `task build`. Publish after testing the release
+   against its intended engine and drivers.
 
 Only `blueprint.yaml` and `template/` may occur in a source version. Links, special
 files, credentials, state and runtime directories are rejected. Source timestamps,
@@ -109,11 +110,11 @@ arguments are interpreted from your working directory.
 ## Verification and local registry
 
 ```sh
-task test
+.venv/bin/python -m unittest discover -s tests -p "test_*.py"
 # Requires Docker; creates a persistent loopback-only registry:
-task registry:up
+docker compose -f registry.compose.yaml up -d
 .venv/bin/python build.py publish --registry localhost:5000 --plain-http
-task registry:down
+docker compose -f registry.compose.yaml down
 ```
 
 Plain HTTP is allowed only for explicit local test registries (`localhost`,
@@ -125,12 +126,14 @@ unsafe inputs, authentication, repeat publication, and immutable tags using a
 local HTTP test registry. They create no public packages.
 
 The following optional checks integrate with the parent Kit project and require
-its `task setup`, `task build`, `task inframill:copy`, and Docker prerequisites:
+its `task setup`, `task build`, `task inframill:copy`, and Docker prerequisites.
+Run them from the Kit repository root:
 
 ```sh
-task check BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0
-task verify BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
-  REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:...
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 scripts/check.py blueprint:check
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
+  REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:... \
+  python3 scripts/check.py blueprint:verify
 ```
 
 Integration fixtures and example Values live under `tests/fixtures/` and

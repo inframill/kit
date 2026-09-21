@@ -192,7 +192,7 @@ See [releases](docs/releases.md) for Kit publication.
 
 ```sh
 task check-fast
-task blueprints:check BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 scripts/check.py blueprint:check
 task bundle                 # build once before full verification
 task check-full
 ```
