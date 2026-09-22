@@ -19,9 +19,9 @@ Restart the daemon after changing its provider configuration.
 
 ## Running a deployment
 
-Run these commands from the repository root. Files under `blueprints/examples/` contain plain
-Values JSON: `pv-cloud-0.2.0.json` uses mixed architectures; `pv-cloud-amd64.json`
-and `pv-cloud-arm64.json` each use one architecture. Generate configuration using
+Run these commands from the repository root. `blueprints/examples/pv-cloud-0.2.0.json`
+contains plain Values JSON with both AMD64 and ARM64 nodes. The same Blueprint
+supports either architecture or a mix, selected per node. Generate configuration using
 the installed local tools and `task providers:build -- --native` outputs, then start the daemon:
 
 ```sh

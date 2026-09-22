@@ -102,9 +102,14 @@ def pv_flow(client, reference, tofu):
     client.fetch(reference)
     ids = provider_ids('pv-cloud', '0.2.0')
     instances = []
-    for suffix in ['arm64', 'amd64', '0.2.0']:
-        values = json.loads((BLUEPRINTS / f'examples/pv-cloud-{suffix}.json').read_text())
-        iid = client.initialize('test/pv-' + suffix.replace('.', '-'), reference, values)
+    cases = [
+        ('arm64', FIXTURES / 'examples/pv-cloud-arm64.json'),
+        ('amd64', FIXTURES / 'examples/pv-cloud-amd64.json'),
+        ('mixed', BLUEPRINTS / 'examples/pv-cloud-0.2.0.json'),
+    ]
+    for name, path in cases:
+        values = json.loads(path.read_text())
+        iid = client.initialize('test/pv-' + name, reference, values)
         instances.append(iid)
         client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     data = pathlib.Path(client.config['engine']['dataDir'])

@@ -17,6 +17,10 @@ ARM64. There is no base image, executable, architecture-specific build or manife
 index to select. These are source packages consumed by Inframill, not containers
 that can be started with `docker run`.
 
+[`examples/pv-cloud-0.2.0.json`](examples/pv-cloud-0.2.0.json) demonstrates a mixed
+AMD64/ARM64 deployment with architecture selected per node. Single-architecture
+inputs live under `tests/fixtures/examples/` for integration coverage.
+
 ## Setup
 
 Use Python 3.10 or newer (3.14 is tested) and a running Docker daemon with the
