@@ -4,25 +4,25 @@
 
 `inframill server start` starts the daemon. All Instance, blueprint, secret,
 command and history operations use `inframill server` requests. Utilities live
-under `inframill other`; each Kit driver is a separate versioned executable.
+under `inframill other`; each Kit provider is a separate versioned executable.
 
 Only server startup accepts `--config` (default `.inframill.yaml`). Relative data
-and driver paths resolve beside that file. The `connect-engine` handler accepts
+and provider paths resolve beside that file. The `connect-engine` handler accepts
 no settings; its route is fixed. Server requests accept `--endpoint` and `--timeout`,
 falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
 `http://127.0.0.1:8080` and `2m`. Requests reject `--config` and never load YAML.
 
-`inframill server driver list` reports the daemon's cached startup availability.
-Restart the daemon after changing its driver configuration.
+`inframill server provider list` reports the daemon's cached startup availability.
+Restart the daemon after changing its provider configuration.
 `inframill server version` reports the selected daemon's build version;
 `inframill --version` reports the local CLI version.
 
 ## Running a deployment
 
 Run these commands from the repository root. Files under `blueprints/examples/` contain plain
-Values JSON: `pv-cloud-0.1.0.json` uses mixed architectures; `pv-cloud-amd64.json`
+Values JSON: `pv-cloud-0.2.0.json` uses mixed architectures; `pv-cloud-amd64.json`
 and `pv-cloud-arm64.json` each use one architecture. Generate configuration using
-the installed local tools and `task drivers:build -- --native` outputs, then start the daemon:
+the installed local tools and `task providers:build -- --native` outputs, then start the daemon:
 
 ```sh
 OPENTOFU_PATH="$PWD/.cache/tools/opentofu/1.11.5/tofu" \
@@ -32,20 +32,20 @@ bin/inframill server start --config /tmp/kit-config.json
 ```
 
 In another terminal, fetch a published blueprint and initialize an Instance.
-Initialization validates Values and renders files without executing a driver:
+Initialization validates Values and renders files without executing a provider:
 
 ```sh
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.1.0
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0
 bin/inframill server instance init production/example \
-  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.1.0 \
-  --values-file blueprints/examples/pv-cloud-0.1.0.json
+  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
+  --values-file blueprints/examples/pv-cloud-0.2.0.json
 bin/inframill server secret replace production --file /private/path/secrets.json
 bin/inframill server instance exec production/example opentofu.init --wait
 ```
 
 Use your published tag or digest reference. Commands such as init/plan/apply contact
 real services and require your chosen credentials and infrastructure inputs.
-Use `--args-file` for execution arguments, `--wait` to wait for an outcome and
+Use `--arguments-file` for execution arguments, `--wait` to wait for an outcome and
 `-o json` for structured output. A failed command has a failed outcome; cancelling
 or timing out a client wait does not cancel admitted work or roll back tool effects.
 Creation inputs are immutable; use a new Instance name to change them.
@@ -55,21 +55,21 @@ Blueprints are fetched through OCI. To check unpublished sources, run
 registry, starts a daemon, renders examples, checks Ansible syntax and runs OpenTofu
 provider mocks. Docker and the installed local tools are required.
 
-Inspect drivers, Instances and command history with:
+Inspect providers, Instances and command history with:
 
 ```sh
 bin/inframill server version
-bin/inframill server driver list
+bin/inframill server provider list
 bin/inframill server instance list --namespace production
 bin/inframill server command execution list --instance-id INSTANCE_UUID -o json
-bin/inframill server command execution stdout INSTANCE_UUID COMMAND_UUID
+bin/inframill server command execution stdout INSTANCE_UUID EXECUTION_UUID
 ```
 
 ## Namespace secrets
 
 Secret files are JSON maps of local names to strings. The example's names are
 `hetzner`, `s3_access` and `s3_secret`. Values select these names, never credential
-values. Inframill supplies a namespace snapshot only to driver Execute; Kit does not
+values. Inframill supplies a namespace snapshot only to provider Execute; Kit does not
 read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
 credentials must be nonempty and are checked before effects. Only selected values
 reach the tool environment. Known injected values are filtered from tool diagnostics;
@@ -83,46 +83,45 @@ snapshot; queued commands obtain the set current when they start.
 The `InitInstance` RPC accepts these top-level fields:
 
 ```json
-{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.1.0","values":{}}
+{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.2.0","values":{"json":"{}"}}
 ```
 
-Replace the empty Values object with configured Values. Fetch the blueprint before
+Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before
 initializing the Instance. Blueprint list/show reports ready and failed catalogue
 entries; get requires a usable revision. Deleting a cached revision by its digest pin
 preserves existing Instances and their source snapshots.
 
-## Drivers
+## Providers
 
 A blueprint has a static `blueprint.yaml` containing `api_version`, `description`,
-an inline `values_schema`, and `driver_settings`, alongside `templates/`.
-Each entry has a required major.minor version and nested driver settings:
+an inline `values_schema`, and `provider_settings`, alongside `templates/`.
+Each entry has a required major.minor version and nested provider settings:
 
 ```yaml
-driver_settings:
+provider_settings:
   opentofu:
-    version: "0.2"
+    version: "0.3"
     settings:
       id: opentofu
-      settings_file: kit-driver.json
+      settings_file: kit-provider.json
       backend: s3
       node_output: inframill_nodes
       artifact: opentofu-nodes-v1.json
 ```
 
-Inframill checks the connected driver's major/minor before accepting the Blueprint.
-Release manifests pin exact driver binaries; the Blueprint binding declares the
+Inframill checks the connected provider's major/minor before accepting the Blueprint.
+Release manifests pin exact provider binaries; the Blueprint binding declares the
 compatible major/minor line.
-Templates render nonsecret settings into `kit-driver.json` within
+Templates render nonsecret settings into `kit-provider.json` within
 `workspace/opentofu/` and `workspace/ansible/`. Sources live in matching
 `templates/opentofu/` and `templates/ansible/` directories. The engine supplies
-each driver's directory directly; drivers do not append another directory.
+each provider's directory directly; providers do not append another directory.
 Secret references are names in settings files, never credentials.
 Settings validation uses no files; Prepare reads and validates rendered inputs with
 no tool execution, writes, network or secrets. Execute performs and verifies effects.
 
 OpenTofu supplies init, validate, plan, apply, destroy and output. Plan returns a
-`plan_id`; apply/destroy require it. Plans bind the Instance, pinned blueprint,
-driver/tool/configuration and source bytes. Kit retires a plan before apply effects,
+`plan_id`; apply/destroy require it. Plans bind the shared artifact directory, provider/tool/configuration and source bytes. Kit retires a plan before apply effects,
 so failures and partial effects require a fresh plan. It invalidates shared nodes
 before mutation and only publishes verified output. Destroy verifies empty managed
 state. Refresh-only and destroy plans are distinct modes.
@@ -136,13 +135,35 @@ agent, batch mode and explicit host-key policy; Kit does not write private keys.
 The executable's configured prefix is:
 
 ```text
-/opt/inframill/drivers/opentofu/0.2.0/driver
+/opt/inframill/providers/opentofu/0.3.0/provider
 ```
 
 Inframill sends one JSON request on stdin, without adding protocol arguments. Kit
-uses upstream `driver.Serve` for JSON Lines messages and final success/error replies.
+uses upstream `runmill.Serve` for JSON Lines messages and final success/error replies.
 For a manual discovery probe, pipe this JSON to that prefix:
 
 ```json
 {"protocol":1,"method":"info","params":{}}
 ```
+
+## Migrating to 0.7
+
+Use `engine.providers` in runtime YAML and `provider_settings` in Blueprints.
+Kit's OpenTofu and Ansible providers are `0.3.0`; pv-cloud is `0.2.0`. All build tasks, metadata and executable paths use the `providers` name.
+Old saved Instances and artifacts are unsupported; create new Instances from the
+updated Blueprint. Only the current development release is supported.
+
+Runmill supplies settings, workspace/artifact paths and an execution ID, without
+Instance or Blueprint metadata. Kit binds plans and node artifacts to a hash of
+the supplied artifact directory. Regenerate plans and node output after moving
+data to a different path. Execution IDs used for plan filenames must be UUIDs.
+
+S3 backends now require an explicit `infra_state_bucket.key` in pv-cloud Values.
+Choose a unique key per Instance and keep it stable; when reusing existing state,
+set it to the previous `instances/<INSTANCE_UUID>/terraform.tfstate` key. Example
+keys are placeholders and must be unique within your bucket.
+
+RPC command submission uses `command_name` and `arguments: {"json":"..."}`.
+Values, arguments, results and argument schemas use JSON document envelopes.
+Execution references use `execution_id`; statuses use `COMMAND_EXECUTION_STATUS_*`.
+Provider discovery uses `ListProviders` and reports `availability`.

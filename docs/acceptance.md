@@ -1,56 +1,42 @@
-# Local acceptance — 2026-09-22
+# Local acceptance — Inframill 0.7.0-dev
 
-Kit and Inframill are `0.5.0-dev`, pinned to engine revision
-`1a2aca9dc1922097e0c0f2ed209077c3fc9ae292`. pv-cloud remains `0.1.0`;
-OpenTofu and Ansible drivers remain `0.2.0` and were rebuilt against that SDK.
-The engine's checked-in VERSION selected this release, independently of other
-version directories present in the sibling dist directory.
+Kit targets Inframill `0.7.0-dev`, with OpenTofu and Ansible providers `0.3.0`
+and pv-cloud `0.2.0`. The current image lock records the exact SDK revision and
+checksums of all four prebuilt engine binaries.
 
-## Driver bindings and directories
+## Current contract
 
-Blueprints use configured IDs `opentofu` and `ansible`. Each `driver_settings`
-entry contains `version: "0.2"` and a nested `settings` object. Inframill enforces
-that compatibility requirement; redundant `required_driver_version` fields and
-driver checks have been removed. Release manifests still select exact binaries.
+The `providers/` subproject builds Runmill executables. Runtime configuration uses
+`engine.providers`; Blueprint bindings use `provider_settings`. Discovery uses
+`ListProviders`, and command RPCs use execution IDs and JSON document envelopes.
+There are no compatibility aliases or legacy release locks.
 
-`templates/` contains exactly the matching Driver ID directories. The engine
-passes `workspace/<configured-id>/` directly to each driver, which no longer
-appends its own name. Configured aliases work without double nesting. Instance
-artifacts remain shared outside these directories.
-
-Regression tests cover nested bindings, major/minor syntax and agreement,
-missing/extra/file template entries, configured aliases, preservation of the
-engine-supplied workspace/artifact paths, and rejection of obsolete template roots.
-Source seals were regenerated for pv-cloud and both local-resource fixtures.
+Plans and node artifacts bind to the host-supplied shared artifact directory.
+Plans also verify source/configuration hashes, tool/provider versions and binary
+integrity. S3 requires an explicit, stable state key in rendered settings.
 
 ## Verification
 
-- `task check-fast` passed: 33 root Python tests, 15 blueprint tests, 9 driver
-  builder tests, the driver Go suites and release validation.
-- Both drivers built and verified for Linux AMD64, Linux ARM64 and native Darwin
-  ARM64. The native engine was checksum-verified and reports `0.5.0-dev`.
-- pv-cloud `0.1.0` built and loaded locally with the new bindings.
-- `task build` assembled the dual-architecture image from the new prebuilt inputs.
-- `task check-full` passed, including native OpenTofu/Ansible workflows, all four
-  pv-cloud provider mocks, driver discovery, command history, namespace secret
-  snapshots, restart behavior, offline cache reuse and tampered-cache rejection.
-- Both image architectures passed default/custom configuration, persistent data,
-  read-only data rejection, local-resource workflows and all pv-cloud provider
-  mocks. AMD64 ran under emulation.
-- Image and blueprint artifacts pushed to disposable local registries. Test
-  containers, volumes, networks and registry tags were cleaned up.
+- `task check-fast` passed: 33 image-tooling tests, 15 blueprint tests, 9 provider
+  builder tests, all provider Go suites and release validation.
+- Both providers built and verified for Linux AMD64, Linux ARM64 and native
+  Darwin ARM64. The checksum-verified native engine reports `0.7.0-dev`.
+- `task bundle` built the dual-architecture Kit image.
+- `task check-full` passed: native OpenTofu/Ansible workflows, provider discovery,
+  execution history/replies, namespace secret snapshots, restart behavior, offline
+  cache reuse, tampered-cache rejection and safe catalogue deletion.
+- Both Linux architectures passed default/custom configuration, persistent volume
+  and bind storage, container replacement, read-only data rejection, local-resource
+  workflows and all four pv-cloud provider mocks. AMD64 used emulation.
+- New regression cases cover explicit S3 state keys, unsafe execution IDs and
+  rejection of saved plans copied to another artifact directory.
 
-Local image: `dist/bundles/0.5.0-dev/`
-Index: `sha256:bdf65e9621e11a8f5ab8c71a5f7c1341a504e75b4964fd70315cce5725c3169a`
+Local image: `dist/bundles/0.7.0-dev/`
+Index: `sha256:cd917c33ebc76bec3fa4ae9f38932c013acafec8f3db63ca924c7e04c4f00cf3`
 
-Local blueprint: `blueprints/dist/pv-cloud/0.1.0/`
-Manifest: `sha256:e9fa99798fae5e964ad1a4cf4fb90ed7c91a7cbbace43ca801b6245267048d2b`
+SDK revision: `a5d5f6aeba37` (full revision and binary checksums are in the lock).
 
-This report was updated after the image's source snapshot was created. No
-artifacts were published to GHCR. Real cloud resources, live SSH guests and native
-AMD64 hardware were not exercised.
-
-## Existing Instances
-
-Inframill 0.5 rejects saved Instances with old direct settings entries or obsolete
-layouts. Their data is preserved; create new Instances from the updated Blueprint.
+This report was finalized after the image source snapshot was created. Images and
+Blueprints were pushed only to disposable local registries; test containers,
+volumes, networks and tags were cleaned up. No GHCR publication or real cloud/SSH
+workflows were performed.

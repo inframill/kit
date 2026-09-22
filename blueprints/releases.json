@@ -3,7 +3,7 @@
   "blueprints": [
     {
       "name": "pv-cloud",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "protocol": 1,
       "platforms": [
         "linux/amd64",
@@ -13,21 +13,21 @@
         "amd64",
         "arm64"
       ],
-      "drivers": [
+      "providers": [
         {
           "id": "opentofu",
           "name": "opentofu",
-          "version": "0.2.0"
+          "version": "0.3.0"
         },
         {
           "id": "ansible",
           "name": "ansible",
-          "version": "0.2.0"
+          "version": "0.3.0"
         }
       ],
       "status": "supported",
-      "source_sha256": "sha256:46c8383dd8007847dbcf3c76e4cde0e53fb6a8112e800cdc32671b1a1c9b6544",
-      "inframill_version": "0.5.0-dev"
+      "source_sha256": "sha256:a339a8547375b42ada7ac7d53e7c9aef88b80f55cc797fb197a931333a3fff2c",
+      "inframill_version": "0.7.0-dev"
     }
   ]
 }

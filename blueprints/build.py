@@ -68,12 +68,12 @@ def releases(path):
                 sorted(entry['architectures']) == ['amd64', 'arm64'], 'blueprint must support AMD64 and ARM64')
         require(re.fullmatch(VERSION, entry['inframill_version']), 'invalid engine version')
         require(re.fullmatch(DIGEST, entry['source_sha256']), 'missing sealed source digest')
-        drivers = entry['drivers']
-        require(drivers and len({d['id'] for d in drivers}) == len(drivers), 'invalid or duplicate drivers')
-        for driver in drivers:
-            require(re.fullmatch(NAME, driver['id']) and driver['id'] != 'builtin' and
-                    re.fullmatch(NAME, driver['name']) and re.fullmatch(VERSION, driver['version']),
-                    'invalid driver requirement')
+        providers = entry['providers']
+        require(providers and len({d['id'] for d in providers}) == len(providers), 'invalid or duplicate providers')
+        for provider in providers:
+            require(re.fullmatch(NAME, provider['id']) and provider['id'] != 'builtin' and
+                    re.fullmatch(NAME, provider['name']) and re.fullmatch(VERSION, provider['version']),
+                    'invalid provider requirement')
     return entries
 
 
@@ -162,7 +162,7 @@ def validate_definition(entries, release):
     definition = yaml.safe_load(data)
     encode(definition)  # Reject non-JSON scalar values, including NaN/Infinity.
     require(isinstance(definition, dict) and set(definition) ==
-            {'api_version', 'description', 'values_schema', 'driver_settings'}, 'invalid blueprint fields')
+            {'api_version', 'description', 'values_schema', 'provider_settings'}, 'invalid blueprint fields')
     require(definition['api_version'] == 'inframill.dev/blueprint/v1', 'unsupported api_version')
     require(isinstance(definition['description'], str) and definition['description'].strip(), 'description is required')
     schema = definition['values_schema']
@@ -183,31 +183,31 @@ def validate_definition(entries, release):
             for child in value:
                 offline(child)
     offline(schema)
-    settings = definition['driver_settings']
-    require(isinstance(settings, dict) and set(settings) == {d['id'] for d in release['drivers']},
-            'blueprint settings and release drivers differ')
+    settings = definition['provider_settings']
+    require(isinstance(settings, dict) and set(settings) == {d['id'] for d in release['providers']},
+            'blueprint settings and release providers differ')
     children = {name.split('/')[1] for name in entries if name.startswith('templates/')}
-    require(children == set(settings), 'template directories must match configured driver IDs')
-    for driver in release['drivers']:
-        binding = settings[driver['id']]
+    require(children == set(settings), 'template directories must match configured provider IDs')
+    for provider in release['providers']:
+        binding = settings[provider['id']]
         require(isinstance(binding, dict) and set(binding) == {'version', 'settings'},
-                'driver binding requires version and settings')
+                'provider binding requires version and settings')
         required = binding['version']
         require(isinstance(required, str) and len(required) <= 128 and
                 re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', required),
-                'driver binding version must be a major.minor string')
-        require(required == '.'.join(driver['version'].split('.')[:2]),
-                'driver binding version differs from the release')
+                'provider binding version must be a major.minor string')
+        require(required == '.'.join(provider['version'].split('.')[:2]),
+                'provider binding version differs from the release')
         config = binding['settings']
-        require(isinstance(config, dict) and config.get('id') == driver['id'], 'driver settings ID differs from its binding')
-        prefix = 'templates/' + driver['id']
-        require(entries.get(prefix, False) is None, 'missing configured driver template directory')
+        require(isinstance(config, dict) and config.get('id') == provider['id'], 'provider settings ID differs from its binding')
+        prefix = 'templates/' + provider['id']
+        require(entries.get(prefix, False) is None, 'missing configured provider template directory')
         if 'settings_file' in config:
             filename = config['settings_file']
             require(isinstance(filename, str) and filename not in ('', '.', '..') and
                     '/' not in filename and '\\' not in filename, 'invalid settings_file')
             require(any(isinstance(entries.get(prefix + '/' + filename + suffix), bytes)
-                        for suffix in ('', '.gotmpl')), 'missing driver settings template')
+                        for suffix in ('', '.gotmpl')), 'missing provider settings template')
 
 
 def blob(layout, desc):

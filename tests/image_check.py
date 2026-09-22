@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from blueprints.tests.integration import driver_ids
+from blueprints.tests.integration import provider_ids
 from build import ROOT, bundle_lock, configuration
 
 CONFIG = '/etc/inframill/inframill.yaml'
@@ -24,7 +24,7 @@ def image_check(tmp, image, arch, network):
     containers = set()
     volume = 'kit-data-' + uuid.uuid4().hex
     reference = 'registry:5000/inframill/blueprints/local-resource:0.1.0'
-    ids = driver_ids('local-resource', '0.1.0')
+    ids = provider_ids('local-resource', '0.1.0')
 
     def docker(args, check=True, timeout=90):
         return subprocess.run(list(map(str, args)), check=check, text=True, capture_output=True, timeout=timeout)
@@ -59,12 +59,12 @@ def image_check(tmp, image, arch, network):
             if state.returncode or state.stdout.strip() != 'true':
                 raise RuntimeError('Image server exited: ' + docker(['docker', 'logs', name], check=False).stderr)
             try:
-                return rpc(endpoint, 'ListDrivers')
+                return rpc(endpoint, 'ListProviders')
             except (urllib.error.URLError, ConnectionError, TimeoutError):
                 return None
-        drivers = poll(ready)['drivers']
-        assert {d['id'] for d in drivers} == set(ids.values()), drivers
-        assert all(d['status'] == 'DRIVER_STATUS_AVAILABLE' for d in drivers), drivers
+        providers = poll(ready)['providers']
+        assert {d['id'] for d in providers} == set(ids.values()), providers
+        assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in providers), providers
         expected_version = {'version': lock['inframill']['version']}
         assert rpc(endpoint, 'GetServerVersion') == expected_version
         version_cli = ['docker', 'exec', name, 'inframill', 'server', 'version',
@@ -81,36 +81,36 @@ def image_check(tmp, image, arch, network):
         name, endpoint = start(mounts, port, workdir)
         rpc(endpoint, 'FetchBlueprint', {'reference': reference})
         instance = rpc(endpoint, 'InitInstance', {'name': 'image/persistence',
-            'blueprint_reference': reference, 'values': {'architecture': arch},
+            'blueprint_reference': reference, 'values': {'json': json.dumps({'architecture': arch})},
         })['instance']['id']
         command = rpc(endpoint, 'SubmitCommand', {'instance_id': instance,
-                      'command': ids['ansible'] + '.syntax-check', 'args': {'playbook': 'site'}})['commandId']
+                      'command_name': ids['ansible'] + '.syntax-check', 'arguments': {'json': json.dumps({'playbook': 'site'})}})['executionId']
         assert uuid.UUID(instance).version == 7 and uuid.UUID(command).version == 7
 
         def completed():
-            result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'command_id': command})['execution']
-            return result if result['status'] in ('COMMAND_STATUS_SUCCEEDED', 'COMMAND_STATUS_FAILED', 'COMMAND_STATUS_INTERRUPTED') else None
+            result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'execution_id': command})['execution']
+            return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None
         result = poll(completed)
-        assert result['status'] == 'COMMAND_STATUS_SUCCEEDED', result
+        assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']
         stop(name)
         name, endpoint = start(mounts, port, workdir)
         instances = rpc(endpoint, 'ListInstances')['instances']
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
-        assert len(history) == 1 and history[0]['status'] == 'COMMAND_STATUS_SUCCEEDED', history
+        assert len(history) == 1 and history[0]['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', history
         cli = ['docker', 'exec', name, 'inframill']
         history_cli = json.loads(docker(cli + ['server', 'command', 'execution', 'list',
                                  '--instance-id', instance, '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
-        assert len(history_cli) == 1 and history_cli[0]['request']['id'] == command, history_cli
+        assert len(history_cli) == 1 and history_cli[0]['request']['executionId'] == command, history_cli
         remote = json.loads(docker(cli + ['server', 'instance', 'list', '--endpoint',
                             'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['instances']
         assert any(i['id'] == instance for i in remote), remote
-        remote_drivers = json.loads(docker(cli + ['server', 'driver', 'list', '--endpoint',
-                                    'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['drivers']
-        assert {d['id'] for d in remote_drivers} == set(ids.values()), remote_drivers
-        assert all(d['status'] == 'DRIVER_STATUS_AVAILABLE' for d in remote_drivers), remote_drivers
+        remote_providers = json.loads(docker(cli + ['server', 'provider', 'list', '--endpoint',
+                                    'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['providers']
+        assert {d['id'] for d in remote_providers} == set(ids.values()), remote_providers
+        assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in remote_providers), remote_providers
         stop(name)
         return instance, mounts_state
 
@@ -124,15 +124,15 @@ def image_check(tmp, image, arch, network):
         config = json.loads(raw)
         assert config['handlers'] == [{'type': 'connect-engine'}], config
         assert config['engine']['dataDir'] == DATA and config['main']['port'] == 8080, config
-        assert {d['path'] for d in config['engine']['drivers'].values()} == {
-            '/opt/inframill/drivers/' + d['name'] + '/' + d['version'] + '/driver' for d in lock['drivers']}
-        assert all(d['args'][0] == '--tool' for d in config['engine']['drivers'].values())
+        assert {d['path'] for d in config['engine']['providers'].values()} == {
+            '/opt/inframill/providers/' + d['name'] + '/' + d['version'] + '/provider' for d in lock['providers']}
+        assert all(d['args'][0] == '--tool' for d in config['engine']['providers'].values())
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
         print('Default YAML, named volume and container replacement passed on ' + arch, flush=True)
 
         # A different working directory proves the config-relative data rule.
         custom = root / 'inframill.yaml'
-        custom_config = configuration('/opt/inframill/drivers', './data', drivers=lock['drivers'])
+        custom_config = configuration('/opt/inframill/providers', './data', providers=lock['providers'])
         custom_config['main']['port'] = 8081
         custom.write_text(json.dumps(custom_config))
         original = hashlib.sha256(custom.read_bytes()).hexdigest()

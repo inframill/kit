@@ -3,8 +3,8 @@
 This image combines separately licensed programs. It is not an all-MIT product.
 
 * Kit's image assembly sources and LICENSE are under `/usr/share/inframill/sources/kit/`.
-  Each driver ships its corresponding sources and LICENSE beside the executable
-  in `/opt/inframill/drivers/<name>/<version>/sources/`. Available Go dependency
+  Each provider ships its corresponding sources and LICENSE beside the executable
+  in `/opt/inframill/providers/<name>/<version>/sources/`. Available Go dependency
   notices, including those for the pinned engine, are in the adjacent `notices/`.
   Inframill is copied from its prebuilt release. The bundle lock records its
   version, source revision and binary checksums; its source tree is not embedded.

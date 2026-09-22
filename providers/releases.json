@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "go_version": "go1.27.0",
+  "inframill": {
+    "version": "0.7.0-dev",
+    "revision": "a5d5f6aeba37b955086901ee46552c903ebe62fa"
+  },
+  "providers": [
+    {
+      "name": "opentofu",
+      "version": "0.3.0"
+    },
+    {
+      "name": "ansible",
+      "version": "0.3.0"
+    }
+  ]
+}

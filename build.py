@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble and publish Kit images from prebuilt driver and engine artifacts."""
+"""Assemble and publish Kit images from prebuilt provider and engine artifacts."""
 import argparse
 import hashlib
 import io
@@ -61,24 +61,24 @@ def native_platform():
     return platform.system().lower() + '/' + str(arch)
 
 
-def drivers_dist():
-    return (ROOT / os.environ.get('DRIVERS_DIST_DIR', 'drivers/dist')).resolve()
+def providers_dist():
+    return (ROOT / os.environ.get('PROVIDERS_DIST_DIR', 'providers/dist')).resolve()
 
 
-def configuration(driver_root, workspace, tools=None, drivers=None, target=None):
+def configuration(provider_root, workspace, tools=None, providers=None, target=None):
     selected = {}
-    for release in drivers or bundle_lock()['drivers']:
+    for release in providers or bundle_lock()['providers']:
         name, version = release['name'], release['version']
         identity = name
         if identity in selected:
-            raise ValueError('Default configuration requires one version per driver name')
-        path = pathlib.Path(driver_root) / name / version
+            raise ValueError('Default configuration requires one version per provider name')
+        path = pathlib.Path(provider_root) / name / version
         if target:
             path = path / target
         args = ['--tool', str(tools[name])] if tools and name in tools else []
-        selected[identity] = {'path': str(path / 'driver'), 'args': args}
+        selected[identity] = {'path': str(path / 'provider'), 'args': args}
     return {'main': {'port': 8080}, 'logger': {'type': 'slog', 'settings': {'level': 'info', 'format': 'json'}},
-            'engine': {'dataDir': str(workspace), 'drivers': selected}, 'handlers': [{'type': 'connect-engine'}]}
+            'engine': {'dataDir': str(workspace), 'providers': selected}, 'handlers': [{'type': 'connect-engine'}]}
 
 
 def local_tools():
@@ -119,43 +119,43 @@ def find_python(override=None):
     )
 
 
-def read_driver(dist, selection, target, lock):
-    """Accept only an existing, complete driver build; never compile a fallback."""
+def read_provider(dist, selection, target, lock):
+    """Accept only an existing, complete provider build; never compile a fallback."""
     name, version = selection['name'], selection['version']
     if not re.fullmatch(r'[a-z][a-z0-9-]*', name) or not re.fullmatch(r'[0-9A-Za-z.-]+', version) or version in ('.', '..'):
-        raise ValueError('Invalid driver selection')
+        raise ValueError('Invalid provider selection')
     folder = pathlib.Path(dist) / name / version / target
     path = folder / 'build.json'
     if not path.is_file():
-        raise ValueError(f'Missing prebuilt driver {name}:{version} for {target}; run task build in drivers/')
+        raise ValueError(f'Missing prebuilt provider {name}:{version} for {target}; run task build in providers/')
     record = json.loads(path.read_text())
     release = record['release']
     if record['schema'] != 1 or (release['name'], release['version']) != (name, version) or record['platform'] != target:
-        raise ValueError('Driver build identity mismatch')
+        raise ValueError('Provider build identity mismatch')
     expected_engine = {k: lock['inframill'][k] for k in ('version', 'revision')}
     if record['inframill'] != expected_engine:
-        raise ValueError('Driver and image target different Inframill releases')
+        raise ValueError('Provider and image target different Inframill releases')
     tool_version = {'opentofu': lock['opentofu']['version'], 'ansible': lock['ansible_core']}.get(name)
     if release['tool_version'] != tool_version or release['protocol'] != 1 or set(release['platforms']) != set(lock['platforms']):
-        raise ValueError('Driver tool/platform/protocol differs from the image release')
+        raise ValueError('Provider tool/platform/protocol differs from the image release')
     actual = set()
     for file in folder.rglob('*'):
         if file.is_symlink():
-            raise ValueError('Driver output contains a link')
+            raise ValueError('Provider output contains a link')
         if file.is_file() and file != path:
             actual.add(str(file.relative_to(folder)))
-    if actual != set(record['files']) or 'driver' not in actual or not any(p.startswith('sources/') for p in actual):
-        raise ValueError('Driver output is incomplete or contains unrecorded files')
+    if actual != set(record['files']) or 'provider' not in actual or not any(p.startswith('sources/') for p in actual):
+        raise ValueError('Provider output is incomplete or contains unrecorded files')
     for name, digest in record['files'].items():
         relative = pathlib.PurePosixPath(name)
         if relative.is_absolute() or '..' in relative.parts or not re.fullmatch(r'[0-9a-f]{64}', digest):
-            raise ValueError('Invalid driver output record')
+            raise ValueError('Invalid provider output record')
         if hashlib.sha256((folder / name).read_bytes()).hexdigest() != digest:
-            raise ValueError('Driver output checksum mismatch: ' + name)
+            raise ValueError('Provider output checksum mismatch: ' + name)
     for name, digest in record['source_files'].items():
         if record['files'].get('sources/' + name) != digest:
-            raise ValueError('Driver source snapshot differs from the build record')
-    data = read_binary(folder, {'path': 'driver', 'sha256': record['files']['driver']}, target.split('/')[1])
+            raise ValueError('Provider source snapshot differs from the build record')
+    data = read_binary(folder, {'path': 'provider', 'sha256': record['files']['provider']}, target.split('/')[1])
     return folder, record, data
 
 
@@ -213,7 +213,7 @@ def project_version():
 
 
 def validate_release(lock, version):
-    allowed = {'version', 'drivers', 'platforms', 'base_image', 'base_platform_digests',
+    allowed = {'version', 'providers', 'platforms', 'base_image', 'base_platform_digests',
                'source_date_epoch', 'inframill', 'opentofu', 'ansible_core', 'python',
                'python_dependencies', 'debian_snapshot'}
     if set(lock) - allowed:
@@ -229,15 +229,15 @@ def validate_release(lock, version):
         raise ValueError('Invalid Inframill release pin')
     if set(lock['platforms']) != PLATFORMS or len(lock['platforms']) != 2:
         raise ValueError('Both Linux platforms required')
-    if not lock['drivers']:
-        raise ValueError('Image release has no selected drivers')
+    if not lock['providers']:
+        raise ValueError('Image release has no selected providers')
     selected = set()
-    for entry in lock['drivers']:
+    for entry in lock['providers']:
         if set(entry) != {'name', 'version'} or not re.fullmatch(r'[a-z][a-z0-9-]*', entry['name']) or not valid_version(entry['version']):
-            raise ValueError('Invalid driver selection')
+            raise ValueError('Invalid provider selection')
         key = (entry['name'], entry['version'])
         if key in selected:
-            raise ValueError('Duplicate image driver requirement')
+            raise ValueError('Duplicate image provider requirement')
         selected.add(key)
     for target, entry in engine['binaries'].items():
         if target not in PLATFORMS | {'darwin/amd64', 'darwin/arm64'} or set(entry) != {'path', 'sha256'}:
@@ -277,8 +277,8 @@ def build_image():
     engine_dist = (ROOT / os.environ.get('INFRAMILL_DIST_DIR', '../inframill/dist')).resolve()
     binaries = {arch: read_binary(engine_dist, lock['inframill']['binaries']['linux/' + arch], arch)
                 for arch in ('amd64', 'arm64')}
-    drivers = {(entry['name'], entry['version'], target): read_driver(drivers_dist(), entry, target, lock)
-               for entry in lock['drivers'] for target in lock['platforms']}
+    providers = {(entry['name'], entry['version'], target): read_provider(providers_dist(), entry, target, lock)
+               for entry in lock['providers'] for target in lock['platforms']}
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.bundle-', dir=output.parent) as td:
         stage = pathlib.Path(td)
@@ -296,12 +296,12 @@ def build_image():
             bindir.mkdir(parents=True)
             (bindir / 'inframill').write_bytes(binaries[arch])
             (bindir / 'inframill').chmod(0o755)
-            for entry in lock['drivers']:
-                folder, record, data = drivers[(entry['name'], entry['version'], 'linux/' + arch)]
-                destination = context / 'drivers' / arch / entry['name'] / entry['version']
+            for entry in lock['providers']:
+                folder, record, data = providers[(entry['name'], entry['version'], 'linux/' + arch)]
+                destination = context / 'providers' / arch / entry['name'] / entry['version']
                 destination.mkdir(parents=True)
-                (destination / 'driver').write_bytes(data)
-                (destination / 'driver').chmod(0o755)
+                (destination / 'provider').write_bytes(data)
+                (destination / 'provider').chmod(0o755)
                 shutil.copy2(folder / 'build.json', destination / 'build.json')
                 for name in ('sources', 'notices'):
                     if (folder / name).is_dir():
@@ -343,7 +343,7 @@ def build_image():
                   'dependency_revision': lock['inframill']['revision'], 'inframill': lock['inframill'],
                   'platforms': manifest['manifests'],
                   'source_files': {str(p.relative_to(sources)): digest(p.read_bytes()) for p in sources.rglob('*') if p.is_file()},
-                  'drivers': {name + '@' + ver + '/' + target: record for (name, ver, target), (_, record, _) in drivers.items()},
+                  'providers': {name + '@' + ver + '/' + target: record for (name, ver, target), (_, record, _) in providers.items()},
                   'binaries': {str(p.relative_to(context)): digest(p.read_bytes()) for p in (context / 'bin').rglob('*') if p.is_file()}}
         completed = stage / 'complete'
         completed.mkdir()
@@ -559,12 +559,12 @@ def verify_remote(reference):
         try:
             deadline = time.monotonic() + 45
             while True:
-                result = subprocess.run(['docker', 'exec', container, 'inframill', 'server', 'driver', 'list', '-o', 'json'], capture_output=True, text=True)
+                result = subprocess.run(['docker', 'exec', container, 'inframill', 'server', 'provider', 'list', '-o', 'json'], capture_output=True, text=True)
                 if result.returncode == 0:
-                    drivers = json.loads(result.stdout)['drivers']
-                    expected = set(configuration('/opt/inframill/drivers', '/var/lib/inframill', drivers=lock['drivers'])['engine']['drivers'])
-                    if {d['id'] for d in drivers} != expected or any(d['status'] != 'DRIVER_STATUS_AVAILABLE' for d in drivers):
-                        raise ValueError('Published driver discovery differs from the release')
+                    providers = json.loads(result.stdout)['providers']
+                    expected = set(configuration('/opt/inframill/providers', '/var/lib/inframill', providers=lock['providers'])['engine']['providers'])
+                    if {d['id'] for d in providers} != expected or any(d['availability'] != 'PROVIDER_AVAILABILITY_AVAILABLE' for d in providers):
+                        raise ValueError('Published provider discovery differs from the release')
                     break
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Published image did not become ready: ' + result.stderr)
@@ -608,7 +608,7 @@ def main(argv=None):
         setup()
     elif args.command == 'config':
         tofu, ansible = local_tools()
-        print(json.dumps(configuration(drivers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
+        print(json.dumps(configuration(providers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
                                        {'opentofu': tofu, 'ansible': ansible}, target=native_platform()), indent=2))
     elif args.command == 'lock-python':
         lock_python(args.report)

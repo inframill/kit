@@ -19,11 +19,11 @@ os.environ['INFRAMILL_HTTP_REGISTRIES'] = registry
 arch = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
 lock = json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
 assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest() == lock['inframill']['binaries']['linux/'+arch]['sha256']
-for release in lock['drivers']:
-    folder = pathlib.Path('/opt/inframill/drivers') / release['name'] / release['version']
+for release in lock['providers']:
+    folder = pathlib.Path('/opt/inframill/providers') / release['name'] / release['version']
     record = json.loads((folder / 'build.json').read_text())
-    assert hashlib.sha256((folder / 'driver').read_bytes()).hexdigest() == record['files']['driver']
-    metadata = json.loads(subprocess.check_output([str(folder / 'driver'), 'version']))
+    assert hashlib.sha256((folder / 'provider').read_bytes()).hexdigest() == record['files']['provider']
+    metadata = json.loads(subprocess.check_output([str(folder / 'provider'), 'version']))
     assert (metadata['name'], metadata['version']) == (release['name'], release['version'])
 with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     tmp = pathlib.Path(td)

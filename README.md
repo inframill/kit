@@ -1,10 +1,10 @@
 # Inframill Kit
 
-Kit provides versioned OpenTofu and Ansible drivers, reusable blueprints, and a
+Kit provides versioned OpenTofu and Ansible providers, reusable blueprints, and a
 ready-to-run image for Inframill.
 
-- **[`drivers/`](drivers/README.md)** builds one executable per driver version and architecture.
-- **`ghcr.io/inframill/kit`** bundles Inframill, the drivers, OpenTofu and Ansible.
+- **[`providers/`](providers/README.md)** builds one executable per provider version and architecture.
+- **`ghcr.io/inframill/kit`** bundles Inframill, the providers, OpenTofu and Ansible.
 - **`ghcr.io/inframill/blueprints/<name>`** contains separately published blueprint packages.
 
 The Kit image supports Linux AMD64 and ARM64. Blueprint packages are architecture
@@ -14,25 +14,25 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
 | Component | Version |
 | --- | --- |
-| Kit image | 0.5.0-dev |
-| Inframill engine | 0.5.0-dev |
-| OpenTofu driver / tool | 0.2.0 / 1.11.5 |
-| Ansible driver / Ansible Core | 0.2.0 / 2.20.1 |
-| pv-cloud blueprint | 0.1.0 |
+| Kit image | 0.7.0-dev |
+| Inframill engine | 0.7.0-dev |
+| OpenTofu provider / tool | 0.3.0 / 1.11.5 |
+| Ansible provider / Ansible Core | 0.3.0 / 2.20.1 |
+| pv-cloud blueprint | 0.2.0 |
 
 Kit and its image follow Inframill's major/minor release line, with independent Kit
 patch releases. The root [`VERSION`](VERSION) file selects the Kit image
 version for builds, pushes and checks. Task arguments and environment values
 cannot override it. Blueprint releases are selected by `blueprints/releases.json`
-and optional `--name` / `--version` flags. Driver releases are selected independently in `drivers/releases.json`.
+and optional `--name` / `--version` flags. Provider releases are selected independently in `providers/releases.json`.
 
 Release descriptors select exact `MAJOR.MINOR.PATCH` versions. Blueprints and
-drivers support multiple names and versions, with explicit implementation selection.
+providers support multiple names and versions, with explicit implementation selection.
 
 ## Run with Docker
 
 The image includes [`runtime/inframill.yaml`](runtime/inframill.yaml) unchanged at
-`/etc/inframill/inframill.yaml` and starts the server with both Kit drivers configured. Docker
+`/etc/inframill/inframill.yaml` and starts the server with both Kit providers configured. Docker
 selects the AMD64 or ARM64 variant for your machine. No local Go or Python setup is
 needed to use the image.
 
@@ -40,7 +40,7 @@ needed to use the image.
 docker run -d --name inframill --rm \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  ghcr.io/inframill/kit:0.5.0-dev
+  ghcr.io/inframill/kit:0.7.0-dev
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -49,7 +49,7 @@ published on loopback because the engine has no built-in authentication; remote
 access requires an authenticated gateway or private tunnel.
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
-With the Inframill 0.5.0-dev CLI installed locally, query the running server with:
+With the Inframill 0.7.0-dev CLI installed locally, query the running server with:
 
 ```sh
 inframill server version --endpoint http://localhost:8080
@@ -60,25 +60,25 @@ You can also use the CLI inside the container:
 
 ```sh
 docker exec inframill inframill server instance list
-docker exec inframill inframill server driver list
+docker exec inframill inframill server provider list
 ```
 
 Server requests use `--endpoint` or `INFRAMILL_ENDPOINT`, not the YAML configuration.
 If you change the server port, update both the published port and client endpoint.
-`server driver list` reports the daemon's cached startup availability. Restart the
-daemon to probe drivers again.
+`server provider list` reports the daemon's cached startup availability. Restart the
+daemon to probe providers again.
 
 | Container path | Purpose |
 | --- | --- |
 | `/etc/inframill/inframill.yaml` | Default configuration; replace with a read-only file mount |
 | `/var/lib/inframill` | Persistent blueprint cache, Instances, workspaces and command history |
-| `/opt/inframill/drivers/<name>/<version>/driver` | Versioned driver executable referenced by the configuration |
+| `/opt/inframill/providers/<name>/<version>/provider` | Versioned provider executable referenced by the configuration |
 
 ### Use your own configuration
 
 The checked-in [default configuration](runtime/inframill.yaml) includes HTTP port
 and timeouts, JSON logging, the data directory, and executable/tool paths for
-OpenTofu 0.2.0 and Ansible 0.2.0. Copy it to start a custom configuration:
+OpenTofu 0.3.0 and Ansible 0.3.0. Copy it to start a custom configuration:
 
 ```sh
 cp runtime/inframill.yaml inframill.yaml
@@ -87,11 +87,11 @@ cp runtime/inframill.yaml inframill.yaml
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.5.0-dev \
+docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.7.0-dev \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
-Keep `engine.dataDir: /var/lib/inframill` and the absolute driver executable paths
+Keep `engine.dataDir: /var/lib/inframill` and the absolute provider executable paths
 unless you also change the corresponding mounts. The supplied file replaces the
 whole default configuration; it is not merged or rewritten. Keep the
 `connect-engine` handler without settings; the RPC route is fixed by Inframill.
@@ -105,7 +105,7 @@ docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
   --mount type=bind,src="$PWD/inframill.yaml",dst=/etc/inframill/inframill.yaml,readonly \
-  ghcr.io/inframill/kit:0.5.0-dev
+  ghcr.io/inframill/kit:0.7.0-dev
 ```
 
 The existing named volume is reused. To keep data in a host directory instead,
@@ -116,7 +116,7 @@ create it with `mkdir -p data` and replace the data mount with:
 ```
 
 Changing mount sources selects different storage; it does not copy existing data.
-Inframill 0.5.0-dev resolves relative YAML paths from the configuration file's directory
+Inframill 0.7.0-dev resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
 ### Logs, restarts and upgrades
@@ -138,20 +138,20 @@ are held in memory and must be supplied again after a restart, even with a volum
 
 ## Build the subprojects and image
 
-Driver sources, release metadata, the Python builder and tests live in the
-[driver subproject](drivers/README.md). Each version has a root such as
-`drivers/roots/opentofu/0.2.0/`. Blueprint packaging remains in the independent
+Provider sources, release metadata, the Python builder and tests live in the
+[provider subproject](providers/README.md). Each version has a root such as
+`providers/roots/opentofu/0.3.0/`. Blueprint packaging remains in the independent
 [blueprint subproject](blueprints/README.md).
 
 ```sh
-task drivers:test
-task drivers:build         # all drivers, Linux AMD64 and ARM64
-task bundle                # assemble the image from drivers/dist
+task providers:test
+task providers:build         # all providers, Linux AMD64 and ARM64
+task bundle                # assemble the image from providers/dist
 ```
 
 The root project uses a single [`build.py`](build.py) script to assemble, verify
 and push the Kit Docker image. It never compiles
-or implicitly rebuilds drivers. It checks the prebuilt binaries, source snapshots,
+or implicitly rebuilds providers. It checks the prebuilt binaries, source snapshots,
 checksums, platforms and engine/tool compatibility before copying them into the
 image. Task wraps these commands (`task bundle` remains an alias for `task build`):
 
@@ -164,13 +164,13 @@ python3 build.py test      # root builder tests
 
 `publish` runs build then push; `push` uses the existing image. The root script
 also provides `validate`, `setup`, `config` and `copy-engine` for release checks
-and local acceptance setup. Drivers and blueprints retain their own builders.
+and local acceptance setup. Providers and blueprints retain their own builders.
 
-Driver builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
+Provider builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
 (default `../inframill` beside this repository). Image assembly needs Docker Buildx
 with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
-prebuilt engine binaries in `../inframill/dist/0.5.0-dev/`. It does not need driver
-sources or the SDK checkout. Set `DRIVERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
+prebuilt engine binaries in `../inframill/dist/0.7.0-dev/`. It does not need provider
+sources or the SDK checkout. Set `PROVIDERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
 other prebuilt artifact locations.
 
 ```sh
@@ -191,28 +191,28 @@ See [releases](docs/releases.md) for image inputs and publishing.
 task check-fast
 ```
 
-Fast checks run image tooling, driver and blueprint tests. For optional full
+Fast checks run image tooling, provider and blueprint tests. For optional full
 acceptance, install Python 3.12–3.14 for Ansible and prepare native outputs:
 
 ```sh
 task setup
-task drivers:build -- --native
+task providers:build -- --native
 task inframill:copy
-task bundle                # requires prior task drivers:build for both Linux architectures
+task bundle                # requires prior task providers:build for both Linux architectures
 task check-full
 ```
 
 Full checks exercise native tools, blueprint workflows, disposable registries and
 both Linux runtime images. AMD64 can run under emulation. Use `task config` to
-print a local configuration pointing at native driver outputs in `drivers/dist`.
+print a local configuration pointing at native provider outputs in `providers/dist`.
 Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides select installed tools matching
 the image lock. See [acceptance](docs/acceptance.md) for recorded verification.
 
 ## Documentation
 
-- [Drivers](drivers/README.md): independent version roots, Python builds and tests.
+- [Providers](providers/README.md): independent version roots, Python builds and tests.
 - [Blueprints](blueprints/README.md): architecture-independent source packages.
-- [Usage](docs/usage.md): configuration, commands, secrets and driver behavior.
+- [Usage](docs/usage.md): configuration, commands, secrets and provider behavior.
 - [Architecture](docs/architecture.md): ownership, execution and artifact contracts.
 - [Releases](docs/releases.md): image assembly, publication and version selection.
 - [Distribution notices](runtime/NOTICES.md): bundled programs, licenses and sources.

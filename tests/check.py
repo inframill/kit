@@ -16,10 +16,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_image,
                                           blueprint_releases, publish, local_flow,
                                           pv_flow, verify)
-from drivers.tests.daemon_check import daemon_check
+from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from image_check import image_check
-from build import load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, drivers_dist, native_platform
+from build import load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
 
 
 def run(args, **kwargs):
@@ -29,7 +29,7 @@ def run(args, **kwargs):
 
 def tools():
     tofu, ansible = local_tools()
-    binaries = [drivers_dist() / d['name'] / d['version'] / native_platform() / 'driver' for d in bundle_lock()['drivers']]
+    binaries = [providers_dist() / d['name'] / d['version'] / native_platform() / 'provider' for d in bundle_lock()['providers']]
     for tool in [tofu, ansible, ROOT / 'bin/inframill', *binaries]:
         if not tool.is_file():
             raise RuntimeError(f'Missing prerequisite {tool}; see README setup')
@@ -38,7 +38,7 @@ def tools():
 
 def engine(tmp, env=None, data=None):
     tofu, ansible = tools()
-    config = configuration(drivers_dist(), data or tmp / 'data',
+    config = configuration(providers_dist(), data or tmp / 'data',
                            {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
     return Engine(tmp, config, ROOT / 'bin/inframill', env)
 
@@ -89,7 +89,7 @@ def registry_env(tmp, address, push_address):
 
 
 def blueprint_check(name, version):
-    if name != 'local-resource' and (name, version) != ('pv-cloud', '0.1.0'):
+    if name != 'local-resource' and (name, version) != ('pv-cloud', '0.2.0'):
         raise RuntimeError('No declared integration fixture for this blueprint version')
     with registry() as (address, _, push_address), tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
@@ -168,7 +168,7 @@ def registry_check():
         with engine(tmp / 'workflows', env) as client:
             for case in fixture_cases():
                 local_flow(client, case['version'], f"{address}/inframill/blueprints/local-resource:{case['version']}")
-            pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.1.0', tools()[0])
+            pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.2.0', tools()[0])
         daemon_check(tmp, address, env)
         cache_check(tmp, address, env)
         container_checks(tmp, network, env)
@@ -179,12 +179,12 @@ def main():
     if action in ('registry', 'full'):
         registry_check()
     elif action == 'blueprint:check':
-        blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.1.0'))
+        blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0' if os.environ['BLUEPRINT'] == 'pv-cloud' else '0.1.0'))
     elif action == 'blueprint:verify':
         reference = os.environ['REFERENCE']
         if '@sha256:' not in reference:
             raise RuntimeError('REFERENCE must be digest-pinned')
-        name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.1.0')
+        name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.2.0' if os.environ['BLUEPRINT'] == 'pv-cloud' else '0.1.0')
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
             with engine(pathlib.Path(td)) as client:
                 verify(client, name, version, reference)

@@ -4,36 +4,36 @@
 
 The repository has two independent source projects:
 
-- [`drivers/`](../drivers/README.md) builds one executable per driver version for
+- [`providers/`](../providers/README.md) builds one executable per provider version for
   Linux AMD64 and ARM64. Source, metadata, the Python builder and tests live there.
 - [`blueprints/`](../blueprints/README.md) builds architecture-independent OCI source
   packages using its own Python script, metadata, tasks and tests.
 
 The root project assembles the Kit image from prebuilt artifacts. It never compiles
-or rebuilds a driver. Prepare inputs explicitly:
+or rebuilds a provider. Prepare inputs explicitly:
 
 ```sh
-task drivers:test
-task drivers:build
+task providers:test
+task providers:build
 task release:check
 task bundle
 ```
 
 `task build` aliases `task bundle`. Both require complete artifacts for each image
-selection at `drivers/dist/<name>/<version>/linux/<arch>/`. Build records include
+selection at `providers/dist/<name>/<version>/linux/<arch>/`. Build records include
 binary and source checksums, the platform and the exact Inframill SDK pin. Image
 assembly rejects missing artifacts, mismatched architecture, tampering, incompatible
-engine pins and tool requirements. Driver sources and the SDK checkout are not
+engine pins and tool requirements. Provider sources and the SDK checkout are not
 inputs to image assembly.
 
 Prebuilt Inframill binaries must also exist in the pinned release layout. The
 image installs the checksum-pinned OpenTofu and Python/Ansible dependencies and
-copies `runtime/inframill.yaml` unchanged. Driver paths in that configuration are
-`/opt/inframill/drivers/<name>/<version>/driver`.
+copies `runtime/inframill.yaml` unchanged. Provider paths in that configuration are
+`/opt/inframill/providers/<name>/<version>/provider`.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
-| `DRIVERS_DIST_DIR` | Prebuilt driver input directory | `drivers/dist` |
+| `PROVIDERS_DIST_DIR` | Prebuilt provider input directory | `providers/dist` |
 | `INFRAMILL_DIST_DIR` | Prebuilt engine input directory | `../inframill/dist` |
 | `KIT_DIST_DIR` | Image output directory | `dist` |
 | `REGISTRY` | Publication registry | `ghcr.io` |
@@ -41,7 +41,7 @@ copies `runtime/inframill.yaml` unchanged. Driver paths in that configuration ar
 
 The image output is `KIT_DIST_DIR/bundles/<VERSION>/`. Existing image outputs are
 immutable; explicitly move or remove unpublished development output before a
-changed rebuild. Driver and blueprint scripts have independent `--dist` options.
+changed rebuild. Provider and blueprint scripts have independent `--dist` options.
 
 ## Publish
 
@@ -69,7 +69,7 @@ task blueprints:push
 Blueprint build loads each artifact into Docker; push invokes `docker push` for
 its tag. Authentication and remote tag policy are handled by Docker and the
 registry. `task blueprints:publish` performs build followed by push. Use
-`-- --name pv-cloud --version 0.1.0` to select one release. Driver builds publish
+`-- --name pv-cloud --version 0.2.0` to select one release. Provider builds publish
 no registry artifacts; their output is consumed by image assembly.
 
 After publication, verify the immutable reference:
@@ -85,24 +85,24 @@ not enable private blueprint consumption. Kit image pulls use Docker credentials
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.5.0-dev`, with OpenTofu and Ansible
-drivers `0.2.0`. Driver and blueprint versions are independent of the image.
+The current baseline is Kit and Inframill `0.7.0-dev`, with OpenTofu and Ansible
+providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
-Inframill 0.5.0-dev requires `driver_settings.<id>` bindings containing a
+Inframill 0.7.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
-individual workspace to its driver. Kit uses IDs `opentofu` and `ansible`;
-pv-cloud remains `0.1.0`. Old Instances with direct settings entries or obsolete
+individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
+pv-cloud is `0.2.0`. Old Instances with direct settings entries or obsolete
 layouts must be recreated; the engine rejects them and preserves their data.
 
-The image lock selects driver **names and versions**, engine binaries/checksums,
+The image lock selects provider **names and versions**, engine binaries/checksums,
 base image, Debian snapshot, timestamps, and the exact runtime tool dependencies.
-It contains no driver implementations or Go compiler selection. Driver metadata
-lives in each version's `release.json`; `drivers/releases.json` selects versions
+It contains no provider implementations or Go compiler selection. Provider metadata
+lives in each version's `release.json`; `providers/releases.json` selects versions
 and pins their compiler and SDK dependency. Blueprint releases have their own
 `blueprints/releases.json`.
 
-To add a driver version, follow the [driver instructions](../drivers/README.md#add-a-version),
+To add a provider version, follow the [provider instructions](../providers/README.md#add-a-version),
 then separately select it in the image lock and update `runtime/inframill.yaml`.
 To add a blueprint, follow its [release instructions](../blueprints/README.md#add-a-release).
 To add an image release, update `VERSION` and add its image lock. Exact versions

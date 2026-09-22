@@ -19,7 +19,8 @@
     "secret_key_ref": "s3_secret",
     "host": "fsn1.your-objectstorage.com",
     "region": "fsn1",
-    "use_path_style": true
+    "use_path_style": true,
+    "key": "instances/example/terraform.tfstate"
   },
   "nodes": {
     "web-arm": {

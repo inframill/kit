@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from build import read_binary, read_driver
+from build import read_binary, read_provider
 
 
 class BinaryFixture:
@@ -60,38 +60,38 @@ class BinaryInputTests(BinaryFixture, unittest.TestCase):
                 read_binary(self.dist, {'path': path, 'sha256': '0' * 64}, 'amd64')
 
 
-class DriverInputTests(BinaryFixture, unittest.TestCase):
-    def driver(self, arch='amd64'):
+class ProviderInputTests(BinaryFixture, unittest.TestCase):
+    def provider(self, arch='amd64'):
         entry, data = self.binary(62 if arch == 'amd64' else 183)
         target = 'linux/' + arch
-        folder = self.dist / 'opentofu/0.2.0' / target
+        folder = self.dist / 'opentofu/0.3.0' / target
         (folder / 'sources').mkdir(parents=True)
-        (folder / 'driver').write_bytes(data)
+        (folder / 'provider').write_bytes(data)
         (folder / 'sources/main.go').write_text('package main\n')
         lock = {'inframill': {'version': '0.3.0-dev', 'revision': 'a' * 40},
                 'platforms': ['linux/amd64', 'linux/arm64'],
                 'opentofu': {'version': '1.11.5'}, 'ansible_core': '2.20.1'}
-        selection = {'name': 'opentofu', 'version': '0.2.0'}
+        selection = {'name': 'opentofu', 'version': '0.3.0'}
         record = {'schema': 1, 'release': {**selection, 'tool_version': '1.11.5', 'protocol': 1,
                                          'platforms': lock['platforms']},
                   'platform': target, 'inframill': lock['inframill'],
-                  'files': {'driver': entry['sha256'], 'sources/main.go': hashlib.sha256(b'package main\n').hexdigest()},
+                  'files': {'provider': entry['sha256'], 'sources/main.go': hashlib.sha256(b'package main\n').hexdigest()},
                   'source_files': {'main.go': hashlib.sha256(b'package main\n').hexdigest()}}
         (folder / 'build.json').write_text(json.dumps(record))
         return folder, record, selection, target, lock
 
     def test_bundle_accepts_only_prebuilt_outputs_for_each_architecture(self):
         for arch in ['amd64', 'arm64']:
-            folder, record, selection, target, lock = self.driver(arch)
-            self.assertEqual(read_driver(self.dist, selection, target, lock)[1], record)
+            folder, record, selection, target, lock = self.provider(arch)
+            self.assertEqual(read_provider(self.dist, selection, target, lock)[1], record)
 
-    def test_missing_platform_requires_an_explicit_driver_build(self):
-        _, _, selection, _, lock = self.driver()
-        with self.assertRaisesRegex(ValueError, 'Missing prebuilt driver'):
-            read_driver(self.dist, selection, 'linux/arm64', lock)
+    def test_missing_platform_requires_an_explicit_provider_build(self):
+        _, _, selection, _, lock = self.provider()
+        with self.assertRaisesRegex(ValueError, 'Missing prebuilt provider'):
+            read_provider(self.dist, selection, 'linux/arm64', lock)
 
-    def test_bundle_rejects_driver_identity_tool_and_engine_mismatches(self):
-        folder, original, selection, target, lock = self.driver()
+    def test_bundle_rejects_provider_identity_tool_and_engine_mismatches(self):
+        folder, original, selection, target, lock = self.provider()
         for field in ['identity', 'tool', 'engine', 'platform']:
             record = json.loads(json.dumps(original))
             if field == 'identity':
@@ -104,19 +104,19 @@ class DriverInputTests(BinaryFixture, unittest.TestCase):
                 record['platform'] = 'linux/arm64'
             (folder / 'build.json').write_text(json.dumps(record))
             with self.subTest(field=field), self.assertRaises(ValueError):
-                read_driver(self.dist, selection, target, lock)
+                read_provider(self.dist, selection, target, lock)
 
     def test_bundle_rejects_tampered_source_snapshots(self):
-        folder, _, selection, target, lock = self.driver()
+        folder, _, selection, target, lock = self.provider()
         (folder / 'sources/main.go').write_text('modified')
         with self.assertRaisesRegex(ValueError, 'checksum'):
-            read_driver(self.dist, selection, target, lock)
+            read_provider(self.dist, selection, target, lock)
 
     def test_bundle_rejects_unrecorded_files(self):
-        folder, _, selection, target, lock = self.driver()
+        folder, _, selection, target, lock = self.provider()
         (folder / 'unexpected').write_text('extra')
         with self.assertRaisesRegex(ValueError, 'unrecorded'):
-            read_driver(self.dist, selection, target, lock)
+            read_provider(self.dist, selection, target, lock)
 
 
 if __name__ == '__main__':

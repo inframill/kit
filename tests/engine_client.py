@@ -37,7 +37,7 @@ class Engine:
                     self.log.flush()
                     raise RuntimeError('Daemon exited: ' + (self.root / 'daemon.log').read_text())
                 try:
-                    return self.rpc('ListDrivers')
+                    return self.rpc('ListProviders')
                 except (urllib.error.URLError, ConnectionError, TimeoutError):
                     return None
             self.poll(ready, 30)
@@ -83,22 +83,22 @@ class Engine:
     def initialize(self, name, reference, values):
         # Fetch is explicit: this also exercises initialization from an offline cache.
         return self.rpc('InitInstance', {
-            'name': name, 'blueprint_reference': reference, 'values': values,
+            'name': name, 'blueprint_reference': reference, 'values': {'json': json.dumps(values)},
         })['instance']['id']
 
     def execute(self, instance, command, args=None):
-        command_id = self.rpc('SubmitCommand', {
-            'instance_id': instance, 'command': command, 'args': args or {},
-        })['commandId']
+        execution_id = self.rpc('SubmitCommand', {
+            'instance_id': instance, 'command_name': command, 'arguments': {'json': json.dumps(args or {})},
+        })['executionId']
 
         def completed():
             result = self.rpc('GetCommandExecution', {
-                'instance_id': instance, 'command_id': command_id,
+                'instance_id': instance, 'execution_id': execution_id,
             })['execution']
             return result if result['status'] in (
-                'COMMAND_STATUS_SUCCEEDED', 'COMMAND_STATUS_FAILED',
-                'COMMAND_STATUS_INTERRUPTED') else None
+                'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
+                'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None
         result = self.poll(completed)
-        if result['status'] != 'COMMAND_STATUS_SUCCEEDED':
+        if result['status'] != 'COMMAND_EXECUTION_STATUS_SUCCEEDED':
             raise RuntimeError(result)
-        return result.get('result', {})
+        return json.loads(result['result']['json']) if 'result' in result else {}

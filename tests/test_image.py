@@ -23,11 +23,11 @@ class ReleaseTests(unittest.TestCase):
         original = build.bundle_lock()
         mutations = [
             {'kit_version': original['version']},
-            {'drivers': []},
-            {'drivers': [original['drivers'][0]] * 2},
-            {'drivers': [{'name': '../escape', 'version': '0.2.0'}]},
-            {'drivers': [{'name': 'opentofu', 'version': 'latest'}]},
-            {'drivers': [{**original['drivers'][0], 'implementation': 'old'}]},
+            {'providers': []},
+            {'providers': [original['providers'][0]] * 2},
+            {'providers': [{'name': '../escape', 'version': '0.2.0'}]},
+            {'providers': [{'name': 'opentofu', 'version': 'latest'}]},
+            {'providers': [{**original['providers'][0], 'implementation': 'old'}]},
             {'platforms': ['linux/amd64']},
             {'inframill': {**original['inframill'], 'version': '1.3.0'}},
             {'inframill': {**original['inframill'], 'version': '0.3'}},

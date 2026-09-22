@@ -5,10 +5,10 @@ single `build.py` script owns source validation, deterministic archives, OCI
 packaging and calls to `docker load` / `docker push`. It does not import Kit scripts, compile Go,
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
-The current packages target Inframill **0.5.0-dev** and its driver binding
-contract. pv-cloud remains **0.1.0**. OpenTofu files live in `templates/opentofu/`;
+The current packages target Inframill **0.7.0-dev** and its provider binding
+contract. pv-cloud is **0.2.0**. OpenTofu files live in `templates/opentofu/`;
 Ansible playbooks and roles live in `templates/ansible/`. Each directory contains
-its own `kit-driver.json.gotmpl`. These directory names match the configured driver IDs. Each `driver_settings`
+its own `kit-provider.json.gotmpl`. These directory names match the configured provider IDs. Each `provider_settings`
 entry wraps a major.minor `version` string and a nested `settings` object.
 
 Each release is **one architecture-independent OCI artifact** containing
@@ -55,8 +55,8 @@ they also work from other working directories.
 Select a name and optionally a version:
 
 ```sh
-.venv/bin/python build.py build --name pv-cloud --version 0.1.0
-task build -- --name pv-cloud --version 0.1.0
+.venv/bin/python build.py build --name pv-cloud --version 0.2.0
+task build -- --name pv-cloud --version 0.2.0
 ```
 
 Every entry in `releases.json` is selected by default. Test fixtures are excluded.
@@ -89,10 +89,10 @@ versions for changed packages. Build and push never modify release metadata.
 ## Add a release
 
 1. Add source under `<name>/<version>/blueprint.yaml` and `templates/`.
-   Use exactly one `templates/<configured-id>/` directory per driver binding,
+   Use exactly one `templates/<configured-id>/` directory per provider binding,
    such as `templates/opentofu/` and `templates/ansible/`. Top-level files and extra
    directories under `templates/` are rejected. Keep binaries out of these
-   portable packages; driver tools belong in the Kit runtime.
+   portable packages; provider tools belong in the Kit runtime.
 2. Print the source seal (this works before adding release metadata):
 
    ```sh
@@ -101,19 +101,19 @@ versions for changed packages. Build and push never modify release metadata.
 
 3. Add an entry to `releases.json` following the existing pv-cloud entry. Include
    the exact name/version, engine compatibility target (`inframill_version`),
-   driver IDs/names/versions, matching major.minor Blueprint bindings, protocol `1`, both platforms/architectures, status,
+   provider IDs/names/versions, matching major.minor Blueprint bindings, protocol `1`, both platforms/architectures, status,
    and the printed `source_sha256`.
 4. Run the tests below and `task build`. Publish after testing the release
-   against its intended engine and drivers.
+   against its intended engine and providers.
 
 Only `blueprint.yaml` and `templates/` may occur in a source version. Links, special
 files, credentials, state and runtime directories are rejected. Source timestamps,
 file ownership and host architecture do not enter the archive. Executable bits
 are preserved. `blueprint.yaml` supports JSON or YAML without aliases, duplicate
-keys or YAML-only scalar types. Schemas are checked offline, driver requirements
-must agree with the release, and required driver settings templates must exist.
-Driver-specific settings and execution are verified through the Kit integration
-checks; the standalone packager does not load driver implementations.
+keys or YAML-only scalar types. Schemas are checked offline, provider requirements
+must agree with the release, and required provider settings templates must exist.
+Provider-specific settings and execution are verified through the Kit integration
+checks; the standalone packager does not load provider implementations.
 
 `--root` selects another standalone source project with its own `releases.json`;
 `--config` overrides the manifest path. Relative `--root`, `--config` and `--dist`
@@ -137,12 +137,12 @@ For a registry you have already configured, use matching build/push destinations
 ```
 
 The following optional checks integrate with the parent Kit project and require
-its `task setup`, `task drivers:build -- --native`, `task inframill:copy`, and Docker prerequisites.
+its `task setup`, `task providers:build -- --native`, `task inframill:copy`, and Docker prerequisites.
 Run them from the Kit repository root:
 
 ```sh
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0 python3 tests/check.py blueprint:check
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.1.0 \
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 tests/check.py blueprint:check
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
   REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:... \
   python3 tests/check.py blueprint:verify
 ```

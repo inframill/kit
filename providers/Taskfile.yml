@@ -1,0 +1,15 @@
+version: '3'
+
+vars:
+  PYTHON: '{{default "python3" .PYTHON}}'
+
+tasks:
+  default:
+    silent: true
+    cmds: ['task --list']
+  build:
+    desc: Build every provider for Linux AMD64 and ARM64
+    cmds: ['"{{.PYTHON}}" build.py build {{.CLI_ARGS}}']
+  test:
+    desc: Run provider builder, implementation and protocol tests
+    cmds: ['"{{.PYTHON}}" build.py test {{.CLI_ARGS}}']

@@ -19,7 +19,7 @@ class ReleaseConfigTests(unittest.TestCase):
         lock = release_config.bundle_lock()
         self.assertIn('linux/arm64', lock['opentofu']['assets'])
         self.assertIn('linux/amd64', lock['opentofu']['assets'])
-        self.assertEqual({d['version'] for d in lock['drivers']}, {'0.2.0'})
+        self.assertEqual({d['version'] for d in lock['providers']}, {'0.3.0'})
         self.assertEqual(set(lock['inframill']['binaries']),
                          {'linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64'})
 

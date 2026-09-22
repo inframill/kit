@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE}
 ARG TARGETARCH
 ARG SOURCE_DATE_EPOCH=1759190400
 LABEL org.opencontainers.image.source="https://github.com/inframill/kit"
-LABEL org.opencontainers.image.description="Inframill Kit with the engine, versioned drivers, OpenTofu and Ansible Core"
+LABEL org.opencontainers.image.description="Inframill Kit with the engine, versioned providers, OpenTofu and Ansible Core"
 ARG DEBIAN_SNAPSHOT
 # Signed Debian snapshot metadata fixes the OS dependency resolution date.
 RUN printf "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main\ndeb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} bookworm-security main\n" > /etc/apt/sources.list \
@@ -18,7 +18,7 @@ RUN python3 -m venv /opt/inframill/tools/ansible/${ANSIBLE_VERSION} \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/pip install --no-cache-dir --require-hashes -r /build/requirements.lock \
     && python3 /build/build.py fetch-runtime ${TARGETARCH}
 COPY bin/linux/${TARGETARCH}/ /usr/local/bin/
-COPY drivers/${TARGETARCH}/ /opt/inframill/drivers/
+COPY providers/${TARGETARCH}/ /opt/inframill/providers/
 COPY inframill.yaml /etc/inframill/inframill.yaml
 COPY sources/ /usr/share/inframill/sources/kit/
 COPY NOTICES.md /usr/share/inframill/NOTICES.md
@@ -29,7 +29,7 @@ RUN mkdir -p /var/lib/inframill \
     && test "$(inframill --version)" = "$INFRAMILL_VERSION" \
     && /opt/inframill/tools/opentofu/${OPENTOFU_VERSION}/tofu version \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/ansible-playbook --version
-RUN for driver in /opt/inframill/drivers/*/*/driver; do "$driver" version || exit 1; done
+RUN for provider in /opt/inframill/providers/*/*/provider; do "$provider" version || exit 1; done
 WORKDIR /var/lib/inframill
 EXPOSE 8080
 ENTRYPOINT ["inframill"]

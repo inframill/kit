@@ -27,10 +27,10 @@ def blueprint_root(name):
 def requirements(name, version):
     root = blueprint_root(name)
     release = json.loads((root / 'releases.json').read_text())
-    return next(b['drivers'] for b in release['blueprints'] if b['name'] == name and b['version'] == version)
+    return next(b['providers'] for b in release['blueprints'] if b['name'] == name and b['version'] == version)
 
 
-def driver_ids(name, version):
+def provider_ids(name, version):
     return {d['name']: d['id'] for d in requirements(name, version)}
 
 
@@ -57,11 +57,11 @@ def publish(name, version, env):
 
 
 def publish_protocol_fixture(tmp, env, engine_version):
-    # This blueprint and driver exist only in test builds, never the release set.
+    # This blueprint and provider exist only in test builds, never the release set.
     source = tmp / 'blueprints/protocol-fixture/0.1.0'
     (source / 'templates/fixture').mkdir(parents=True)
     (source / 'templates/fixture/readme.txt').write_text('secret snapshot test\n')
-    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'driver_settings': {'fixture': {'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'}}}}))
+    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'provider_settings': {'fixture': {'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'}}}}))
     prefix = [str(BLUEPRINT_PYTHON), str(BLUEPRINTS / 'build.py')]
     selectors = ['--root', str(tmp / 'blueprints'), '--name', 'protocol-fixture', '--version', '0.1.0',
                  '--dist', str(tmp / 'dist')]
@@ -70,7 +70,7 @@ def publish_protocol_fixture(tmp, env, engine_version):
     release.write_text(json.dumps({'schema': 1, 'blueprints': [{'name': 'protocol-fixture', 'version': '0.1.0',
         'inframill_version': engine_version, 'protocol': 1,
         'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'],
-        'drivers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}]}))
+        'providers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}]}))
     for action in ['build', 'push']:
         subprocess.run(prefix + [action] + selectors, env=env, check=True)
 
@@ -81,7 +81,7 @@ def local_flow(client, version, reference, name=None, fetch=True):
     if fetch:
         client.fetch(reference)
     iid = client.initialize(name or 'test/local-' + version.replace('.', '-'), reference, data)
-    ids = driver_ids('local-resource', version)
+    ids = provider_ids('local-resource', version)
     prefix, ansible = ids['opentofu'], ids['ansible']
 
     def do(command, args=None):
@@ -100,9 +100,9 @@ def local_flow(client, version, reference, name=None, fetch=True):
 
 def pv_flow(client, reference, tofu):
     client.fetch(reference)
-    ids = driver_ids('pv-cloud', '0.1.0')
+    ids = provider_ids('pv-cloud', '0.2.0')
     instances = []
-    for suffix in ['arm64', 'amd64', '0.1.0']:
+    for suffix in ['arm64', 'amd64', '0.2.0']:
         values = json.loads((BLUEPRINTS / f'examples/pv-cloud-{suffix}.json').read_text())
         iid = client.initialize('test/pv-' + suffix.replace('.', '-'), reference, values)
         instances.append(iid)
@@ -119,9 +119,9 @@ def verify(client, name, version, reference):
     values = json.loads((blueprint_root(name) / f'examples/{name}-{version}.json').read_text())
     release = next(b for b in json.loads((blueprint_root(name) / 'releases.json').read_text())['blueprints']
                    if b['name'] == name and b['version'] == version)
-    candidates = [d['id'] for d in release['drivers'] if d['name'] == 'ansible']
+    candidates = [d['id'] for d in release['providers'] if d['name'] == 'ansible']
     if len(candidates) != 1:
-        raise RuntimeError('Verification requires a fixture selecting one Ansible driver')
+        raise RuntimeError('Verification requires a fixture selecting one Ansible provider')
     client.fetch(reference)
     iid = client.initialize('verify/blueprint', reference, values)
     client.execute(iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
@@ -133,7 +133,7 @@ def runtime_flows(client, registry, arch, tofu):
         reference = f'{registry}/inframill/blueprints/local-resource:{version}'
         client.fetch(reference)
         iid = client.initialize('smoke/v' + version.replace('.', '-'), reference, {'architecture': arch})
-        ids = driver_ids(case['name'], version)
+        ids = provider_ids(case['name'], version)
         prefix, ansible = ids['opentofu'], ids['ansible']
         client.execute(iid, prefix + '.init')
         plan = client.execute(iid, prefix + '.plan')
@@ -141,12 +141,12 @@ def runtime_flows(client, registry, arch, tofu):
         client.execute(iid, ansible + '.apply', {'playbook': 'site'})
         plan = client.execute(iid, prefix + '.plan', {'destroy': True})
         client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = registry + '/inframill/blueprints/pv-cloud:0.1.0'
-    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.1.0.json').read_text())
+    reference = registry + '/inframill/blueprints/pv-cloud:0.2.0'
+    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.2.0.json').read_text())
     client.fetch(reference)
     iid = client.initialize('smoke/pv-cloud', reference, values)
-    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.1.0')
-    ids = {d['name']: d['id'] for d in release['drivers']}
+    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
+    ids = {d['name']: d['id'] for d in release['providers']}
     client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     work = pathlib.Path(client.config['engine']['dataDir']) / 'instances' / iid / 'workspace' / 'opentofu'
     for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],

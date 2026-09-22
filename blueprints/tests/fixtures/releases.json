@@ -13,21 +13,21 @@
         "amd64",
         "arm64"
       ],
-      "drivers": [
+      "providers": [
         {
           "id": "opentofu",
           "name": "opentofu",
-          "version": "0.2.0"
+          "version": "0.3.0"
         },
         {
           "id": "ansible",
           "name": "ansible",
-          "version": "0.2.0"
+          "version": "0.3.0"
         }
       ],
       "status": "supported",
-      "source_sha256": "sha256:5df13df496407f22014431192748238c04a6ecfc1042adf522a3e16500f34c3c",
-      "inframill_version": "0.5.0-dev"
+      "source_sha256": "sha256:cf605ce66ff0ac0103cf529108bbd6f4f323407bfc9eeefa8b9cf02a861bf2d9",
+      "inframill_version": "0.7.0-dev"
     },
     {
       "name": "local-resource",
@@ -41,21 +41,21 @@
         "amd64",
         "arm64"
       ],
-      "drivers": [
+      "providers": [
         {
           "id": "opentofu",
           "name": "opentofu",
-          "version": "0.2.0"
+          "version": "0.3.0"
         },
         {
           "id": "ansible",
           "name": "ansible",
-          "version": "0.2.0"
+          "version": "0.3.0"
         }
       ],
       "status": "supported",
-      "source_sha256": "sha256:addfce8d1b50fbe25aa33f40aa5ac94843947789ef07605940de849aa8933517",
-      "inframill_version": "0.5.0-dev"
+      "source_sha256": "sha256:152cb300264e8f888fcd8e0c40528946028dc260924ef8314a0ce62ecbb74283",
+      "inframill_version": "0.7.0-dev"
     }
   ]
 }
