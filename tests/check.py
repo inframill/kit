@@ -19,7 +19,7 @@ from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_im
 from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from image_check import image_check
-from build import load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
+from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
 
 
 def run(args, **kwargs):
@@ -145,7 +145,7 @@ def container_checks(tmp, network, env):
     image = 'docker.io/library/inframill-kit-test:' + uuid.uuid4().hex
     load_image(bundle_output(), image)
     try:
-        python = '/opt/inframill/tools/ansible/' + bundle_lock()['ansible_core'] + '/bin/python3'
+        python = '/opt/inframill/tools/ansible/' + runtime_settings()['ANSIBLE_VERSION'] + '/bin/python3'
         for arch in ['arm64', 'amd64']:
             image_check(tmp, image, arch, network)
             run(['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch,

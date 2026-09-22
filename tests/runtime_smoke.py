@@ -31,6 +31,6 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     config['engine']['dataDir'] = str(tmp / 'data')
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
         assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
-        tofu = '/opt/inframill/tools/opentofu/' + lock['opentofu']['version'] + '/tofu'
+        tofu = config['engine']['providers']['opentofu']['args'][1]
         runtime_flows(client, registry, arch, tofu)
 print('Runtime workflow and provider mocks passed on ' + arch)

@@ -15,8 +15,8 @@ import sys
 import tarfile
 import tempfile
 import time
-import urllib.request
-import zipfile
+
+from runtime.tools import ansible_requirements, docker_defaults, install_opentofu
 
 ROOT = pathlib.Path(__file__).resolve().parent
 PLATFORMS = {'linux/amd64', 'linux/arm64'}
@@ -31,29 +31,8 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def python_requirements(lock):
-    """Render pip input from the release; never resolve or update dependencies."""
-    lines = []
-    seen = set()
-    for package in lock['python_dependencies']:
-        name, version = package['name'], package['version']
-        identity = re.sub(r'[-_.]+', '-', name).lower()
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) or identity in seen:
-            raise ValueError('Invalid or duplicate Python dependency: ' + name)
-        seen.add(identity)
-        if not re.fullmatch(r'[0-9][A-Za-z0-9.+!-]*', version):
-            raise ValueError('Python dependencies require exact versions')
-        hashes = package['hashes']
-        if not hashes or any(not re.fullmatch(r'[a-f0-9]{64}', h) for h in hashes):
-            raise ValueError('Python dependencies require SHA-256 hashes')
-        if package['source']['sha256'] not in hashes:
-            raise ValueError('Python source checksum must be included in package hashes')
-        if identity == 'ansible-core' and version != lock['ansible_core']:
-            raise ValueError('Ansible version differs from Python dependencies')
-        lines.append(name + '==' + version + ''.join(' \\\n    --hash=sha256:' + h for h in hashes))
-    if 'ansible-core' not in seen:
-        raise ValueError('Python dependencies must include ansible-core')
-    return '\n'.join(lines) + '\n'
+def runtime_settings():
+    return docker_defaults(ROOT / 'runtime/Dockerfile')
 
 
 def native_platform():
@@ -82,9 +61,9 @@ def configuration(provider_root, workspace, tools=None, providers=None, target=N
 
 
 def local_tools():
-    lock = bundle_lock()
-    tofu = ROOT / f".cache/tools/opentofu/{lock['opentofu']['version']}/tofu"
-    ansible = ROOT / f".cache/ansible-{lock['ansible_core']}/bin/ansible-playbook"
+    settings = runtime_settings()
+    tofu = ROOT / f".cache/tools/opentofu/{settings['OPENTOFU_VERSION']}/tofu"
+    ansible = ROOT / f".cache/ansible-{settings['ANSIBLE_VERSION']}/bin/ansible-playbook"
     return pathlib.Path(os.environ.get('OPENTOFU_PATH', tofu)).resolve(), pathlib.Path(os.environ.get('ANSIBLE_PATH', ansible)).resolve()
 
 
@@ -135,7 +114,8 @@ def read_provider(dist, selection, target, lock):
     expected_engine = {k: lock['inframill'][k] for k in ('version', 'revision')}
     if record['inframill'] != expected_engine:
         raise ValueError('Provider and image target different Inframill releases')
-    tool_version = {'opentofu': lock['opentofu']['version'], 'ansible': lock['ansible_core']}.get(name)
+    settings = runtime_settings()
+    tool_version = {'opentofu': settings['OPENTOFU_VERSION'], 'ansible': settings['ANSIBLE_VERSION']}.get(name)
     if release['tool_version'] != tool_version or release['protocol'] != 1 or set(release['platforms']) != set(lock['platforms']):
         raise ValueError('Provider tool/platform/protocol differs from the image release')
     actual = set()
@@ -213,9 +193,7 @@ def project_version():
 
 
 def validate_release(lock, version):
-    allowed = {'version', 'providers', 'platforms', 'base_image', 'base_platform_digests',
-               'source_date_epoch', 'inframill', 'opentofu', 'ansible_core', 'python',
-               'python_dependencies', 'debian_snapshot'}
+    allowed = {'version', 'providers', 'platforms', 'inframill'}
     if set(lock) - allowed:
         raise ValueError('Unknown image release fields: ' + ', '.join(sorted(set(lock) - allowed)))
     if not valid_version(version) or lock['version'] != version:
@@ -247,7 +225,6 @@ def validate_release(lock, version):
             raise ValueError('Invalid engine binary path or checksum')
     if not PLATFORMS <= set(engine['binaries']):
         raise ValueError('Both prebuilt Linux engine binaries required')
-    python_requirements(lock)
     return lock
 
 
@@ -306,10 +283,8 @@ def build_image():
                 for name in ('sources', 'notices'):
                     if (folder / name).is_dir():
                         shutil.copytree(folder / name, destination / name)
-        for name in ('Dockerfile', 'NOTICES.md', 'inframill.yaml'):
+        for name in ('Dockerfile', 'NOTICES.md', 'inframill.yaml', 'tools.py'):
             shutil.copy2(ROOT / 'runtime' / name, context / name)
-        shutil.copy2(ROOT / 'build.py', context / 'build.py')
-        (context / 'requirements.lock').write_text(python_requirements(lock))
         lock_bytes = (ROOT / f'releases/{version}.lock.json').read_bytes()
         if json.loads(lock_bytes) != lock:
             raise ValueError('Image release changed during build preparation')
@@ -317,10 +292,7 @@ def build_image():
         archive_path = stage / 'image.tar'
         args = ['docker', 'buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
                 '--provenance=false', '--sbom=false']
-        for name, value in {'OPENTOFU_VERSION': lock['opentofu']['version'], 'ANSIBLE_VERSION': lock['ansible_core'],
-                            'INFRAMILL_VERSION': lock['inframill']['version'], 'DEBIAN_SNAPSHOT': lock['debian_snapshot'],
-                            'BASE_IMAGE': lock['base_image'], 'SOURCE_DATE_EPOCH': lock['source_date_epoch']}.items():
-            args.extend(['--build-arg', name + '=' + str(value)])
+        args.extend(['--build-arg', 'INFRAMILL_VERSION=' + lock['inframill']['version']])
         run(args + ['--output', 'type=oci,dest=' + str(archive_path) + ',rewrite-timestamp=true', '--tag', reference, context])
         layout = stage / 'oci'
         layout.mkdir()
@@ -480,71 +452,17 @@ def copy_engine():
     print('Copied:', destination)
 
 
-def download(url, checksum, destination):
-    destination = pathlib.Path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    hasher = hashlib.sha256()
-    with urllib.request.urlopen(url, timeout=120) as response, destination.open('wb') as stream:
-        for chunk in iter(lambda: response.read(1 << 20), b''):
-            hasher.update(chunk)
-            stream.write(chunk)
-    if hasher.hexdigest() != checksum:
-        raise ValueError('Checksum mismatch for ' + url)
-    return destination
-
-
-def fetch_runtime(arch):
-    lock = json.loads(pathlib.Path('/build/bundle.lock.json').read_text())
-    asset = lock['opentofu']['assets']['linux/' + arch]
-    archive_path = download(asset['url'], asset['sha256'], '/build/tofu.zip')
-    output = pathlib.Path('/opt/inframill/tools/opentofu') / lock['opentofu']['version']
-    output.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive_path) as archive:
-        (output / 'tofu').write_bytes(archive.read('tofu'))
-        for name in archive.namelist():
-            if 'LICENSE' in name.upper() and '/' not in name:
-                (output / name).write_bytes(archive.read(name))
-    (output / 'tofu').chmod(0o755)
-    for source in [p['source'] for p in lock['python_dependencies']] + [lock['opentofu']['source']]:
-        download(source['url'], source['sha256'], pathlib.Path('/usr/share/inframill/sources') / source['url'].rsplit('/', 1)[-1])
-
-
 def setup():
     python, version = find_python(os.environ.get('PYTHON'))
-    lock = bundle_lock()
+    settings = runtime_settings()
     print(f'Using Python {version}: {python}', flush=True)
-    asset = lock['opentofu']['assets'][native_platform()]
-    folder = ROOT / f".cache/tools/opentofu/{lock['opentofu']['version']}"
-    archive_path = download(asset['url'], asset['sha256'], folder / 'download.zip')
-    with zipfile.ZipFile(archive_path) as archive:
-        (folder / 'tofu').write_bytes(archive.read('tofu'))
-    (folder / 'tofu').chmod(0o755)
-    archive_path.unlink()
-    venv = ROOT / f".cache/ansible-{lock['ansible_core']}"
+    folder = ROOT / f".cache/tools/opentofu/{settings['OPENTOFU_VERSION']}"
+    install_opentofu(native_platform(), settings, folder)
+    venv = ROOT / f".cache/ansible-{settings['ANSIBLE_VERSION']}"
     run([python, '-m', 'venv', venv])
-    with tempfile.TemporaryDirectory(prefix='kit-python-') as td:
-        requirements = pathlib.Path(td) / 'requirements.lock'
-        requirements.write_text(python_requirements(lock))
-        run([venv / 'bin/python', '-m', 'pip', 'install', '--require-hashes', '-r', requirements])
-    print('Pinned test tools installed under .cache')
-
-
-def lock_python(report_path):
-    path = ROOT / f'releases/{project_version()}.lock.json'
-    lock = json.loads(path.read_text())
-    report = json.loads(pathlib.Path(report_path).read_text())
-    packages = []
-    for item in sorted(report['install'], key=lambda x: x['metadata']['name'].lower()):
-        name, version = item['metadata']['name'], item['metadata']['version']
-        with urllib.request.urlopen(f'https://pypi.org/pypi/{name}/{version}/json', timeout=60) as response:
-            metadata = json.load(response)
-        source = next(f for f in metadata['urls'] if f['packagetype'] == 'sdist')
-        packages.append({'name': name, 'version': version,
-                         'hashes': sorted({f['digests']['sha256'] for f in metadata['urls']}),
-                         'source': {'url': source['url'], 'sha256': source['digests']['sha256']}})
-    lock['python_dependencies'] = packages
-    python_requirements(lock)
-    path.write_text(json.dumps(lock, indent=2) + '\n')
+    run([venv / 'bin/python', '-m', 'pip', 'install', *ansible_requirements(settings)])
+    run([venv / 'bin/python', '-m', 'pip', 'check'])
+    print('Dockerfile-pinned test tools installed under .cache')
 
 
 def verify_remote(reference):
@@ -580,10 +498,6 @@ def main(argv=None):
         commands.add_parser(command)
     verify = commands.add_parser('verify', help='verify local output, or a published image by digest')
     verify.add_argument('--reference')
-    pins = commands.add_parser('lock-python', help='explicitly update Python dependency pins from a pip report')
-    pins.add_argument('report', type=pathlib.Path)
-    fetch = commands.add_parser('fetch-runtime', help='internal Docker build step')
-    fetch.add_argument('arch', choices=['amd64', 'arm64'])
     args = parser.parse_args(argv)
     if args.command == 'build':
         build_image()
@@ -610,10 +524,6 @@ def main(argv=None):
         tofu, ansible = local_tools()
         print(json.dumps(configuration(providers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
                                        {'opentofu': tofu, 'ansible': ansible}, target=native_platform()), indent=2))
-    elif args.command == 'lock-python':
-        lock_python(args.report)
-    elif args.command == 'fetch-runtime':
-        fetch_runtime(args.arch)
     elif args.command == 'test':
         run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], cwd=ROOT)
 

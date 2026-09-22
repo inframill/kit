@@ -9,7 +9,7 @@ import urllib.request
 import uuid
 
 from blueprints.tests.integration import provider_ids
-from build import ROOT, bundle_lock, configuration
+from build import runtime_settings, ROOT, bundle_lock, configuration
 
 CONFIG = '/etc/inframill/inframill.yaml'
 DATA = '/var/lib/inframill'
@@ -19,7 +19,7 @@ def image_check(tmp, image, arch, network):
     root = pathlib.Path(tmp) / ('image-' + arch)
     root.mkdir()
     lock = bundle_lock()
-    python = '/opt/inframill/tools/ansible/' + lock['ansible_core'] + '/bin/python3'
+    python = '/opt/inframill/tools/ansible/' + runtime_settings()['ANSIBLE_VERSION'] + '/bin/python3'
     prefix = ['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch]
     containers = set()
     volume = 'kit-data-' + uuid.uuid4().hex

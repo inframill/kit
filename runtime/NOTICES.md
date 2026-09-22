@@ -16,8 +16,10 @@ This image combines separately licensed programs. It is not an all-MIT product.
   Debian package identities are recorded in `/usr/share/inframill/os-packages.txt`;
   matching package sources are available from the signed snapshot repositories
   configured in `/etc/apt/sources.list`. Python's version and immutable base image
-  digest are recorded in the bundle lock; upstream source: https://www.python.org/ftp/python/.
+  digest are pinned in the included `runtime/Dockerfile`; upstream source: https://www.python.org/ftp/python/.
 
-The bundle lock and Python requirements record exact versions and checksums.
+The bundle lock records engine and provider selections. The Dockerfile pins runtime
+tools; `/usr/share/inframill/python-packages.json` records installed Python packages
+and download hashes, and `sources/python-sources.json` records their source checksums.
 Review changes to these materials and dependency license terms before distributing
 new versions. Guest packages installed by a blueprint are separate from the Kit image.

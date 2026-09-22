@@ -27,7 +27,7 @@ engine pins and tool requirements. Provider sources and the SDK checkout are not
 inputs to image assembly.
 
 Prebuilt Inframill binaries must also exist in the pinned release layout. The
-image installs the checksum-pinned OpenTofu and Python/Ansible dependencies and
+Dockerfile installs checksum-pinned OpenTofu and version-pinned Python/Ansible dependencies and
 copies `runtime/inframill.yaml` unchanged. Provider paths in that configuration are
 `/opt/inframill/providers/<name>/<version>/provider`.
 
@@ -95,8 +95,9 @@ individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
 pv-cloud is `0.2.0`. Only the current development contract is supported.
 
 The image lock selects provider **names and versions**, engine binaries/checksums,
-base image, Debian snapshot, timestamps, and the exact runtime tool dependencies.
-It contains no provider implementations or Go compiler selection. Provider metadata
+and image platforms. [`runtime/Dockerfile`](../runtime/Dockerfile) owns the base
+image digest, Debian snapshot, build timestamp, OpenTofu checksums, and Ansible
+and Python dependency versions. Provider metadata
 lives in each version's `release.json`; `providers/releases.json` selects versions
 and pins their compiler and SDK dependency. Blueprint releases have their own
 `blueprints/releases.json`.
@@ -110,9 +111,15 @@ are required; changed published bytes require a new tag, including development t
 `VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` environment variables do not override
 the root file. Builds do not infer versions from Git or change release metadata.
 
-Image builds render pip's `requirements.lock` from `python_dependencies` in a
-temporary directory. `python3 build.py lock-python REPORT.json` explicitly
-updates those pins in the selected image lock from a resolved pip report. It
-rejects an Ansible version differing from `ansible_core`; ordinary builds never
-resolve new dependencies. The selected lock ships at
-`/usr/share/inframill/bundle.lock.json`.
+Update tool pins in `runtime/Dockerfile`, along with the provider's `tool_version`
+and paths in `runtime/inframill.yaml` when needed. Image assembly checks the
+provider's required tool version against the Dockerfile before building. Native
+`task setup` reads the same Dockerfile defaults. The runtime helper installs
+OpenTofu and downloads matching source archives; the Dockerfile installs Ansible
+and its explicitly versioned dependencies with pip and runs `pip check`.
+
+The selected release lock ships at `/usr/share/inframill/bundle.lock.json`.
+Pip records installed package versions and download hashes in
+`/usr/share/inframill/python-packages.json`; matching source archives and their
+checksums are recorded under `/usr/share/inframill/sources/`. These records are
+build outputs, not release-lock inputs.

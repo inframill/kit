@@ -49,7 +49,8 @@ not require node artifacts; check mode reports prediction.
 ## Versions and publication
 
 The root `VERSION` selects one self-contained `releases/<version>.lock.json`,
-which declares the exact Inframill target, providers and dependency pins. Kit and engine must share major/minor; patches and prereleases
+which declares the exact Inframill target, providers and platforms. The Dockerfile
+provides the tools and pins their versions and runtime dependencies. Kit and engine must share major/minor; patches and prereleases
 can differ. The image shares Kit's exact version and its lock must pin the declared
 engine target. The sibling checkout does not select either release version.
 

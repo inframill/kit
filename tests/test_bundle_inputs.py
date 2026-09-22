@@ -69,8 +69,7 @@ class ProviderInputTests(BinaryFixture, unittest.TestCase):
         (folder / 'provider').write_bytes(data)
         (folder / 'sources/main.go').write_text('package main\n')
         lock = {'inframill': {'version': '0.3.0-dev', 'revision': 'a' * 40},
-                'platforms': ['linux/amd64', 'linux/arm64'],
-                'opentofu': {'version': '1.11.5'}, 'ansible_core': '2.20.1'}
+                'platforms': ['linux/amd64', 'linux/arm64']}
         selection = {'name': 'opentofu', 'version': '0.3.0'}
         record = {'schema': 1, 'release': {**selection, 'tool_version': '1.11.5', 'protocol': 1,
                                          'platforms': lock['platforms']},
