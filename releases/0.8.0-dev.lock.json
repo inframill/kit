@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0-dev",
+  "version": "0.8.0-dev",
   "platforms": [
     "linux/amd64",
     "linux/arm64"
@@ -21,24 +21,24 @@
   },
   "source_date_epoch": 1759190400,
   "inframill": {
-    "version": "0.7.0-dev",
-    "revision": "a5d5f6aeba37b955086901ee46552c903ebe62fa",
+    "version": "0.8.0-dev",
+    "revision": "64b9d73593be9d0f503fd38dcc07cebf3497d750",
     "binaries": {
       "darwin/amd64": {
-        "path": "0.7.0-dev/inframill_0.7.0-dev_darwin_amd64",
-        "sha256": "a631a678d7fea9864b2930849f9af51b3ed4f066dbb86c28c61c51c06983dd09"
+        "path": "0.8.0-dev/inframill_0.8.0-dev_darwin_amd64",
+        "sha256": "f7c08dcfef6144319b72cc54e6417d9000a3cb7854bd2a5fa7bd3f85288acfbf"
       },
       "darwin/arm64": {
-        "path": "0.7.0-dev/inframill_0.7.0-dev_darwin_arm64",
-        "sha256": "1394f50b93e40efc64fb3e293f4abdb94ff89928cebccdd42746d6811b58adeb"
+        "path": "0.8.0-dev/inframill_0.8.0-dev_darwin_arm64",
+        "sha256": "fdd05234c6536d4ba4d4b689b9e6067630e1bc7b40afc6c5894ec54c2d8e5734"
       },
       "linux/amd64": {
-        "path": "0.7.0-dev/inframill_0.7.0-dev_linux_amd64",
-        "sha256": "bdfbe4d0876d038dfab212ab496282cd2c349536bd635dca8ecf00541332f1e3"
+        "path": "0.8.0-dev/inframill_0.8.0-dev_linux_amd64",
+        "sha256": "d2279edb1c5f4b11b5377418f8d403da1b08a889e0fca79f3db115f131a6e039"
       },
       "linux/arm64": {
-        "path": "0.7.0-dev/inframill_0.7.0-dev_linux_arm64",
-        "sha256": "b6a7ce048f301eeb3e0e55afeeec7d1e09676a514e2ce32a6b3bb3f0c23b5372"
+        "path": "0.8.0-dev/inframill_0.8.0-dev_linux_arm64",
+        "sha256": "574feb37b27f4904595f8e5cd3b118241f2458133ce7c3a889b278ef7008a559"
       }
     }
   },

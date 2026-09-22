@@ -85,10 +85,10 @@ not enable private blueprint consumption. Kit image pulls use Docker credentials
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.7.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.8.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
-Inframill 0.7.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+Inframill 0.8.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
