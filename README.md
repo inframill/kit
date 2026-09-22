@@ -206,7 +206,7 @@ Full checks exercise native tools, blueprint workflows, disposable registries an
 both Linux runtime images. AMD64 can run under emulation. Use `task config` to
 print a local configuration pointing at native provider outputs in `providers/dist`.
 Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides select installed tools matching
-the image lock. See [acceptance](docs/acceptance.md) for recorded verification.
+the image lock. Run `task check-full` to verify the current source and artifacts.
 
 ## Documentation
 

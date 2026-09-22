@@ -92,8 +92,7 @@ Inframill 0.7.0-dev uses Runmill providers and requires `provider_settings.<id>`
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
-pv-cloud is `0.2.0`. Old Instances with direct settings entries or obsolete
-layouts must be recreated; the engine rejects them and preserves their data.
+pv-cloud is `0.2.0`. Only the current development contract is supported.
 
 The image lock selects provider **names and versions**, engine binaries/checksums,
 base image, Debian snapshot, timestamps, and the exact runtime tool dependencies.

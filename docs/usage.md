@@ -146,22 +146,18 @@ For a manual discovery probe, pipe this JSON to that prefix:
 {"protocol":1,"method":"info","params":{}}
 ```
 
-## Migrating to 0.7
-
-Use `engine.providers` in runtime YAML and `provider_settings` in Blueprints.
-Kit's OpenTofu and Ansible providers are `0.3.0`; pv-cloud is `0.2.0`. All build tasks, metadata and executable paths use the `providers` name.
-Old saved Instances and artifacts are unsupported; create new Instances from the
-updated Blueprint. Only the current development release is supported.
+## Execution context and state
 
 Runmill supplies settings, workspace/artifact paths and an execution ID, without
 Instance or Blueprint metadata. Kit binds plans and node artifacts to a hash of
 the supplied artifact directory. Regenerate plans and node output after moving
 data to a different path. Execution IDs used for plan filenames must be UUIDs.
 
-S3 backends now require an explicit `infra_state_bucket.key` in pv-cloud Values.
-Choose a unique key per Instance and keep it stable; when reusing existing state,
-set it to the previous `instances/<INSTANCE_UUID>/terraform.tfstate` key. Example
-keys are placeholders and must be unique within your bucket.
+S3 backends require an explicit `infra_state_bucket.key` in pv-cloud Values.
+Choose a unique key per Instance and keep it stable. Example keys are placeholders
+and must be unique within your bucket.
+
+## RPC fields
 
 RPC command submission uses `command_name` and `arguments: {"json":"..."}`.
 Values, arguments, results and argument schemas use JSON document envelopes.
