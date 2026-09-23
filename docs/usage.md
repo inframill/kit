@@ -2,7 +2,7 @@
 
 ## Inframill CLI
 
-`inframill server start` starts the daemon. All Instance, blueprint, secret, registry,
+`inframill server start` starts the daemon. All namespace, Instance, blueprint, secret, registry,
 command and history operations use `inframill server` requests. Utilities live
 under `inframill other`; each Kit provider is a separate versioned executable.
 
@@ -31,10 +31,11 @@ ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
 bin/inframill server start --config /tmp/kit-config.json
 ```
 
-In another terminal, fetch a published blueprint and initialize an Instance.
+In another terminal, create a namespace, fetch a published blueprint and initialize an Instance.
 Initialization validates Values and renders files without executing a provider:
 
 ```sh
+bin/inframill server namespace create production
 bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
   --namespace production
 bin/inframill server instance init production/example \
@@ -66,10 +67,36 @@ bin/inframill server command execution list --instance-id INSTANCE_UUID -o json
 bin/inframill server command execution stdout INSTANCE_UUID EXECUTION_UUID
 ```
 
+## Namespaces
+
+Namespaces must exist before initializing Instances, managing blueprints or
+setting credentials. Create each namespace once with `server namespace create NAME`;
+`server namespace list` includes empty namespaces and persists across restarts.
+Instance names select their namespace, for example `production/example`.
+All blueprint operations require `--namespace`, including list, show and delete:
+
+```sh
+bin/inframill server namespace list
+bin/inframill server blueprint list --namespace production
+```
+
+Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
+`instances/<InstanceID>/`. Fetch a blueprint separately into every namespace that
+uses it; catalogues and cached content are isolated.
+
+`server namespace delete NAME` removes all of that namespace's local blueprints,
+Instances and history and clears its credentials. It rejects busy namespaces,
+including queued or running commands. It does not destroy external infrastructure;
+run the appropriate provider destroy commands before deleting storage you still
+need to manage. Recreating a deleted namespace starts empty.
+
+The shared-root storage layout from 0.9 is unsupported and is not automatically
+migrated. Preserve the old data and start 0.10 with a fresh data directory or volume.
+
 ## Namespace registry credentials
 
 Every blueprint fetch requires `--namespace`, including anonymous pulls. For a
-private package, supply registry credentials to that namespace before fetching:
+private package, supply registry credentials to an existing namespace before fetching:
 
 ```sh
 bin/inframill server registry replace production --file /private/path/registries.json
@@ -89,7 +116,7 @@ Credentials are held in memory and must be supplied again after daemon restart.
 `server registry clear production` clears the namespace's set. An unmatched host
 uses anonymous access. The daemon does not load Docker login credentials, and
 registry credentials remain separate from provider secrets. Blueprint cache
-entries are shared across namespaces. Fetch errors now include structured
+entries belong to the selected namespace. Fetch errors include structured
 diagnostics for authentication, access, missing references and network failures.
 
 ## Namespace secrets
@@ -114,7 +141,7 @@ The `InitInstance` RPC accepts these top-level fields:
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before
-initializing the Instance. Blueprint list/show reports ready and failed catalogue
+initializing the Instance in the same existing namespace. Blueprint list/show reports ready and failed catalogue
 entries; get requires a usable revision. Deleting a cached revision by its digest pin
 preserves existing Instances and their source snapshots.
 

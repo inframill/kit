@@ -113,7 +113,7 @@ def pv_flow(client, reference, tofu):
         instances.append(iid)
         client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     data = pathlib.Path(client.config['engine']['dataDir'])
-    workspaces = [data / 'instances' / iid / 'workspace' / 'opentofu' for iid in instances]
+    workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
     for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
                  ['validate', '-no-color'], ['test', '-no-color']]:
@@ -127,12 +127,14 @@ def verify(client, name, version, reference):
     candidates = [d['id'] for d in release['providers'] if d['name'] == 'ansible']
     if len(candidates) != 1:
         raise RuntimeError('Verification requires a fixture selecting one Ansible provider')
+    client.create_namespace('verify')
     client.fetch(reference, 'verify')
     iid = client.initialize('verify/blueprint', reference, values)
     client.execute(iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
 
 
 def runtime_flows(client, registry, arch, tofu):
+    client.create_namespace('smoke')
     for case in fixture_cases():
         version = case['version']
         reference = f'{registry}/inframill/blueprints/local-resource:{version}'
@@ -153,7 +155,7 @@ def runtime_flows(client, registry, arch, tofu):
     release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
     ids = {d['name']: d['id'] for d in release['providers']}
     client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
-    work = pathlib.Path(client.config['engine']['dataDir']) / 'instances' / iid / 'workspace' / 'opentofu'
+    work = pathlib.Path(client.config['engine']['dataDir']) / 'smoke/instances' / iid / 'workspace' / 'opentofu'
     for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
                  ['validate', '-no-color'], ['test', '-no-color']]:
         subprocess.run([tofu, *args], cwd=work, env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'}, check=True)

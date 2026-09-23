@@ -98,8 +98,28 @@ def daemon_check(tmp, registry, env):
     def expected(secret):
         return hashlib.sha256(secret.encode()).hexdigest()
 
+    def rejected(method, body, code):
+        try:
+            rpc(method, body)
+        except urllib.error.HTTPError as error:
+            failure = json.load(error)
+            assert failure['code'] == code, failure
+        else:
+            raise AssertionError(method + ' unexpectedly succeeded')
+
     try:
         start()
+        assert rpc('ListNamespaces').get('namespaces', []) == []
+        reference = registry + '/inframill/blueprints/local-resource:0.1.0'
+        rejected('InitInstance', {'name': 'missing/local', 'blueprint_reference': reference,
+                                 'values': {'json': '{}'}}, 'not_found')
+        rejected('FetchBlueprint', {'reference': reference, 'namespace': 'missing'}, 'not_found')
+        rejected('ReplaceNamespaceSecrets', {'namespace': 'missing', 'secrets': {}}, 'not_found')
+        assert not (data_root / 'missing').exists()
+        namespaces = ['acceptance', 'alpha', 'beta', 'empty']
+        for namespace in namespaces:
+            rpc('CreateNamespace', {'name': namespace})
+        rejected('CreateNamespace', {'name': 'alpha'}, 'already_exists')
         statuses = {d['id']: d['availability'] for d in rpc('ListProviders')['providers']}
         assert statuses['opentofu'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['ansible'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
@@ -120,10 +140,12 @@ def daemon_check(tmp, registry, env):
         assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == ['token']
         assert run(other, 'fixture.probe', {'text': 'isolation'})['secret_count'] == 0
         waiting = submit(first, 'fixture.probe', {'text': 'snapshot', 'wait': True})
-        artifacts = data_root / 'instances' / first / 'artifacts'
+        artifacts = data_root / 'alpha/instances' / first / 'artifacts'
         poll(lambda: (artifacts / 'ready').exists())
         queued = submit(first, 'fixture.probe', {'text': 'next snapshot'})
         assert execution(first, queued)['status'] == 'COMMAND_EXECUTION_STATUS_QUEUED'
+        rejected('DeleteNamespace', {'name': 'alpha'}, 'failed_precondition')
+        assert artifacts.is_dir()
         # A timed-out CLI wait must not cancel accepted work.
         result = subprocess.run([str(ROOT / 'bin/inframill'), 'server', 'command', 'execution', 'wait', first, waiting, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
         assert result.returncode != 0
@@ -141,13 +163,25 @@ def daemon_check(tmp, registry, env):
         replace('alpha', {'token': 'synthetic-restart'})
         stop()
         start()
+        assert rpc('ListNamespaces')['namespaces'] == [{'name': name} for name in namespaces]
         assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'}).get('names', []) == []
         assert run(first, 'fixture.probe', {'text': 'restart'})['secret_count'] == 0
+        replace('beta', {'token': 'synthetic-deleted'})
+        rpc('ReplaceNamespaceRegistries', {'namespace': 'beta', 'registries': {
+            'example.invalid': {'username': 'example', 'password': 'synthetic-registry'}}})
+        rpc('DeleteNamespace', {'name': 'beta'})
+        assert not (data_root / 'beta').exists()
+        assert other not in [i['id'] for i in rpc('ListInstances')['instances']]
+        assert run(first, 'fixture.probe', {'text': 'sibling preserved'})['secret_count'] == 0
+        rpc('CreateNamespace', {'name': 'beta'})
+        assert rpc('ListNamespaceSecretNames', {'namespace': 'beta'}).get('names', []) == []
+        assert rpc('ListNamespaceRegistryHosts', {'namespace': 'beta'}).get('hosts', []) == []
+        assert rpc('ListBlueprints', {'namespace': 'beta'}).get('blueprints', []) == []
         for path in data_root.rglob('*'):
             if path.is_file():
                 content = path.read_bytes()
-                assert all(token.encode() not in content for token in ('synthetic-first', 'synthetic-second', 'synthetic-restart')), path
-        print('Daemon Kit workflow, history, replies, availability, secret snapshots and restart passed', flush=True)
+                assert all(token.encode() not in content for token in ('synthetic-first', 'synthetic-second', 'synthetic-restart', 'synthetic-deleted', 'synthetic-registry')), path
+        print('Daemon workflows, namespace lifecycle, busy deletion, credential isolation and restart passed', flush=True)
     finally:
         stop()
         log.close()

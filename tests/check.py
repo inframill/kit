@@ -97,6 +97,7 @@ def blueprint_check(name, version):
         publish(name, version, env)
         reference = f'{address}/inframill/blueprints/{name}:{version}'
         with engine(tmp / 'engine', env) as client:
+            client.create_namespace('test')
             if name == 'local-resource':
                 local_flow(client, version, reference)
             else:
@@ -108,18 +109,24 @@ def cache_check(tmp, address, env):
     reference = address + '/inframill/blueprints/local-resource@' + record['descriptor']['digest']
     data = tmp / 'fresh-data'
     with engine(tmp / 'fetch', env, data) as client:
+        client.create_namespace('test')
+        client.create_namespace('sibling')
         info = client.fetch(reference, 'test')
         assert info['status'] == 'BLUEPRINT_STATUS_READY', info
+        assert info['namespace'] == 'test', info
         assert info['repository'] == address + '/inframill/blueprints/local-resource', info
+        assert client.rpc('ListBlueprints', {'namespace': 'sibling'}).get('blueprints', []) == []
+        sibling = client.fetch(reference, 'sibling')
+        assert sibling['namespace'] == 'sibling', sibling
     offline = {**env, 'INFRAMILL_HTTP_REGISTRIES': ''}
     with engine(tmp / 'offline', offline, data) as client:
         # Explicit init never fetches; the registry isn't authorized in this daemon.
         local_flow(client, '0.1.0', reference, 'test/offline', fetch=False)
-    cached_schema = next((data / 'blueprints').rglob('blueprint.yaml'))
+    cached_schema = next((data / 'test/blueprints').rglob('blueprint.yaml'))
     cached_schema.write_bytes(cached_schema.read_bytes() + b'\n')
-    before = set((data / 'instances').iterdir())
+    before = set((data / 'test/instances').iterdir())
     with engine(tmp / 'tampered', offline, data) as client:
-        entries = client.rpc('ListBlueprints')['blueprints']
+        entries = client.rpc('ListBlueprints', {'namespace': 'test'})['blueprints']
         assert len(entries) == 1 and entries[0]['status'] == 'BLUEPRINT_STATUS_FAILED', entries
         try:
             client.initialize('test/tampered', reference, {'architecture': 'arm64'})
@@ -128,12 +135,14 @@ def cache_check(tmp, address, env):
             assert 'blueprint' in failure.get('message', '').lower(), failure
         else:
             raise RuntimeError('Corrupted cached source was accepted')
-        assert set((data / 'instances').iterdir()) == before
+        assert set((data / 'test/instances').iterdir()) == before
         # Removal of a failed catalogue entry preserves existing Instance snapshots.
-        client.rpc('DeleteBlueprint', {'reference': reference})
-        assert client.rpc('ListBlueprints').get('blueprints', []) == []
+        client.rpc('DeleteBlueprint', {'reference': reference, 'namespace': 'test'})
+        assert client.rpc('ListBlueprints', {'namespace': 'test'}).get('blueprints', []) == []
+        sibling = client.rpc('GetBlueprint', {'reference': reference, 'namespace': 'sibling'})['blueprint']
+        assert sibling['status'] == 'BLUEPRINT_STATUS_READY' and sibling['namespace'] == 'sibling', sibling
         assert len(client.rpc('ListInstances')['instances']) == 1
-    print('Offline cache reuse, failed catalogue entry and safe deletion passed', flush=True)
+    print('Namespace cache isolation, offline reuse, failed catalogue entry and safe deletion passed', flush=True)
 
 
 def container_checks(tmp, network, env):
@@ -166,6 +175,7 @@ def registry_check():
         for case in cases:
             publish(case['name'], case['version'], env)
         with engine(tmp / 'workflows', env) as client:
+            client.create_namespace('test')
             for case in fixture_cases():
                 local_flow(client, case['version'], f"{address}/inframill/blueprints/local-resource:{case['version']}")
             pv_flow(client, address + '/inframill/blueprints/pv-cloud:0.2.0', tools()[0])

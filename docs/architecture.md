@@ -1,12 +1,13 @@
 # Kit architecture
 
-Kit 0.9.0-dev targets the Inframill 0.9.0-dev API. The `providers/` subproject builds
+Kit 0.10.0-dev targets the Inframill 0.10.0-dev API. The `providers/` subproject builds
 independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
 prebuilt provider outputs with the engine and tools. Blueprints are separate OCI packages.
 
 ## Ownership
 
-- Inframill owns Instances, Values validation/rendering, namespace secret snapshots,
+- Inframill owns namespace lifecycle, namespace-scoped Blueprints and Instances,
+  Values validation/rendering, namespace secret snapshots,
   queues, persistence, history and the external provider transport.
 - `providers/roots/<name>/<version>/` owns each implementation, release metadata, command
   entrypoint and tests. `providers/roots/internal/runner` calls upstream `runmill.Serve`.
@@ -89,10 +90,15 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.9.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.10.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
-while namespace secrets remain in memory. See the [Docker guide](../README.md#run-with-docker).
+while namespace secrets and registry credentials remain in memory. Namespaces must
+be created explicitly and own `<dataDir>/<namespace>/blueprints/` and
+`<dataDir>/<namespace>/instances/<InstanceID>/`, alongside `namespace.json`.
+Blueprint caches are isolated by namespace. Deleting an idle namespace removes its
+local data without invoking providers. Shared-root storage from 0.9 is unsupported;
+there is no automatic migration. See the [Docker guide](../README.md#run-with-docker).
 
 See [usage](usage.md) for command behavior and [releases](releases.md) for build and
 publication commands.

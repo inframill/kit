@@ -79,6 +79,9 @@ def image_check(tmp, image, arch, network):
 
     def persist(mounts, port=8080, workdir=DATA):
         name, endpoint = start(mounts, port, workdir)
+        namespace_cli = ['docker', 'exec', name, 'inframill', 'server', 'namespace',
+                         'create', 'image', '--endpoint', 'http://127.0.0.1:' + str(port), '-o', 'json']
+        assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'name': 'image'}
         rpc(endpoint, 'FetchBlueprint', {'reference': reference, 'namespace': 'image'})
         instance = rpc(endpoint, 'InitInstance', {'name': 'image/persistence',
             'blueprint_reference': reference, 'values': {'json': json.dumps({'architecture': arch})},
@@ -95,11 +98,15 @@ def image_check(tmp, image, arch, network):
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']
         stop(name)
         name, endpoint = start(mounts, port, workdir)
+        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [{'name': 'image'}]
         instances = rpc(endpoint, 'ListInstances')['instances']
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
         assert len(history) == 1 and history[0]['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', history
         cli = ['docker', 'exec', name, 'inframill']
+        namespaces = json.loads(docker(cli + ['server', 'namespace', 'list', '--endpoint',
+                                'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
+        assert namespaces == [{'name': 'image'}], namespaces
         history_cli = json.loads(docker(cli + ['server', 'command', 'execution', 'list',
                                  '--instance-id', instance, '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
@@ -141,7 +148,8 @@ def image_check(tmp, image, arch, network):
         mounts = ['--mount', 'type=bind,src=' + str(custom) + ',dst=' + CONFIG + ',readonly',
                   '--mount', 'type=bind,src=' + str(data) + ',dst=/etc/inframill/data']
         instance, mounted = persist(mounts, 8081, '/tmp')
-        assert (data / 'instances' / instance / 'commands.sqlite').is_file()
+        assert (data / 'image/namespace.json').is_file()
+        assert (data / 'image/instances' / instance / 'commands.sqlite').is_file()
         assert any(m['Destination'] == CONFIG and not m['RW'] for m in mounted), mounted
         assert hashlib.sha256(custom.read_bytes()).hexdigest() == original
         print('Read-only custom YAML, bind data and config-relative paths passed on ' + arch, flush=True)
