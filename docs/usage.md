@@ -19,7 +19,7 @@ Restart the daemon after changing its provider configuration.
 
 ## Running a deployment
 
-Run these commands from the repository root. `blueprints/examples/pv-cloud-0.2.0.json`
+Run these commands from the repository root. `blueprints/examples/pv-cloud-0.3.0.json`
 contains plain Values JSON with both AMD64 and ARM64 nodes. The same Blueprint
 supports either architecture or a mix, selected per node. Generate configuration using
 the installed local tools and `task providers:build -- --native` outputs, then start the daemon:
@@ -36,11 +36,11 @@ Initialization validates Values and renders files without executing a provider:
 
 ```sh
 bin/inframill server namespace create production
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --namespace production
 bin/inframill server instance init production/example \
-  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
-  --values-file blueprints/examples/pv-cloud-0.2.0.json
+  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
+  --values-file blueprints/examples/pv-cloud-0.3.0.json
 bin/inframill server secret replace production --file /private/path/secrets.json
 bin/inframill server instance exec production/example opentofu.init --wait
 ```
@@ -101,7 +101,7 @@ private package, supply registry credentials to an existing namespace before fet
 ```sh
 bin/inframill server registry replace production --file /private/path/registries.json
 bin/inframill server registry list production
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --namespace production
 ```
 
@@ -121,8 +121,8 @@ diagnostics for authentication, access, missing references and network failures.
 
 ## Namespace secrets
 
-Secret files are JSON maps of local names to strings. The example's names are
-`hetzner`, `s3_access` and `s3_secret`. Values select these names, never credential
+Secret files are JSON maps of local names to strings. The pv-cloud example uses
+`hetzner` for its cloud API token. Values select secret names, never credential
 values. Inframill supplies a namespace snapshot only to provider Execute; Kit does not
 read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
 credentials must be nonempty and are checked before effects. Only selected values
@@ -137,7 +137,7 @@ snapshot; queued commands obtain the set current when they start.
 The `InitInstance` RPC accepts these top-level fields:
 
 ```json
-{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.2.0","values":{"json":"{}"}}
+{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.3.0","values":{"json":"{}"}}
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before
@@ -158,7 +158,7 @@ provider_settings:
     settings:
       id: opentofu
       settings_file: kit-provider.json
-      backend: s3
+      backend: local
       node_output: inframill_nodes
       artifact: opentofu-nodes-v1.json
 ```
@@ -207,9 +207,14 @@ Instance or Blueprint metadata. Kit binds plans and node artifacts to a hash of
 the supplied artifact directory. Regenerate plans and node output after moving
 data to a different path. Execution IDs used for plan filenames must be UUIDs.
 
-S3 backends require an explicit `infra_state_bucket.key` in pv-cloud Values.
-Choose a unique key per Instance and keep it stable. Example keys are placeholders
-and must be unique within your bucket.
+pv-cloud uses local OpenTofu state at
+`<dataDir>/<namespace>/instances/<InstanceID>/workspace/opentofu/terraform.tfstate`.
+The daemon's persisted data volume holds the state; no S3 bucket or AWS credentials
+are required. Back up this storage and keep it until the managed infrastructure
+has been destroyed. Deleting an Instance or namespace also deletes its local state.
+
+pv-cloud 0.3.0 removes `infra_state_bucket` from Values. Existing Instances retain
+their saved blueprint and backend; this release does not move existing S3 state.
 
 ## RPC fields
 

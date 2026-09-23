@@ -6,7 +6,7 @@ packaging and calls to `docker load` / `docker push`. It does not import Kit scr
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
 The current packages target Inframill **0.10.0-dev** and its provider binding
-contract. pv-cloud is **0.2.0**. OpenTofu files live in `templates/opentofu/`;
+contract. pv-cloud is **0.3.0**. OpenTofu files live in `templates/opentofu/`;
 Ansible playbooks and roles live in `templates/ansible/`. Each directory contains
 its own `kit-provider.json.gotmpl`. These directory names match the configured provider IDs. Each `provider_settings`
 entry wraps a major.minor `version` string and a nested `settings` object.
@@ -17,9 +17,14 @@ ARM64. There is no base image, executable, architecture-specific build or manife
 index to select. These are source packages consumed by Inframill, not containers
 that can be started with `docker run`.
 
-[`examples/pv-cloud-0.2.0.json`](examples/pv-cloud-0.2.0.json) demonstrates a mixed
+[`examples/pv-cloud-0.3.0.json`](examples/pv-cloud-0.3.0.json) demonstrates a mixed
 AMD64/ARM64 deployment with architecture selected per node. Single-architecture
 inputs live under `tests/fixtures/examples/` for integration coverage.
+
+pv-cloud 0.3.0 uses the local OpenTofu backend. Its state lives in the Instance's
+persisted `workspace/opentofu/terraform.tfstate`; keep and back up the daemon data
+volume. Values no longer include `infra_state_bucket`, and only the cloud token
+secret is needed. Existing Instances keep their saved backend and state.
 
 ## Setup
 
@@ -59,8 +64,8 @@ they also work from other working directories.
 Select a name and optionally a version:
 
 ```sh
-.venv/bin/python build.py build --name pv-cloud --version 0.2.0
-task build -- --name pv-cloud --version 0.2.0
+.venv/bin/python build.py build --name pv-cloud --version 0.3.0
+task build -- --name pv-cloud --version 0.3.0
 ```
 
 Every entry in `releases.json` is selected by default. Test fixtures are excluded.
@@ -145,8 +150,8 @@ its `task setup`, `task providers:build -- --native`, `task inframill:copy`, and
 Run them from the Kit repository root:
 
 ```sh
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 python3 tests/check.py blueprint:check
-BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.2.0 \
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.3.0 python3 tests/check.py blueprint:check
+BLUEPRINT=pv-cloud BLUEPRINT_VERSION=0.3.0 \
   REFERENCE=ghcr.io/inframill/blueprints/pv-cloud@sha256:... \
   python3 tests/check.py blueprint:verify
 ```

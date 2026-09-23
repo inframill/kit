@@ -69,7 +69,7 @@ task blueprints:push
 Blueprint build loads each artifact into Docker; push invokes `docker push` for
 its tag. Authentication and remote tag policy are handled by Docker and the
 registry. `task blueprints:publish` performs build followed by push. Use
-`-- --name pv-cloud --version 0.2.0` to select one release. Provider builds publish
+`-- --name pv-cloud --version 0.3.0` to select one release. Provider builds publish
 no registry artifacts; their output is consumed by image assembly.
 
 After publication, verify the immutable reference:
@@ -93,14 +93,14 @@ providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
 Shared-root data from 0.9 is unsupported, with no automatic migration; preserve
-the old data and select a fresh volume or directory. Blueprint and provider formats
-are unchanged, so their existing versions remain selected.
+the old data and select a fresh volume or directory. Namespace support does not
+change Blueprint or provider formats.
 
 Inframill 0.10.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
-pv-cloud is `0.2.0`. Only the current development contract is supported.
+pv-cloud is `0.3.0`. Only the current development contract is supported.
 
 The image lock selects provider **names and versions**, engine binaries/checksums,
 and image platforms. [`runtime/Dockerfile`](../runtime/Dockerfile) owns the base

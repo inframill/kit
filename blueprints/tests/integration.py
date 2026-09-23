@@ -9,6 +9,7 @@ import platform
 import re
 import subprocess
 import sys
+import uuid
 
 BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES = BLUEPRINTS / 'tests/fixtures'
@@ -100,12 +101,12 @@ def local_flow(client, version, reference, name=None, fetch=True):
 
 def pv_flow(client, reference, tofu):
     client.fetch(reference, 'test')
-    ids = provider_ids('pv-cloud', '0.2.0')
+    ids = provider_ids('pv-cloud', '0.3.0')
     instances = []
     cases = [
         ('arm64', FIXTURES / 'examples/pv-cloud-arm64.json'),
         ('amd64', FIXTURES / 'examples/pv-cloud-amd64.json'),
-        ('mixed', BLUEPRINTS / 'examples/pv-cloud-0.2.0.json'),
+        ('mixed', BLUEPRINTS / 'examples/pv-cloud-0.3.0.json'),
     ]
     for name, path in cases:
         values = json.loads(path.read_text())
@@ -115,9 +116,23 @@ def pv_flow(client, reference, tofu):
     data = pathlib.Path(client.config['engine']['dataDir'])
     workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
-    for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
-                 ['validate', '-no-color'], ['test', '-no-color']]:
+    # Init must work without any namespace credentials and initialize the real backend.
+    client.execute(instances[0], ids['opentofu'] + '.init')
+    local_state_check(workspaces[0], tofu)
+    for args in [['validate', '-no-color'], ['test', '-no-color']]:
         run([tofu, *args], cwd=workspaces[0], env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'})
+
+
+def local_state_check(work, tofu):
+    backend = json.loads((work / '.terraform/terraform.tfstate').read_text())['backend']
+    assert backend['type'] == 'local', backend
+    # Write an empty synthetic state; these commands never provision cloud resources.
+    state = {'version': 4, 'serial': 1, 'lineage': str(uuid.uuid4()), 'outputs': {}, 'resources': []}
+    run([tofu, 'state', 'push', '-'], cwd=work, input=json.dumps(state))
+    stored = json.loads((work / 'terraform.tfstate').read_text())
+    pulled = json.loads(run([tofu, 'state', 'pull'], cwd=work, capture_output=True).stdout)
+    assert stored['lineage'] == pulled['lineage'] == state['lineage']
+    assert stored['resources'] == pulled['resources'] == []
 
 
 def verify(client, name, version, reference):
@@ -148,14 +163,15 @@ def runtime_flows(client, registry, arch, tofu):
         client.execute(iid, ansible + '.apply', {'playbook': 'site'})
         plan = client.execute(iid, prefix + '.plan', {'destroy': True})
         client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = registry + '/inframill/blueprints/pv-cloud:0.2.0'
-    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.2.0.json').read_text())
+    reference = registry + '/inframill/blueprints/pv-cloud:0.3.0'
+    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.3.0.json').read_text())
     client.fetch(reference, 'smoke')
     iid = client.initialize('smoke/pv-cloud', reference, values)
-    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
+    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.3.0')
     ids = {d['name']: d['id'] for d in release['providers']}
     client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     work = pathlib.Path(client.config['engine']['dataDir']) / 'smoke/instances' / iid / 'workspace' / 'opentofu'
-    for args in [['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'],
-                 ['validate', '-no-color'], ['test', '-no-color']]:
+    client.execute(iid, ids['opentofu'] + '.init')
+    local_state_check(work, tofu)
+    for args in [['validate', '-no-color'], ['test', '-no-color']]:
         subprocess.run([tofu, *args], cwd=work, env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'}, check=True)

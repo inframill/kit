@@ -1,6 +1,6 @@
 {
   "api_version": "inframill.dev/blueprint/v1",
-  "description": "pv-cloud 0.2.0",
+  "description": "pv-cloud 0.3.0",
   "values_schema": {
     "title": "pv-cloud Instance",
     "type": "object",
@@ -9,7 +9,6 @@
       "ssh_user",
       "ssh_public_keys",
       "nodes",
-      "infra_state_bucket",
       "instance_name",
       "cloud_secret_ref",
       "ssh_source_ips",
@@ -75,53 +74,6 @@
         },
         "additionalProperties": {
           "$ref": "#/$defs/node"
-        }
-      },
-      "infra_state_bucket": {
-        "type": "object",
-        "required": [
-          "bucket",
-          "access_key_ref",
-          "secret_key_ref",
-          "host",
-          "region",
-          "use_path_style",
-          "key"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "bucket": {
-            "type": "string",
-            "minLength": 1
-          },
-          "host": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^[a-zA-Z0-9.-]+(:[0-9]+)?$"
-          },
-          "region": {
-            "type": "string",
-            "minLength": 1
-          },
-          "use_path_style": {
-            "type": "boolean"
-          },
-          "access_key_ref": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^[a-z][a-z0-9_-]{0,127}$"
-          },
-          "secret_key_ref": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^[a-z][a-z0-9_-]{0,127}$"
-          },
-          "key": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "\\S",
-            "description": "Unique S3 state object key for this Instance; preserve it across restarts and moves."
-          }
         }
       },
       "instance_name": {
@@ -257,7 +209,7 @@
       "version": "0.3",
       "settings": {
         "id": "opentofu",
-        "backend": "s3",
+        "backend": "local",
         "node_output": "inframill_nodes",
         "artifact": "opentofu-nodes-v1.json",
         "settings_file": "kit-provider.json"
