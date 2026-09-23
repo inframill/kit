@@ -79,7 +79,7 @@ def local_flow(client, version, reference, name=None, fetch=True):
     data = json.loads((FIXTURES / f'examples/local-resource-{version}.json').read_text())
     data['architecture'] = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
     if fetch:
-        client.fetch(reference)
+        client.fetch(reference, (name or 'test/local').split('/', 1)[0])
     iid = client.initialize(name or 'test/local-' + version.replace('.', '-'), reference, data)
     ids = provider_ids('local-resource', version)
     prefix, ansible = ids['opentofu'], ids['ansible']
@@ -99,7 +99,7 @@ def local_flow(client, version, reference, name=None, fetch=True):
 
 
 def pv_flow(client, reference, tofu):
-    client.fetch(reference)
+    client.fetch(reference, 'test')
     ids = provider_ids('pv-cloud', '0.2.0')
     instances = []
     cases = [
@@ -127,7 +127,7 @@ def verify(client, name, version, reference):
     candidates = [d['id'] for d in release['providers'] if d['name'] == 'ansible']
     if len(candidates) != 1:
         raise RuntimeError('Verification requires a fixture selecting one Ansible provider')
-    client.fetch(reference)
+    client.fetch(reference, 'verify')
     iid = client.initialize('verify/blueprint', reference, values)
     client.execute(iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
 
@@ -136,7 +136,7 @@ def runtime_flows(client, registry, arch, tofu):
     for case in fixture_cases():
         version = case['version']
         reference = f'{registry}/inframill/blueprints/local-resource:{version}'
-        client.fetch(reference)
+        client.fetch(reference, 'smoke')
         iid = client.initialize('smoke/v' + version.replace('.', '-'), reference, {'architecture': arch})
         ids = provider_ids(case['name'], version)
         prefix, ansible = ids['opentofu'], ids['ansible']
@@ -148,7 +148,7 @@ def runtime_flows(client, registry, arch, tofu):
         client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
     reference = registry + '/inframill/blueprints/pv-cloud:0.2.0'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.2.0.json').read_text())
-    client.fetch(reference)
+    client.fetch(reference, 'smoke')
     iid = client.initialize('smoke/pv-cloud', reference, values)
     release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.2.0')
     ids = {d['name']: d['id'] for d in release['providers']}

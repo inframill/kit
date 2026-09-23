@@ -79,7 +79,7 @@ def image_check(tmp, image, arch, network):
 
     def persist(mounts, port=8080, workdir=DATA):
         name, endpoint = start(mounts, port, workdir)
-        rpc(endpoint, 'FetchBlueprint', {'reference': reference})
+        rpc(endpoint, 'FetchBlueprint', {'reference': reference, 'namespace': 'image'})
         instance = rpc(endpoint, 'InitInstance', {'name': 'image/persistence',
             'blueprint_reference': reference, 'values': {'json': json.dumps({'architecture': arch})},
         })['instance']['id']

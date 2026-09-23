@@ -2,7 +2,7 @@
 
 ## Inframill CLI
 
-`inframill server start` starts the daemon. All Instance, blueprint, secret,
+`inframill server start` starts the daemon. All Instance, blueprint, secret, registry,
 command and history operations use `inframill server` requests. Utilities live
 under `inframill other`; each Kit provider is a separate versioned executable.
 
@@ -35,7 +35,8 @@ In another terminal, fetch a published blueprint and initialize an Instance.
 Initialization validates Values and renders files without executing a provider:
 
 ```sh
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
+  --namespace production
 bin/inframill server instance init production/example \
   --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
   --values-file blueprints/examples/pv-cloud-0.2.0.json
@@ -64,6 +65,32 @@ bin/inframill server instance list --namespace production
 bin/inframill server command execution list --instance-id INSTANCE_UUID -o json
 bin/inframill server command execution stdout INSTANCE_UUID EXECUTION_UUID
 ```
+
+## Namespace registry credentials
+
+Every blueprint fetch requires `--namespace`, including anonymous pulls. For a
+private package, supply registry credentials to that namespace before fetching:
+
+```sh
+bin/inframill server registry replace production --file /private/path/registries.json
+bin/inframill server registry list production
+bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.2.0 \
+  --namespace production
+```
+
+The credential file is a JSON map of registry hosts to username/password objects;
+for example, with synthetic values:
+
+```json
+{"ghcr.io":{"username":"example-user","password":"synthetic-token"}}
+```
+
+Credentials are held in memory and must be supplied again after daemon restart.
+`server registry clear production` clears the namespace's set. An unmatched host
+uses anonymous access. The daemon does not load Docker login credentials, and
+registry credentials remain separate from provider secrets. Blueprint cache
+entries are shared across namespaces. Fetch errors now include structured
+diagnostics for authentication, access, missing references and network failures.
 
 ## Namespace secrets
 

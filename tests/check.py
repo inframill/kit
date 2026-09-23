@@ -108,7 +108,7 @@ def cache_check(tmp, address, env):
     reference = address + '/inframill/blueprints/local-resource@' + record['descriptor']['digest']
     data = tmp / 'fresh-data'
     with engine(tmp / 'fetch', env, data) as client:
-        info = client.fetch(reference)
+        info = client.fetch(reference, 'test')
         assert info['status'] == 'BLUEPRINT_STATUS_READY', info
         assert info['repository'] == address + '/inframill/blueprints/local-resource', info
     offline = {**env, 'INFRAMILL_HTTP_REGISTRIES': ''}

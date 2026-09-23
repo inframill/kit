@@ -75,7 +75,7 @@ def daemon_check(tmp, registry, env):
             process = None
 
     def initialize(name, reference, values):
-        rpc('FetchBlueprint', {'reference': reference})
+        rpc('FetchBlueprint', {'reference': reference, 'namespace': name.split('/', 1)[0]})
         return rpc('InitInstance', {'name': name, 'blueprint_reference': reference, 'values': {'json': json.dumps(values)}})['instance']['id']
 
     def submit(instance, command, args=None):

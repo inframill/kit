@@ -77,8 +77,8 @@ class Engine:
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.load(response)
 
-    def fetch(self, reference):
-        return self.rpc('FetchBlueprint', {'reference': reference})['blueprint']
+    def fetch(self, reference, namespace):
+        return self.rpc('FetchBlueprint', {'reference': reference, 'namespace': namespace})['blueprint']
 
     def initialize(self, name, reference, values):
         # Fetch is explicit: this also exercises initialization from an offline cache.
