@@ -54,10 +54,10 @@ docker login ghcr.io
 .venv/bin/python build.py publish    # build all, then push all
 ```
 
-The public tasks are `task setup`, `task build`, `task push`, and `task publish`.
-Listing releases and computing source digests use the Python script directly.
+The public tasks are `task setup`, `task build`, `task source-digest`, `task push`,
+and `task publish`. Listing releases uses the Python script directly.
 From the Kit root, use `task blueprints:setup`, `task blueprints:build`,
-`task blueprints:push`, or `task blueprints:publish`. The root only includes this
+`task blueprints:source-digest`, `task blueprints:push`, or `task blueprints:publish`. The root only includes this
 Taskfile. Direct script calls resolve project paths relative to the script, so
 they also work from other working directories.
 
@@ -105,8 +105,10 @@ versions for changed packages. Build and push never modify release metadata.
 2. Print the source seal (this works before adding release metadata):
 
    ```sh
-   .venv/bin/python build.py source-digest --name example --version 0.1.0
+   task source-digest -- --name example --version 0.1.0
    ```
+
+   From the Kit root, use `task blueprints:source-digest -- --name example --version 0.1.0`.
 
 3. Add an entry to `releases.json` following the existing pv-cloud entry. Include
    the exact name/version, engine compatibility target (`inframill_version`),

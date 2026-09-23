@@ -15,6 +15,10 @@ tasks:
   build:
     desc: Build all blueprint packages
     cmds: ['"./.venv/bin/python" build.py build {{.CLI_ARGS}}']
+  source-digest:
+    desc: Print a blueprint source checksum (-- --name NAME --version VERSION)
+    silent: true
+    cmds: ['"./.venv/bin/python" build.py source-digest {{.CLI_ARGS}}']
   push:
     desc: Push all existing blueprint packages
     cmds: ['"./.venv/bin/python" build.py push {{.CLI_ARGS}}']
