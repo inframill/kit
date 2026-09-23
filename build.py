@@ -477,7 +477,7 @@ def verify_remote(reference):
         try:
             deadline = time.monotonic() + 45
             while True:
-                result = subprocess.run(['docker', 'exec', container, 'inframill', 'server', 'provider', 'list', '-o', 'json'], capture_output=True, text=True)
+                result = subprocess.run(['docker', 'exec', container, 'inframill', 'provider', 'list', '-o', 'json'], capture_output=True, text=True)
                 if result.returncode == 0:
                     providers = json.loads(result.stdout)['providers']
                     expected = set(configuration('/opt/inframill/providers', '/var/lib/inframill', providers=lock['providers'])['engine']['providers'])

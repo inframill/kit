@@ -79,7 +79,7 @@ def image_check(tmp, image, arch, network):
 
     def persist(mounts, port=8080, workdir=DATA):
         name, endpoint = start(mounts, port, workdir)
-        namespace_cli = ['docker', 'exec', name, 'inframill', 'server', 'namespace',
+        namespace_cli = ['docker', 'exec', name, 'inframill', 'namespace',
                          'create', 'image', '--endpoint', 'http://127.0.0.1:' + str(port), '-o', 'json']
         assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'name': 'image'}
         rpc(endpoint, 'FetchBlueprint', {'reference': reference, 'namespace': 'image'})
@@ -104,17 +104,17 @@ def image_check(tmp, image, arch, network):
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
         assert len(history) == 1 and history[0]['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', history
         cli = ['docker', 'exec', name, 'inframill']
-        namespaces = json.loads(docker(cli + ['server', 'namespace', 'list', '--endpoint',
+        namespaces = json.loads(docker(cli + ['namespace', 'list', '--endpoint',
                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
         assert namespaces == [{'name': 'image'}], namespaces
-        history_cli = json.loads(docker(cli + ['server', 'command', 'execution', 'list',
+        history_cli = json.loads(docker(cli + ['command', 'execution', 'list',
                                  '--instance-id', instance, '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
         assert len(history_cli) == 1 and history_cli[0]['request']['executionId'] == command, history_cli
-        remote = json.loads(docker(cli + ['server', 'instance', 'list', '--endpoint',
+        remote = json.loads(docker(cli + ['instance', 'list', '--endpoint',
                             'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['instances']
         assert any(i['id'] == instance for i in remote), remote
-        remote_providers = json.loads(docker(cli + ['server', 'provider', 'list', '--endpoint',
+        remote_providers = json.loads(docker(cli + ['provider', 'list', '--endpoint',
                                     'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['providers']
         assert {d['id'] for d in remote_providers} == set(ids.values()), remote_providers
         assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in remote_providers), remote_providers

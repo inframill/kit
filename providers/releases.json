@@ -2,8 +2,8 @@
   "schema": 1,
   "go_version": "go1.27.0",
   "inframill": {
-    "version": "0.10.0-dev",
-    "revision": "75ed4fd27556105e9e4fdc08fd6e83e6f7ec0214"
+    "version": "0.12.0-dev",
+    "revision": "c11cb4c0c0bebc5218b0519e8092fe48459b8bdb"
   },
   "providers": [
     {

@@ -137,7 +137,7 @@ def daemon_check(tmp, registry, env):
         other = initialize('beta/one', ref, {})
         assert [i['id'] for i in rpc('ListInstances', {'namespace': 'alpha'})['instances']] == [first]
         replace('alpha', {'token': 'synthetic-first'})
-        assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == ['token']
+        assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == [{'namespace': 'alpha', 'name': 'token'}]
         assert run(other, 'fixture.probe', {'text': 'isolation'})['secret_count'] == 0
         waiting = submit(first, 'fixture.probe', {'text': 'snapshot', 'wait': True})
         artifacts = data_root / 'alpha/instances' / first / 'artifacts'
@@ -147,7 +147,7 @@ def daemon_check(tmp, registry, env):
         rejected('DeleteNamespace', {'name': 'alpha'}, 'failed_precondition')
         assert artifacts.is_dir()
         # A timed-out CLI wait must not cancel accepted work.
-        result = subprocess.run([str(ROOT / 'bin/inframill'), 'server', 'command', 'execution', 'wait', first, waiting, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
+        result = subprocess.run([str(ROOT / 'bin/inframill'), 'command', 'execution', 'wait', first, waiting, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
         assert result.returncode != 0
         assert execution(first, waiting)['status'] == 'COMMAND_EXECUTION_STATUS_RUNNING'
         replace('alpha', {'token': 'synthetic-second'})

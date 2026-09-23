@@ -13,6 +13,7 @@ import yaml
 sys.path.insert(0, '/')  # The harness mounts the blueprint subproject at /blueprints.
 from blueprints.tests.integration import runtime_flows
 from engine_client import Engine
+from query_check import query_check
 
 registry = os.environ['KIT_TEST_REGISTRY']
 os.environ['INFRAMILL_HTTP_REGISTRIES'] = registry
@@ -31,6 +32,7 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     config['engine']['dataDir'] = str(tmp / 'data')
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
         assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
+        query_check(client, registry + '/inframill/blueprints/local-resource:0.1.0', arch)
         tofu = config['engine']['providers']['opentofu']['args'][1]
         runtime_flows(client, registry, arch, tofu)
 print('Runtime workflow and provider mocks passed on ' + arch)

@@ -2,17 +2,23 @@
 
 ## Inframill CLI
 
-`inframill server start` starts the daemon. All namespace, Instance, blueprint, secret, registry,
-command and history operations use `inframill server` requests. Utilities live
-under `inframill other`; each Kit provider is a separate versioned executable.
+`inframill server start` starts the daemon; `inframill server version` queries its
+version. Resource commands are top-level: `inframill namespace`, `instance`,
+`blueprint`, `secret`, `registry`, `command` and `provider`. They still send requests
+to the daemon. The former `inframill server RESOURCE ...` paths are no longer
+supported. Utilities live under `inframill other`; each Kit provider is a separate
+versioned executable.
 
 Only server startup accepts `--config` (default `.inframill.yaml`). Relative data
 and provider paths resolve beside that file. The `connect-engine` handler accepts
-no settings; its route is fixed. Server requests accept `--endpoint` and `--timeout`,
+no settings; its route is fixed. Resource requests and `server version` accept `--endpoint` and `--timeout`,
 falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
 `http://127.0.0.1:8080` and `2m`. Requests reject `--config` and never load YAML.
+Request flags belong to resource groups and `server version`, not the root,
+`server start` or `other` groups. Shell completion remains
+`inframill other completion zsh`; regenerate saved completion scripts after upgrading.
 
-`inframill server provider list` reports the daemon's cached startup availability.
+`inframill provider list` reports the daemon's cached startup availability.
 Restart the daemon after changing its provider configuration.
 `inframill server version` reports the selected daemon's build version;
 `inframill --version` reports the local CLI version.
@@ -35,14 +41,14 @@ In another terminal, create a namespace, fetch a published blueprint and initial
 Initialization validates Values and renders files without executing a provider:
 
 ```sh
-bin/inframill server namespace create production
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
+bin/inframill namespace create production
+bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --namespace production
-bin/inframill server instance init production/example \
+bin/inframill instance init production/example \
   --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --values-file blueprints/examples/pv-cloud-0.3.0.json
-bin/inframill server secret replace production --file /private/path/secrets.json
-bin/inframill server instance exec production/example opentofu.init --wait
+bin/inframill secret replace production --file /private/path/secrets.json
+bin/inframill instance exec production/example opentofu.init --wait
 ```
 
 Use your published tag or digest reference. Commands such as init/plan/apply contact
@@ -61,37 +67,50 @@ Inspect providers, Instances and command history with:
 
 ```sh
 bin/inframill server version
-bin/inframill server provider list
-bin/inframill server instance list --namespace production
-bin/inframill server command execution list --instance-id INSTANCE_UUID -o json
-bin/inframill server command execution stdout INSTANCE_UUID EXECUTION_UUID
+bin/inframill provider list
+bin/inframill instance list --namespace production
+bin/inframill command execution list --instance-id INSTANCE_UUID -o json
+bin/inframill command execution stdout INSTANCE_UUID EXECUTION_UUID
 ```
 
 ## Namespaces
 
 Namespaces must exist before initializing Instances, managing blueprints or
-setting credentials. Create each namespace once with `server namespace create NAME`;
-`server namespace list` includes empty namespaces and persists across restarts.
+setting credentials. Create each namespace once with `namespace create NAME`;
+`namespace list` includes empty namespaces and persists across restarts.
 Instance names select their namespace, for example `production/example`.
-All blueprint operations require `--namespace`, including list, show and delete:
+List Instances, blueprints, secret names and registry hosts across all namespaces
+by omitting `--namespace`. Add `--namespace production` to filter one namespace:
 
 ```sh
-bin/inframill server namespace list
-bin/inframill server blueprint list --namespace production
+bin/inframill namespace list
+bin/inframill instance list
+bin/inframill blueprint list
+bin/inframill secret list
+bin/inframill registry list
+bin/inframill blueprint list --namespace production
+bin/inframill secret list --namespace production
+bin/inframill registry list --namespace production
 ```
+
+Blueprint and credential list output identifies each row's namespace. Credential
+lists expose names and hosts only. Secret and registry lists now use the optional
+`--namespace` flag instead of a positional namespace. Blueprint fetch/show/get/delete
+still require `--namespace`; credential replace/clear still take a namespace argument.
+Queries read the daemon's local inventory and do not fetch remote resources.
 
 Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
 `instances/<InstanceID>/`. Fetch a blueprint separately into every namespace that
 uses it; catalogues and cached content are isolated.
 
-`server namespace delete NAME` removes all of that namespace's local blueprints,
+`namespace delete NAME` removes all of that namespace's local blueprints,
 Instances and history and clears its credentials. It rejects busy namespaces,
 including queued or running commands. It does not destroy external infrastructure;
 run the appropriate provider destroy commands before deleting storage you still
 need to manage. Recreating a deleted namespace starts empty.
 
 The shared-root storage layout from 0.9 is unsupported and is not automatically
-migrated. Preserve the old data and start 0.10 with a fresh data directory or volume.
+migrated. Preserve the old data and start 0.10 or later with a fresh data directory or volume.
 
 ## Namespace registry credentials
 
@@ -99,9 +118,9 @@ Every blueprint fetch requires `--namespace`, including anonymous pulls. For a
 private package, supply registry credentials to an existing namespace before fetching:
 
 ```sh
-bin/inframill server registry replace production --file /private/path/registries.json
-bin/inframill server registry list production
-bin/inframill server blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
+bin/inframill registry replace production --file /private/path/registries.json
+bin/inframill registry list --namespace production
+bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --namespace production
 ```
 
@@ -113,7 +132,7 @@ for example, with synthetic values:
 ```
 
 Credentials are held in memory and must be supplied again after daemon restart.
-`server registry clear production` clears the namespace's set. An unmatched host
+`registry clear production` clears the namespace's set. An unmatched host
 uses anonymous access. The daemon does not load Docker login credentials, and
 registry credentials remain separate from provider secrets. Blueprint cache
 entries belong to the selected namespace. Fetch errors include structured
@@ -130,8 +149,8 @@ reach the tool environment. Known injected values are filtered from tool diagnos
 Kit results and shared artifacts contain only verified projections. Arbitrary
 provider/playbook output must not intentionally emit transformed secrets.
 
-Manage the in-memory namespace set with `server secret replace`, `server secret list`
-and `server secret clear`. Restart discards sets. Running commands retain their
+Manage the in-memory namespace set with `secret replace`, `secret list`
+and `secret clear`. Restart discards sets. Running commands retain their
 snapshot; queued commands obtain the set current when they start.
 
 The `InitInstance` RPC accepts these top-level fields:
@@ -222,3 +241,11 @@ RPC command submission uses `command_name` and `arguments: {"json":"..."}`.
 Values, arguments, results and argument schemas use JSON document envelopes.
 Execution references use `execution_id`; statuses use `COMMAND_EXECUTION_STATUS_*`.
 Provider discovery uses `ListProviders` and reports `availability`.
+
+`ListBlueprints`, `ListNamespaceSecretNames` and `ListNamespaceRegistryHosts` accept
+an optional `namespace` filter; omitting it queries all namespaces. Secret list
+`names` contains objects such as `{"namespace":"production","name":"hetzner"}`;
+registry list `hosts` contains objects such as
+`{"namespace":"production","host":"ghcr.io"}`. These replace the scalar string
+entries returned by 0.10. Instance lists retain their optional namespace filter
+and pagination; execution history remains scoped to an Instance.

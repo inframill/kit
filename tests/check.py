@@ -18,6 +18,7 @@ from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_im
                                           pv_flow, verify)
 from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
+from query_check import query_check
 from image_check import image_check
 from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
 
@@ -175,6 +176,8 @@ def registry_check():
         for case in cases:
             publish(case['name'], case['version'], env)
         with engine(tmp / 'workflows', env) as client:
+            query_check(client, address + '/inframill/blueprints/local-resource:0.1.0',
+                        native_platform().split('/')[1])
             client.create_namespace('test')
             for case in fixture_cases():
                 local_flow(client, case['version'], f"{address}/inframill/blueprints/local-resource:{case['version']}")
