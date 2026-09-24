@@ -88,7 +88,7 @@ does not configure the daemon. Kit image pulls use Docker credentials.
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.13.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.14.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
@@ -118,7 +118,16 @@ support `--all`; command discovery can be scoped with `--instance`. The correspo
 a `CommandDefinitionQuery`. Storage, blueprint format and Runmill protocol are
 unchanged from 0.12, so the providers and pv-cloud remain at `0.3.0`.
 
-Inframill 0.13.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.14 CLI replaces `command list/get` with `provider commands [NAME]`, with no
+compatibility aliases or `--instance` scope. Discovery lists cached commands from
+all available providers and excludes built-in operations; use `instance delete`
+for deletion. `ListCommandDefinitions` now takes an empty RPC request, with its
+former `instance_id` field reserved; the Go method takes only the context.
+The engine also fixes namespace lifecycle and credential cleanup consistency.
+Storage, blueprint format and Runmill protocol remain compatible, so the providers
+and pv-cloud remain at `0.3.0`.
+
+Inframill 0.14.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;

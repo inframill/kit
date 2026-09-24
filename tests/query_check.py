@@ -23,6 +23,22 @@ def query_check(client, reference, arch):
                                  env=client.env, capture_output=True, text=True, timeout=30)
         assert retired.returncode == 2 and not retired.stdout, retired
 
+    for args in [('command', '--help'), ('provider', 'commands', '--instance', 'query-alpha/same')]:
+        retired = subprocess.run([client.binary, *args], env=client.env,
+                                 capture_output=True, text=True, timeout=30)
+        assert retired.returncode == 2 and not retired.stdout, retired
+
+    # Discovery is global and available before any namespace or Instance exists.
+    commands = request('provider', 'commands')['commands']
+    wire_commands = client.rpc('ListCommandDefinitions')['commands']
+    assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
+                        for c in wire_commands], commands
+    names = {c['name'] for c in commands}
+    assert {'opentofu.plan', 'ansible.apply'} <= names, commands
+    assert not any(name.startswith('builtin.') for name in names), commands
+    for command in commands:
+        assert request('provider', 'commands', command['name']) == command
+
     methods = [('blueprint', 'ListBlueprints', 'blueprints'),
                ('secret', 'ListNamespaceSecretNames', 'names'),
                ('registry', 'ListNamespaceRegistryHosts', 'hosts')]
@@ -48,11 +64,7 @@ def query_check(client, reference, arch):
         assert request('blueprint', 'get', reference, '--namespace', namespace) == blueprints[namespace]
         assert request('blueprint', 'resolve', reference, '--namespace', namespace)['blueprint'] == blueprints[namespace]
         assert request('instance', 'get', namespace + '/same')['instance']['id'] == instances[namespace]
-        commands = request('command', 'list', '--instance', namespace + '/same')['commands']
-        wire_commands = client.rpc('ListCommandDefinitions', {'instance_id': instances[namespace]})['commands']
-        assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
-                            for c in wire_commands], commands
-        assert 'builtin.delete' in {c['name'] for c in commands}, commands
+        assert request('provider', 'commands')['commands'] == commands
 
     namespaces = ['query-alpha', 'query-beta']
     expected = {

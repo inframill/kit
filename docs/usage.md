@@ -4,7 +4,7 @@
 
 `inframill server start` starts the daemon; `inframill server version` queries its
 version. Resource commands are top-level: `inframill namespace`, `instance`,
-`blueprint`, `secret`, `registry`, `command`, `execution` and `provider`. They send requests
+`blueprint`, `secret`, `registry`, `execution` and `provider`. They send requests
 to the daemon. The former `inframill server RESOURCE ...` paths are no longer
 supported. Shell completion uses `inframill completion`; `inframill debug provider`
 runs the offline debug provider protocol. Each Kit provider is a separate versioned executable.
@@ -69,7 +69,8 @@ Inspect providers, Instances and command history with:
 bin/inframill server version
 bin/inframill provider list
 bin/inframill instance list --namespace production
-bin/inframill command list --instance production/example
+bin/inframill provider commands
+bin/inframill provider commands opentofu.plan
 bin/inframill execution list --instance production/example --all -o json
 bin/inframill execution get EXECUTION_UUID --instance production/example
 bin/inframill execution wait EXECUTION_UUID --instance production/example
@@ -77,9 +78,11 @@ bin/inframill execution logs EXECUTION_UUID --instance production/example --foll
 ```
 
 Instance inspection (`instance get`) and execution accept a qualified name or UUID.
-Command discovery and execution history use `--instance`; discovery reflects the
-Instance's saved provider bindings and cached availability, without running tools
-or checking secrets. `command get NAME` shows the accepted arguments.
+Execution history uses `--instance`. `provider commands` lists cached commands
+across all available providers, without running tools or checking secrets.
+`provider commands NAME` shows one command and its accepted arguments. Discovery
+has no Instance scope and does not guarantee applicability to an Instance.
+Built-in operations are excluded; use `instance delete` to delete an Instance.
 Logs default to raw stdout; add `--stream stderr` for stderr. JSON log output is a
 single snapshot and cannot use `--follow`. Paginated Instance and execution lists
 support `--all`, with `--limit` controlling page size under one total timeout.
@@ -176,7 +179,7 @@ Set `values.json` to the serialized Values JSON. The CLI still accepts plain Val
 initializing the Instance in the same existing namespace. Blueprint list/get reports ready and failed catalogue
 entries; resolve requires a usable revision. Deleting a cached revision by its digest pin
 preserves existing Instances and their source snapshots.
-With `-o json`, `blueprint get`, `provider get` and `command get` return the selected
+With `-o json`, `blueprint get`, `provider get` and `provider commands NAME` return the selected
 resource directly; `blueprint resolve` retains the RPC's `blueprint` wrapper.
 
 ## Providers
@@ -257,8 +260,9 @@ Values, arguments, results and argument schemas use JSON document envelopes.
 CLI JSON unwraps document envelopes into their JSON values; raw RPC clients retain
 the `json` wrapper. Execution references use `execution_id`; statuses use `COMMAND_EXECUTION_STATUS_*`.
 Provider discovery uses `ListProviders` and reports `availability`.
-`ListCommandDefinitions` accepts an optional `instance_id` UUID to filter the cached
-command catalogue using an Instance's saved provider bindings.
+`ListCommandDefinitions` takes an empty request and returns cached commands from
+all available providers, excluding built-in operations. The former `instance_id`
+field is reserved and no longer scopes discovery.
 
 `ListBlueprints`, `ListNamespaceSecretNames` and `ListNamespaceRegistryHosts` accept
 an optional `namespace` filter; omitting it queries all namespaces. Secret list

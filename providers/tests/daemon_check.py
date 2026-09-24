@@ -144,12 +144,16 @@ def daemon_check(tmp, registry, env):
         ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
         first = initialize('alpha/one', ref, {})
         other = initialize('beta/one', ref, {})
-        # Saved bindings exclude Kit commands from this fixture-only Instance.
-        commands = cli('command', 'list', '--instance', 'alpha/one')['commands']
-        assert {c['name'] for c in commands} == {'builtin.delete', 'fixture.probe'}, commands
-        wire_commands = rpc('ListCommandDefinitions', {'instance_id': first})['commands']
+        # Discovery includes every available Provider, regardless of saved bindings.
+        commands = cli('provider', 'commands')['commands']
+        names = {c['name'] for c in commands}
+        assert {'fixture.probe', 'opentofu.plan', 'ansible.apply'} <= names, commands
+        assert not any(name.startswith(('builtin.', 'unavailable.')) for name in names), commands
+        wire_commands = rpc('ListCommandDefinitions')['commands']
         assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
                             for c in wire_commands], commands
+        assert cli('provider', 'commands', 'fixture.probe') == next(
+            c for c in commands if c['name'] == 'fixture.probe')
         assert [i['id'] for i in rpc('ListInstances', {'namespace': 'alpha'})['instances']] == [first]
         replace('alpha', {'token': 'synthetic-first'})
         assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == [{'namespace': 'alpha', 'name': 'token'}]
