@@ -1,0 +1,39 @@
+{
+  "version": "0.13.0-dev",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "providers": [
+    {
+      "name": "opentofu",
+      "version": "0.3.0"
+    },
+    {
+      "name": "ansible",
+      "version": "0.3.0"
+    }
+  ],
+  "inframill": {
+    "version": "0.13.0-dev",
+    "revision": "15684c0f54e8b050a9a590a1285e7e163a74093f",
+    "binaries": {
+      "darwin/amd64": {
+        "path": "0.13.0-dev/inframill_0.13.0-dev_darwin_amd64",
+        "sha256": "5f2290d37e507ce77fb4bd9446f8aabc7a00243a7ff41850eb75e93ceaff2cd4"
+      },
+      "darwin/arm64": {
+        "path": "0.13.0-dev/inframill_0.13.0-dev_darwin_arm64",
+        "sha256": "eae2abb68090db8c6c183de318f96c4fdaa089afebcec126998142902cc12844"
+      },
+      "linux/amd64": {
+        "path": "0.13.0-dev/inframill_0.13.0-dev_linux_amd64",
+        "sha256": "f20a5da78c6b632f1d16118757acb60f7b81ca65d6eb456dd78d76502d7f6938"
+      },
+      "linux/arm64": {
+        "path": "0.13.0-dev/inframill_0.13.0-dev_linux_arm64",
+        "sha256": "ab64803632558706d7c2d421cd79961b135b7f8d5d52a3d234892d349fb9f732"
+      }
+    }
+  }
+}

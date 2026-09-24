@@ -4,10 +4,10 @@
 
 `inframill server start` starts the daemon; `inframill server version` queries its
 version. Resource commands are top-level: `inframill namespace`, `instance`,
-`blueprint`, `secret`, `registry`, `command` and `provider`. They still send requests
+`blueprint`, `secret`, `registry`, `command`, `execution` and `provider`. They send requests
 to the daemon. The former `inframill server RESOURCE ...` paths are no longer
-supported. Utilities live under `inframill other`; each Kit provider is a separate
-versioned executable.
+supported. Shell completion uses `inframill completion`; `inframill debug provider`
+runs the offline debug provider protocol. Each Kit provider is a separate versioned executable.
 
 Only server startup accepts `--config` (default `.inframill.yaml`). Relative data
 and provider paths resolve beside that file. The `connect-engine` handler accepts
@@ -15,8 +15,8 @@ no settings; its route is fixed. Resource requests and `server version` accept `
 falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
 `http://127.0.0.1:8080` and `2m`. Requests reject `--config` and never load YAML.
 Request flags belong to resource groups and `server version`, not the root,
-`server start` or `other` groups. Shell completion remains
-`inframill other completion zsh`; regenerate saved completion scripts after upgrading.
+`server start`, `completion` or `debug` groups. Generate shell completion with
+`inframill completion zsh`; regenerate saved completion scripts after upgrading.
 
 `inframill provider list` reports the daemon's cached startup availability.
 Restart the daemon after changing its provider configuration.
@@ -47,7 +47,7 @@ bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
 bin/inframill instance init production/example \
   --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --values-file blueprints/examples/pv-cloud-0.3.0.json
-bin/inframill secret replace production --file /private/path/secrets.json
+bin/inframill secret replace --namespace production --file /private/path/secrets.json
 bin/inframill instance exec production/example opentofu.init --wait
 ```
 
@@ -69,9 +69,22 @@ Inspect providers, Instances and command history with:
 bin/inframill server version
 bin/inframill provider list
 bin/inframill instance list --namespace production
-bin/inframill command execution list --instance-id INSTANCE_UUID -o json
-bin/inframill command execution stdout INSTANCE_UUID EXECUTION_UUID
+bin/inframill command list --instance production/example
+bin/inframill execution list --instance production/example --all -o json
+bin/inframill execution get EXECUTION_UUID --instance production/example
+bin/inframill execution wait EXECUTION_UUID --instance production/example
+bin/inframill execution logs EXECUTION_UUID --instance production/example --follow
 ```
+
+Instance inspection (`instance get`) and execution accept a qualified name or UUID.
+Command discovery and execution history use `--instance`; discovery reflects the
+Instance's saved provider bindings and cached availability, without running tools
+or checking secrets. `command get NAME` shows the accepted arguments.
+Logs default to raw stdout; add `--stream stderr` for stderr. JSON log output is a
+single snapshot and cannot use `--follow`. Paginated Instance and execution lists
+support `--all`, with `--limit` controlling page size under one total timeout.
+If a wait times out, use the printed UUID-based reconnect command to resume waiting;
+the admitted execution continues on the daemon.
 
 ## Namespaces
 
@@ -94,9 +107,9 @@ bin/inframill registry list --namespace production
 ```
 
 Blueprint and credential list output identifies each row's namespace. Credential
-lists expose names and hosts only. Secret and registry lists now use the optional
-`--namespace` flag instead of a positional namespace. Blueprint fetch/show/get/delete
-still require `--namespace`; credential replace/clear still take a namespace argument.
+lists expose names and hosts only. Secret and registry lists use the optional
+`--namespace` flag. Blueprint fetch/get/resolve/delete and credential replace/clear
+require `--namespace`; only namespace create/delete take a positional namespace name.
 Queries read the daemon's local inventory and do not fetch remote resources.
 
 Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
@@ -118,7 +131,7 @@ Every blueprint fetch requires `--namespace`, including anonymous pulls. For a
 private package, supply registry credentials to an existing namespace before fetching:
 
 ```sh
-bin/inframill registry replace production --file /private/path/registries.json
+bin/inframill registry replace --namespace production --file /private/path/registries.json
 bin/inframill registry list --namespace production
 bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --namespace production
@@ -132,7 +145,7 @@ for example, with synthetic values:
 ```
 
 Credentials are held in memory and must be supplied again after daemon restart.
-`registry clear production` clears the namespace's set. An unmatched host
+`registry clear --namespace production` clears the namespace's set. An unmatched host
 uses anonymous access. The daemon does not load Docker login credentials, and
 registry credentials remain separate from provider secrets. Blueprint cache
 entries belong to the selected namespace. Fetch errors include structured
@@ -150,7 +163,7 @@ Kit results and shared artifacts contain only verified projections. Arbitrary
 provider/playbook output must not intentionally emit transformed secrets.
 
 Manage the in-memory namespace set with `secret replace`, `secret list`
-and `secret clear`. Restart discards sets. Running commands retain their
+and `secret clear`, using `--namespace production` to select the set. Restart discards sets. Running commands retain their
 snapshot; queued commands obtain the set current when they start.
 
 The `InitInstance` RPC accepts these top-level fields:
@@ -160,9 +173,11 @@ The `InitInstance` RPC accepts these top-level fields:
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before
-initializing the Instance in the same existing namespace. Blueprint list/show reports ready and failed catalogue
-entries; get requires a usable revision. Deleting a cached revision by its digest pin
+initializing the Instance in the same existing namespace. Blueprint list/get reports ready and failed catalogue
+entries; resolve requires a usable revision. Deleting a cached revision by its digest pin
 preserves existing Instances and their source snapshots.
+With `-o json`, `blueprint get`, `provider get` and `command get` return the selected
+resource directly; `blueprint resolve` retains the RPC's `blueprint` wrapper.
 
 ## Providers
 
@@ -239,8 +254,11 @@ their saved blueprint and backend; this release does not move existing S3 state.
 
 RPC command submission uses `command_name` and `arguments: {"json":"..."}`.
 Values, arguments, results and argument schemas use JSON document envelopes.
-Execution references use `execution_id`; statuses use `COMMAND_EXECUTION_STATUS_*`.
+CLI JSON unwraps document envelopes into their JSON values; raw RPC clients retain
+the `json` wrapper. Execution references use `execution_id`; statuses use `COMMAND_EXECUTION_STATUS_*`.
 Provider discovery uses `ListProviders` and reports `availability`.
+`ListCommandDefinitions` accepts an optional `instance_id` UUID to filter the cached
+command catalogue using an Instance's saved provider bindings.
 
 `ListBlueprints`, `ListNamespaceSecretNames` and `ListNamespaceRegistryHosts` accept
 an optional `namespace` filter; omitting it queries all namespaces. Secret list

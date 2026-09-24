@@ -98,6 +98,15 @@ def daemon_check(tmp, registry, env):
     def expected(secret):
         return hashlib.sha256(secret.encode()).hexdigest()
 
+    def cli(*args, raw=False):
+        command = [str(ROOT / 'bin/inframill'), *args,
+                   '--endpoint', endpoint.rsplit('/inframill', 1)[0]]
+        if not raw:
+            command += ['-o', 'json']
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stderr
+        return result.stdout if raw else json.loads(result.stdout)
+
     def rejected(method, body, code):
         try:
             rpc(method, body)
@@ -135,6 +144,12 @@ def daemon_check(tmp, registry, env):
         ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
         first = initialize('alpha/one', ref, {})
         other = initialize('beta/one', ref, {})
+        # Saved bindings exclude Kit commands from this fixture-only Instance.
+        commands = cli('command', 'list', '--instance', 'alpha/one')['commands']
+        assert {c['name'] for c in commands} == {'builtin.delete', 'fixture.probe'}, commands
+        wire_commands = rpc('ListCommandDefinitions', {'instance_id': first})['commands']
+        assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
+                            for c in wire_commands], commands
         assert [i['id'] for i in rpc('ListInstances', {'namespace': 'alpha'})['instances']] == [first]
         replace('alpha', {'token': 'synthetic-first'})
         assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == [{'namespace': 'alpha', 'name': 'token'}]
@@ -147,17 +162,24 @@ def daemon_check(tmp, registry, env):
         rejected('DeleteNamespace', {'name': 'alpha'}, 'failed_precondition')
         assert artifacts.is_dir()
         # A timed-out CLI wait must not cancel accepted work.
-        result = subprocess.run([str(ROOT / 'bin/inframill'), 'command', 'execution', 'wait', first, waiting, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
-        assert result.returncode != 0
+        result = subprocess.run([str(ROOT / 'bin/inframill'), 'execution', 'wait', waiting, '--instance', first, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
+        assert result.returncode == 3, result
+        assert 'execution wait' in result.stderr and waiting in result.stderr, result.stderr
         assert execution(first, waiting)['status'] == 'COMMAND_EXECUTION_STATUS_RUNNING'
         replace('alpha', {'token': 'synthetic-second'})
         (artifacts / 'release').write_text('continue')
         assert done(first, waiting)['secret_hash'] == expected('synthetic-first')
         assert done(first, queued)['secret_hash'] == expected('synthetic-second')
+        for verb in ['get', 'wait']:
+            result = cli('execution', verb, waiting, '--instance', 'alpha/one')['execution']
+            assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
+        history = cli('execution', 'list', '--instance', 'alpha/one', '--all', '--limit', '1')['executions']
+        assert {e['request']['executionId'] for e in history} == {waiting, queued}, history
         log_reply = rpc('ReadCommandLog', {'instance_id': first, 'execution_id': waiting, 'stream': 'LOG_STREAM_STDOUT', 'limit': 65536})
         output = base64.b64decode(log_reply['data']).decode()
         assert [json.loads(line)['type'] for line in output.splitlines()] == ['message', 'success']
         assert 'synthetic-first' not in output
+        assert cli('execution', 'logs', waiting, '--instance', first, '--follow', '--limit', '16', raw=True) == output
         replace('alpha', {})
         assert run(first, 'fixture.probe', {'text': 'cleared'})['secret_count'] == 0
         replace('alpha', {'token': 'synthetic-restart'})

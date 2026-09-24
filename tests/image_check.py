@@ -107,8 +107,8 @@ def image_check(tmp, image, arch, network):
         namespaces = json.loads(docker(cli + ['namespace', 'list', '--endpoint',
                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
         assert namespaces == [{'name': 'image'}], namespaces
-        history_cli = json.loads(docker(cli + ['command', 'execution', 'list',
-                                 '--instance-id', instance, '--endpoint',
+        history_cli = json.loads(docker(cli + ['execution', 'list',
+                                 '--instance', instance, '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
         assert len(history_cli) == 1 and history_cli[0]['request']['executionId'] == command, history_cli
         remote = json.loads(docker(cli + ['instance', 'list', '--endpoint',

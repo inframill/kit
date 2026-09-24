@@ -5,6 +5,13 @@ import urllib.error
 
 
 def query_check(client, reference, arch):
+    def request(*args):
+        result = subprocess.run(
+            [client.binary, *args, '--endpoint', client.endpoint, '-o', 'json'],
+            env=client.env, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
+
     def cli(resource, *args):
         return subprocess.run(
             [client.binary, resource, 'list', '--endpoint', client.endpoint, *args],
@@ -30,10 +37,22 @@ def query_check(client, reference, arch):
             continue
         blueprints[namespace] = client.fetch(reference, namespace)
         instances[namespace] = client.initialize(namespace + '/same', reference, {'architecture': arch})
-        client.rpc('ReplaceNamespaceSecrets', {'namespace': namespace,
-                   'secrets': {'token': 'synthetic-query-secret'}})
-        client.rpc('ReplaceNamespaceRegistries', {'namespace': namespace, 'registries': {
-            'example.invalid': {'username': 'synthetic-query-user', 'password': 'synthetic-query-password'}}})
+        secrets = client.root / 'query-secrets.json'
+        secrets.write_text(json.dumps({'token': 'synthetic-query-secret'}))
+        request('secret', 'replace', '--namespace', namespace, '--file', str(secrets))
+        registries = client.root / 'query-registries.json'
+        registries.write_text(json.dumps({
+            'example.invalid': {'username': 'synthetic-query-user', 'password': 'synthetic-query-password'}}))
+        request('registry', 'replace', '--namespace', namespace, '--file', str(registries))
+        # Exercise renamed inspection and ready-only resolution against real cached sources.
+        assert request('blueprint', 'get', reference, '--namespace', namespace) == blueprints[namespace]
+        assert request('blueprint', 'resolve', reference, '--namespace', namespace)['blueprint'] == blueprints[namespace]
+        assert request('instance', 'get', namespace + '/same')['instance']['id'] == instances[namespace]
+        commands = request('command', 'list', '--instance', namespace + '/same')['commands']
+        wire_commands = client.rpc('ListCommandDefinitions', {'instance_id': instances[namespace]})['commands']
+        assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
+                            for c in wire_commands], commands
+        assert 'builtin.delete' in {c['name'] for c in commands}, commands
 
     namespaces = ['query-alpha', 'query-beta']
     expected = {
@@ -42,6 +61,8 @@ def query_check(client, reference, arch):
         'hosts': [{'namespace': name, 'host': 'example.invalid'} for name in namespaces],
     }
     assert {i['id'] for i in client.rpc('ListInstances')['instances']} == set(instances.values())
+    # Page through multiple Instances, preserving a single JSON response document.
+    assert {i['id'] for i in request('instance', 'list', '--all', '--limit', '1')['instances']} == set(instances.values())
     for resource, method, field in methods:
         assert client.rpc(method).get(field, []) == expected[field]
         result = cli(resource, '-o', 'json')
@@ -69,6 +90,10 @@ def query_check(client, reference, arch):
             raise AssertionError('Missing namespace filter was accepted')
 
     for namespace in [*namespaces, 'query-empty']:
+        request('secret', 'clear', '--namespace', namespace)
+        request('registry', 'clear', '--namespace', namespace)
+        assert client.rpc('ListNamespaceSecretNames', {'namespace': namespace}).get('names', []) == []
+        assert client.rpc('ListNamespaceRegistryHosts', {'namespace': namespace}).get('hosts', []) == []
         client.rpc('DeleteNamespace', {'name': namespace})
     assert client.rpc('ListNamespaces').get('namespaces', []) == []
-    print('All-namespace and scoped RPC/CLI queries, metadata output and namespace columns passed', flush=True)
+    print('CLI inspection, resolution, credential scopes, pagination and all-namespace RPC queries passed', flush=True)

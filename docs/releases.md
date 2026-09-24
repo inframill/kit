@@ -88,7 +88,7 @@ does not configure the daemon. Kit image pulls use Docker credentials.
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.12.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.13.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
@@ -107,7 +107,18 @@ The 0.12 CLI moves resource commands directly under `inframill`, for example
 `server start`, `server version` and `other` utilities keep their existing paths.
 RPC APIs, storage and provider contracts are unchanged by this CLI rearrangement.
 
-Inframill 0.12.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.13 CLI uses `get` for resource inspection and `blueprint resolve` for ready-only
+resolution. Execution commands move from `command execution` to `execution` and use
+`--instance UUID_OR_NAMESPACE/NAME`; `execution logs ID` replaces stdout/stderr verbs
+and supports `--stream` and `--follow`. Credential replace/clear require `--namespace`.
+Completion moves to `completion`, and the offline debug provider to `debug provider`.
+Old paths and flags have no compatibility aliases. Instance and execution lists
+support `--all`; command discovery can be scoped with `--instance`. The corresponding
+`ListCommandDefinitions` RPC adds an optional `instance_id`; the Go method now takes
+a `CommandDefinitionQuery`. Storage, blueprint format and Runmill protocol are
+unchanged from 0.12, so the providers and pv-cloud remain at `0.3.0`.
+
+Inframill 0.13.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;

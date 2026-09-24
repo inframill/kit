@@ -27,7 +27,7 @@
       ],
       "status": "supported",
       "source_sha256": "sha256:8b6225ca1b30e09ea4d612547768192a72ce1ee3e9701a1d8c407378b58e0bb3",
-      "inframill_version": "0.12.0-dev"
+      "inframill_version": "0.13.0-dev"
     }
   ]
 }
