@@ -5,7 +5,7 @@ single `build.py` script owns source validation, deterministic archives, OCI
 packaging and calls to `docker load` / `docker push`. It does not import Kit scripts, compile Go,
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
-The current packages target Inframill **0.14.0-dev** and its provider binding
+The current packages target Inframill **0.15.0-dev** and its provider binding
 contract. pv-cloud is **0.3.0**. OpenTofu files live in `templates/opentofu/`;
 Ansible playbooks and roles live in `templates/ansible/`. Each directory contains
 its own `kit-provider.json.gotmpl`. These directory names match the configured provider IDs. Each `provider_settings`

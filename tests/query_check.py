@@ -107,5 +107,6 @@ def query_check(client, reference, arch):
         assert client.rpc('ListNamespaceSecretNames', {'namespace': namespace}).get('names', []) == []
         assert client.rpc('ListNamespaceRegistryHosts', {'namespace': namespace}).get('hosts', []) == []
         client.rpc('DeleteNamespace', {'name': namespace})
-    assert client.rpc('ListNamespaces').get('namespaces', []) == []
+    # Deletion is asynchronous in 0.15; the default worker scans every 10 seconds.
+    client.poll(lambda: not client.rpc('ListNamespaces').get('namespaces', []), timeout=30)
     print('CLI inspection, resolution, credential scopes, pagination and all-namespace RPC queries passed', flush=True)

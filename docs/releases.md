@@ -88,7 +88,7 @@ does not configure the daemon. Kit image pulls use Docker credentials.
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.14.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.15.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
@@ -127,7 +127,13 @@ The engine also fixes namespace lifecycle and credential cleanup consistency.
 Storage, blueprint format and Runmill protocol remain compatible, so the providers
 and pv-cloud remain at `0.3.0`.
 
-Inframill 0.14.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.15 engine makes namespace deletion asynchronous: deletion requests persist
+across restarts, reject new work and allow admitted operations to finish. The
+default cleanup worker removes idle flagged namespaces and retries failures.
+Namespace lists expose `active`, `deleting` and `failed` status. Provider and
+blueprint contracts are unchanged, so providers and pv-cloud remain at `0.3.0`.
+
+Inframill 0.15.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;

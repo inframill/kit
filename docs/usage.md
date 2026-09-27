@@ -119,9 +119,12 @@ Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
 `instances/<InstanceID>/`. Fetch a blueprint separately into every namespace that
 uses it; catalogues and cached content are isolated.
 
-`namespace delete NAME` removes all of that namespace's local blueprints,
-Instances and history and clears its credentials. It rejects busy namespaces,
-including queued or running commands. It does not destroy external infrastructure;
+`namespace delete NAME` durably requests deletion and returns immediately. The
+namespace rejects new work while admitted operations finish. The cleanup worker
+then removes its local blueprints, Instances, history and credentials, checking
+every 10 seconds by default. `namespace list` reports `active`, `deleting` or
+`failed`; failed cleanup is retried automatically. Deletion cannot be undone.
+It does not destroy external infrastructure;
 run the appropriate provider destroy commands before deleting storage you still
 need to manage. Recreating a deleted namespace starts empty.
 
