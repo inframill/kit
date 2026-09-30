@@ -108,6 +108,14 @@ This pulls `ghcr.io/inframill/kit:<VERSION>` before replacing any existing
 the repository root. The checked-in configuration selects the debug provider;
 use the provider definitions from `runtime/inframill.yaml` for OpenTofu and Ansible.
 
+To stop and remove the container while preserving the data, configuration and image:
+
+```sh
+task docker:down
+```
+
+This also succeeds if the container is already absent.
+
 The equivalent manual commands for the current version are:
 
 ```sh

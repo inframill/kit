@@ -31,6 +31,7 @@ tasks:
           'Check:     task check-fast' \
           'Image:     task bundle && task check-full' \
           'Run:       task docker:up' \
+          'Stop:      task docker:down' \
           'Publish:   docker login ghcr.io && task bundle:push' \
           'Blueprint: task blueprints:build' \
           '' \
@@ -82,6 +83,20 @@ tasks:
           -v "$PWD/.inframill:/var/lib/inframill" \
           -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
           "$image"
+
+  docker:down:
+    desc: Stop and remove the local Inframill container, preserving its data
+    summary: |
+      Stops and removes the inframill container if it exists.
+      Keeps .inframill/, .inframill.yaml and the downloaded image.
+    cmds:
+      - |
+        set -eu
+        docker info >/dev/null
+        if docker container inspect inframill >/dev/null 2>&1; then
+          docker stop inframill
+          docker rm inframill
+        fi
 
   # Verification: full checks require an already-built image.
   check-fast:
