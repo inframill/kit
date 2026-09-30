@@ -88,7 +88,7 @@ does not configure the daemon. Kit image pulls use Docker credentials.
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.15.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.17.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
@@ -133,7 +133,21 @@ default cleanup worker removes idle flagged namespaces and retries failures.
 Namespace lists expose `active`, `deleting` and `failed` status. Provider and
 blueprint contracts are unchanged, so providers and pv-cloud remain at `0.3.0`.
 
-Inframill 0.15.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.16 engine requires `X-Namespace-ID` on every namespace-owned RPC and
+`--namespace` on the corresponding CLI commands, including lists and ID lookups.
+Instance names are local to the selected namespace; qualified names and
+all-namespace resource queries are removed. Scoped responses omit namespace
+identities. Instance and execution IDs are canonical uppercase ULIDs; old UUID
+storage is rejected without migration, so upgrades require a fresh data directory.
+Kit updates saved-plan and node-artifact validation to the ULID contract.
+
+The 0.17 engine adds `GetNamespace` and `namespace get NAME`, returning the name
+and lifecycle status without acquiring resource scope. Namespace administration
+and provider discovery reject namespace headers/flags. Provider protocol and
+blueprint bindings remain unchanged; their current development versions remain
+`0.3.0`. Rebuild providers against the new SDK pin before assembling this image.
+
+Inframill 0.17.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;

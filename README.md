@@ -14,8 +14,8 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
 | Component | Version |
 | --- | --- |
-| Kit image | 0.15.0-dev |
-| Inframill engine | 0.15.0-dev |
+| Kit image | 0.17.0-dev |
+| Inframill engine | 0.17.0-dev |
 | OpenTofu provider / tool | 0.3.0 / 1.11.5 |
 | Ansible provider / Ansible Core | 0.3.0 / 2.20.1 |
 | pv-cloud blueprint | 0.3.0 |
@@ -40,7 +40,7 @@ needed to use the image.
 docker run -d --name inframill --rm \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  ghcr.io/inframill/kit:0.15.0-dev
+  ghcr.io/inframill/kit:0.17.0-dev
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -49,17 +49,18 @@ published on loopback because the engine has no built-in authentication; remote
 access requires an authenticated gateway or private tunnel.
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
-With the Inframill 0.15.0-dev CLI installed locally, query the running server with:
+With the Inframill 0.17.0-dev CLI installed locally, query the running server with:
 
 ```sh
 inframill server version --endpoint http://localhost:8080
-inframill instance list --endpoint http://localhost:8080
+inframill namespace create production --endpoint http://localhost:8080
+inframill instance list --namespace production --endpoint http://localhost:8080
 ```
 
 You can also use the CLI inside the container:
 
 ```sh
-docker exec inframill inframill instance list
+docker exec inframill inframill instance list --namespace production
 docker exec inframill inframill provider list
 ```
 
@@ -87,7 +88,7 @@ cp runtime/inframill.yaml inframill.yaml
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.15.0-dev \
+docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.17.0-dev \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
@@ -105,7 +106,7 @@ docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
   --mount type=bind,src="$PWD/inframill.yaml",dst=/etc/inframill/inframill.yaml,readonly \
-  ghcr.io/inframill/kit:0.15.0-dev
+  ghcr.io/inframill/kit:0.17.0-dev
 ```
 
 The existing named volume is reused. To keep data in a host directory instead,
@@ -116,7 +117,7 @@ create it with `mkdir -p data` and replace the data mount with:
 ```
 
 Changing mount sources selects different storage; it does not copy existing data.
-Inframill 0.15.0-dev resolves relative YAML paths from the configuration file's directory
+Inframill 0.17.0-dev resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
 ### Logs, restarts and upgrades
@@ -133,9 +134,10 @@ To upgrade, stop and remove the container, then run the selected image version w
 the same config and data mounts. Back up data before upgrading and check the release's
 storage compatibility. Run one engine against a data directory at a time.
 
-For the 0.9 → 0.10 upgrade, preserve the old data volume and use a fresh volume
-(for example, `src=inframill-data-0.10`) or empty data directory. The old shared-root
-layout is unsupported and has no automatic migration. Create namespaces with
+For upgrades from 0.15 or earlier, preserve the old data volume and use a fresh
+volume (for example, `src=inframill-data-0.17`) or empty data directory. The new
+`ulid-v1` layout rejects older UUID storage without modifying or migrating it.
+Create namespaces with
 `inframill namespace create NAME` before fetching blueprints or initializing
 Instances. See [namespace usage](docs/usage.md#namespaces).
 
@@ -176,7 +178,7 @@ and local acceptance setup. Providers and blueprints retain their own builders.
 Provider builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
 (default `../inframill` beside this repository). Image assembly needs Docker Buildx
 with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
-prebuilt engine binaries in `../inframill/dist/0.15.0-dev/`. It does not need provider
+prebuilt engine binaries in `../inframill/dist/0.17.0-dev/`. It does not need provider
 sources or the SDK checkout. Set `PROVIDERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
 other prebuilt artifact locations.
 

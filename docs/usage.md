@@ -44,11 +44,11 @@ Initialization validates Values and renders files without executing a provider:
 bin/inframill namespace create production
 bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --namespace production
-bin/inframill instance init production/example \
+bin/inframill instance init example --namespace production \
   --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
   --values-file blueprints/examples/pv-cloud-0.3.0.json
 bin/inframill secret replace --namespace production --file /private/path/secrets.json
-bin/inframill instance exec production/example opentofu.init --wait
+bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
 Use your published tag or digest reference. Commands such as init/plan/apply contact
@@ -71,13 +71,14 @@ bin/inframill provider list
 bin/inframill instance list --namespace production
 bin/inframill provider commands
 bin/inframill provider commands opentofu.plan
-bin/inframill execution list --instance production/example --all -o json
-bin/inframill execution get EXECUTION_UUID --instance production/example
-bin/inframill execution wait EXECUTION_UUID --instance production/example
-bin/inframill execution logs EXECUTION_UUID --instance production/example --follow
+bin/inframill execution list --instance example --namespace production --all -o json
+bin/inframill execution get EXECUTION_ULID --instance example --namespace production
+bin/inframill execution wait EXECUTION_ULID --instance example --namespace production
+bin/inframill execution logs EXECUTION_ULID --instance example --namespace production --follow
 ```
 
-Instance inspection (`instance get`) and execution accept a qualified name or UUID.
+Instance inspection (`instance get`) and execution accept a local name or canonical uppercase ULID.
+Both require `--namespace`, including ID-based operations.
 Execution history uses `--instance`. `provider commands` lists cached commands
 across all available providers, without running tools or checking secrets.
 `provider commands NAME` shows one command and its accepted arguments. Discovery
@@ -86,7 +87,7 @@ Built-in operations are excluded; use `instance delete` to delete an Instance.
 Logs default to raw stdout; add `--stream stderr` for stderr. JSON log output is a
 single snapshot and cannot use `--follow`. Paginated Instance and execution lists
 support `--all`, with `--limit` controlling page size under one total timeout.
-If a wait times out, use the printed UUID-based reconnect command to resume waiting;
+If a wait times out, use the printed ULID-based reconnect command to resume waiting;
 the admitted execution continues on the daemon.
 
 ## Namespaces
@@ -94,25 +95,22 @@ the admitted execution continues on the daemon.
 Namespaces must exist before initializing Instances, managing blueprints or
 setting credentials. Create each namespace once with `namespace create NAME`;
 `namespace list` includes empty namespaces and persists across restarts.
-Instance names select their namespace, for example `production/example`.
-List Instances, blueprints, secret names and registry hosts across all namespaces
-by omitting `--namespace`. Add `--namespace production` to filter one namespace:
+Every namespace-owned operation requires `--namespace`, including lists and
+Instance/execution ID lookups. Instance names are local to that namespace;
+qualified `namespace/name` selectors and namespace defaults are unsupported.
 
 ```sh
 bin/inframill namespace list
-bin/inframill instance list
-bin/inframill blueprint list
-bin/inframill secret list
-bin/inframill registry list
+bin/inframill namespace get production
+bin/inframill instance list --namespace production
 bin/inframill blueprint list --namespace production
 bin/inframill secret list --namespace production
 bin/inframill registry list --namespace production
 ```
 
-Blueprint and credential list output identifies each row's namespace. Credential
-lists expose names and hosts only. Secret and registry lists use the optional
-`--namespace` flag. Blueprint fetch/get/resolve/delete and credential replace/clear
-require `--namespace`; only namespace create/delete take a positional namespace name.
+Scoped output omits namespace identifiers. Credential lists expose names and hosts
+only. Namespace create/get/delete take a positional namespace name; namespace
+administration, server version and provider discovery reject `--namespace`.
 Queries read the daemon's local inventory and do not fetch remote resources.
 
 Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
@@ -122,14 +120,15 @@ uses it; catalogues and cached content are isolated.
 `namespace delete NAME` durably requests deletion and returns immediately. The
 namespace rejects new work while admitted operations finish. The cleanup worker
 then removes its local blueprints, Instances, history and credentials, checking
-every 10 seconds by default. `namespace list` reports `active`, `deleting` or
+every 10 seconds by default. `namespace list` and `namespace get NAME` report `active`, `deleting` or
 `failed`; failed cleanup is retried automatically. Deletion cannot be undone.
 It does not destroy external infrastructure;
 run the appropriate provider destroy commands before deleting storage you still
 need to manage. Recreating a deleted namespace starts empty.
 
-The shared-root storage layout from 0.9 is unsupported and is not automatically
-migrated. Preserve the old data and start 0.10 or later with a fresh data directory or volume.
+The current `ulid-v1` storage layout rejects older UUID records and journals
+without modification or migration. When upgrading from 0.15 or earlier, preserve
+the old data and start with a fresh data directory or volume.
 
 ## Namespace registry credentials
 
@@ -172,10 +171,11 @@ Manage the in-memory namespace set with `secret replace`, `secret list`
 and `secret clear`, using `--namespace production` to select the set. Restart discards sets. Running commands retain their
 snapshot; queued commands obtain the set current when they start.
 
-The `InitInstance` RPC accepts these top-level fields:
+The `InitInstance` RPC requires the HTTP header `X-Namespace-ID: production`
+and accepts these top-level fields:
 
 ```json
-{"name":"production/example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.3.0","values":{"json":"{}"}}
+{"name":"example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.3.0","values":{"json":"{}"}}
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before
@@ -245,7 +245,7 @@ For a manual discovery probe, pipe this JSON to that prefix:
 Runmill supplies settings, workspace/artifact paths and an execution ID, without
 Instance or Blueprint metadata. Kit binds plans and node artifacts to a hash of
 the supplied artifact directory. Regenerate plans and node output after moving
-data to a different path. Execution IDs used for plan filenames must be UUIDs.
+data to a different path. Execution IDs used for plan filenames must be canonical uppercase ULIDs (26 characters).
 
 pv-cloud uses local OpenTofu state at
 `<dataDir>/<namespace>/instances/<InstanceID>/workspace/opentofu/terraform.tfstate`.
@@ -267,10 +267,18 @@ Provider discovery uses `ListProviders` and reports `availability`.
 all available providers, excluding built-in operations. The former `instance_id`
 field is reserved and no longer scopes discovery.
 
-`ListBlueprints`, `ListNamespaceSecretNames` and `ListNamespaceRegistryHosts` accept
-an optional `namespace` filter; omitting it queries all namespaces. Secret list
-`names` contains objects such as `{"namespace":"production","name":"hetzner"}`;
-registry list `hosts` contains objects such as
-`{"namespace":"production","host":"ghcr.io"}`. These replace the scalar string
-entries returned by 0.10. Instance lists retain their optional namespace filter
-and pagination; execution history remains scoped to an Instance.
+Every namespace-owned RPC requires exactly one `X-Namespace-ID` header containing
+a valid namespace name. Namespace selectors are absent from request bodies and
+response resources. Missing, empty, duplicate or padded headers reject; foreign
+Instance IDs return not-found. The header selects scope and is not authentication.
+
+`CreateNamespace`, `GetNamespace`, `ListNamespaces`, `DeleteNamespace`,
+`GetServerVersion`, `ListProviders` and `ListCommandDefinitions` require the header
+to be absent. `GetNamespace` accepts `{"name":"production"}` and returns the
+namespace identity and lifecycle status.
+
+`ListBlueprints`, `ListNamespaceSecretNames`, `ListNamespaceRegistryHosts` and
+`ListInstances` query only the selected namespace. Secret `names` contains objects
+such as `{"name":"hetzner"}`; registry `hosts` contains objects such as
+`{"host":"ghcr.io"}`. Instance lists retain pagination; execution history remains
+scoped to an Instance. Cursors cannot be reused in another namespace.

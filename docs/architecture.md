@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit 0.15.0-dev targets the Inframill 0.15.0-dev API. The `providers/` subproject builds
+Kit 0.17.0-dev targets the Inframill 0.17.0-dev API. The `providers/` subproject builds
 independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
 prebuilt provider outputs with the engine and tools. Blueprints are separate OCI packages.
 
@@ -90,7 +90,7 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.15.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.17.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while namespace secrets and registry credentials remain in memory. Namespaces must
@@ -101,10 +101,15 @@ the cleanup worker removes local data after admitted operations finish, without
 invoking providers. Shared-root storage from 0.9 is unsupported;
 there is no automatic migration. See the [Docker guide](../README.md#run-with-docker).
 
-Instance, Blueprint and credential metadata lists can query all namespaces with an
-empty namespace filter. Blueprint and credential results include namespace identity;
-secret values and registry credentials are never returned. Aggregation observes
-local namespace data without changing cache ownership or mutation scopes.
+Every namespace-owned RPC requires an `X-Namespace-ID` header; the CLI requires
+`--namespace`, including for ID-based lookups. Scoped responses omit namespace
+identity, and Instance selectors use local names or canonical uppercase ULIDs.
+Namespace administration and provider discovery remain global. `namespace get`
+returns one namespace's lifecycle status. Pagination cursors are bound to scope.
+
+Instance and execution IDs use ULIDs. Kit validates these IDs before using saved
+plans or shared node artifacts. The `ulid-v1` storage layout rejects old UUID data
+without migration; upgrades from 0.15 or earlier require a fresh data directory.
 
 See [usage](usage.md) for command behavior and [releases](releases.md) for build and
 publication commands.

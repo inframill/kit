@@ -27,7 +27,7 @@
       ],
       "status": "supported",
       "source_sha256": "sha256:cf605ce66ff0ac0103cf529108bbd6f4f323407bfc9eeefa8b9cf02a861bf2d9",
-      "inframill_version": "0.15.0-dev"
+      "inframill_version": "0.17.0-dev"
     },
     {
       "name": "local-resource",
@@ -55,7 +55,7 @@
       ],
       "status": "supported",
       "source_sha256": "sha256:152cb300264e8f888fcd8e0c40528946028dc260924ef8314a0ce62ecbb74283",
-      "inframill_version": "0.15.0-dev"
+      "inframill_version": "0.17.0-dev"
     }
   ]
 }

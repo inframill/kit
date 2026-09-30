@@ -79,14 +79,15 @@ def publish_protocol_fixture(tmp, env, engine_version):
 def local_flow(client, version, reference, name=None, fetch=True):
     data = json.loads((FIXTURES / f'examples/local-resource-{version}.json').read_text())
     data['architecture'] = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
+    namespace, local_name = (name or 'test/local-' + version.replace('.', '-')).split('/', 1)
     if fetch:
-        client.fetch(reference, (name or 'test/local').split('/', 1)[0])
-    iid = client.initialize(name or 'test/local-' + version.replace('.', '-'), reference, data)
+        client.fetch(reference, namespace)
+    iid = client.initialize(namespace, local_name, reference, data)
     ids = provider_ids('local-resource', version)
     prefix, ansible = ids['opentofu'], ids['ansible']
 
     def do(command, args=None):
-        return client.execute(iid, command, args)
+        return client.execute(namespace, iid, command, args)
     do(prefix + '.init')
     do(prefix + '.validate')
     plan = do(prefix + '.plan')
@@ -110,14 +111,14 @@ def pv_flow(client, reference, tofu):
     ]
     for name, path in cases:
         values = json.loads(path.read_text())
-        iid = client.initialize('test/pv-' + name, reference, values)
+        iid = client.initialize('test', 'pv-' + name, reference, values)
         instances.append(iid)
-        client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
+        client.execute('test', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     data = pathlib.Path(client.config['engine']['dataDir'])
     workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
     # Init must work without any namespace credentials and initialize the real backend.
-    client.execute(instances[0], ids['opentofu'] + '.init')
+    client.execute('test', instances[0], ids['opentofu'] + '.init')
     local_state_check(workspaces[0], tofu)
     for args in [['validate', '-no-color'], ['test', '-no-color']]:
         run([tofu, *args], cwd=workspaces[0], env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'})
@@ -144,8 +145,8 @@ def verify(client, name, version, reference):
         raise RuntimeError('Verification requires a fixture selecting one Ansible provider')
     client.create_namespace('verify')
     client.fetch(reference, 'verify')
-    iid = client.initialize('verify/blueprint', reference, values)
-    client.execute(iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
+    iid = client.initialize('verify', 'blueprint', reference, values)
+    client.execute('verify', iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
 
 
 def runtime_flows(client, registry, arch, tofu):
@@ -154,24 +155,24 @@ def runtime_flows(client, registry, arch, tofu):
         version = case['version']
         reference = f'{registry}/inframill/blueprints/local-resource:{version}'
         client.fetch(reference, 'smoke')
-        iid = client.initialize('smoke/v' + version.replace('.', '-'), reference, {'architecture': arch})
+        iid = client.initialize('smoke', 'v' + version.replace('.', '-'), reference, {'architecture': arch})
         ids = provider_ids(case['name'], version)
         prefix, ansible = ids['opentofu'], ids['ansible']
-        client.execute(iid, prefix + '.init')
-        plan = client.execute(iid, prefix + '.plan')
-        client.execute(iid, prefix + '.apply', {'plan_id': plan['plan_id']})
-        client.execute(iid, ansible + '.apply', {'playbook': 'site'})
-        plan = client.execute(iid, prefix + '.plan', {'destroy': True})
-        client.execute(iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
+        client.execute('smoke', iid, prefix + '.init')
+        plan = client.execute('smoke', iid, prefix + '.plan')
+        client.execute('smoke', iid, prefix + '.apply', {'plan_id': plan['plan_id']})
+        client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
+        plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
+        client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
     reference = registry + '/inframill/blueprints/pv-cloud:0.3.0'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.3.0.json').read_text())
     client.fetch(reference, 'smoke')
-    iid = client.initialize('smoke/pv-cloud', reference, values)
+    iid = client.initialize('smoke', 'pv-cloud', reference, values)
     release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.3.0')
     ids = {d['name']: d['id'] for d in release['providers']}
-    client.execute(iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
+    client.execute('smoke', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     work = pathlib.Path(client.config['engine']['dataDir']) / 'smoke/instances' / iid / 'workspace' / 'opentofu'
-    client.execute(iid, ids['opentofu'] + '.init')
+    client.execute('smoke', iid, ids['opentofu'] + '.init')
     local_state_check(work, tofu)
     for args in [['validate', '-no-color'], ['test', '-no-color']]:
         subprocess.run([tofu, *args], cwd=work, env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'}, check=True)

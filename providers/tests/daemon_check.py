@@ -35,8 +35,11 @@ def daemon_check(tmp, registry, env):
     process = None
     log = (tmp / 'daemon.log').open('w+')
 
-    def rpc(method, body=None):
-        request = urllib.request.Request(endpoint + method, json.dumps(body or {}).encode(), {'Content-Type': 'application/json', 'Connect-Protocol-Version': '1'})
+    def rpc(method, body=None, *, namespace=None):
+        headers = {'Content-Type': 'application/json', 'Connect-Protocol-Version': '1'}
+        if namespace is not None:
+            headers['X-Namespace-ID'] = namespace
+        request = urllib.request.Request(endpoint + method, json.dumps(body or {}).encode(), headers)
         with urllib.request.urlopen(request, timeout=15) as response:
             return json.load(response)
 
@@ -74,15 +77,20 @@ def daemon_check(tmp, registry, env):
                 process.wait()
             process = None
 
-    def initialize(name, reference, values):
-        rpc('FetchBlueprint', {'reference': reference, 'namespace': name.split('/', 1)[0]})
-        return rpc('InitInstance', {'name': name, 'blueprint_reference': reference, 'values': {'json': json.dumps(values)}})['instance']['id']
+    scopes = {}
+
+    def initialize(namespace, name, reference, values):
+        rpc('FetchBlueprint', {'reference': reference}, namespace=namespace)
+        iid = rpc('InitInstance', {'name': name, 'blueprint_reference': reference,
+                  'values': {'json': json.dumps(values)}}, namespace=namespace)['instance']['id']
+        scopes[iid] = namespace
+        return iid
 
     def submit(instance, command, args=None):
-        return rpc('SubmitCommand', {'instance_id': instance, 'command_name': command, 'arguments': {'json': json.dumps(args or {})}})['executionId']
+        return rpc('SubmitCommand', {'instance_id': instance, 'command_name': command, 'arguments': {'json': json.dumps(args or {})}}, namespace=scopes[instance])['executionId']
 
     def execution(instance, command):
-        return rpc('GetCommandExecution', {'instance_id': instance, 'execution_id': command})['execution']
+        return rpc('GetCommandExecution', {'instance_id': instance, 'execution_id': command}, namespace=scopes[instance])['execution']
 
     def done(instance, command):
         value = poll(lambda: (r if r['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None) if (r := execution(instance, command)) else None)
@@ -93,7 +101,7 @@ def daemon_check(tmp, registry, env):
         return done(instance, submit(instance, command, args))
 
     def replace(namespace, secrets):
-        rpc('ReplaceNamespaceSecrets', {'namespace': namespace, 'secrets': secrets})
+        rpc('ReplaceNamespaceSecrets', {'secrets': secrets}, namespace=namespace)
 
     def expected(secret):
         return hashlib.sha256(secret.encode()).hexdigest()
@@ -107,9 +115,9 @@ def daemon_check(tmp, registry, env):
         assert result.returncode == 0, result.stderr
         return result.stdout if raw else json.loads(result.stdout)
 
-    def rejected(method, body, code):
+    def rejected(method, body, code, namespace=None):
         try:
-            rpc(method, body)
+            rpc(method, body, namespace=namespace)
         except urllib.error.HTTPError as error:
             failure = json.load(error)
             assert failure['code'] == code, failure
@@ -120,10 +128,10 @@ def daemon_check(tmp, registry, env):
         start()
         assert rpc('ListNamespaces').get('namespaces', []) == []
         reference = registry + '/inframill/blueprints/local-resource:0.1.0'
-        rejected('InitInstance', {'name': 'missing/local', 'blueprint_reference': reference,
-                                 'values': {'json': '{}'}}, 'not_found')
-        rejected('FetchBlueprint', {'reference': reference, 'namespace': 'missing'}, 'not_found')
-        rejected('ReplaceNamespaceSecrets', {'namespace': 'missing', 'secrets': {}}, 'not_found')
+        rejected('InitInstance', {'name': 'local', 'blueprint_reference': reference,
+                                 'values': {'json': '{}'}}, 'not_found', namespace='missing')
+        rejected('FetchBlueprint', {'reference': reference}, 'not_found', namespace='missing')
+        rejected('ReplaceNamespaceSecrets', {'secrets': {}}, 'not_found', namespace='missing')
         assert not (data_root / 'missing').exists()
         namespaces = ['acceptance', 'alpha', 'beta', 'empty']
         for namespace in namespaces:
@@ -133,17 +141,17 @@ def daemon_check(tmp, registry, env):
         assert statuses['opentofu'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['ansible'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['unavailable'] == 'PROVIDER_AVAILABILITY_UNAVAILABLE', statuses
-        iid = initialize('acceptance/local', registry + '/inframill/blueprints/local-resource:0.1.0', {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
+        iid = initialize('acceptance', 'local', registry + '/inframill/blueprints/local-resource:0.1.0', {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
         run(iid, 'opentofu.init')
         plan = run(iid, 'opentofu.plan')
         run(iid, 'opentofu.apply', {'plan_id': plan['plan_id']})
         run(iid, 'ansible.apply', {'playbook': 'site'})
         plan = run(iid, 'opentofu.plan', {'destroy': True})
         run(iid, 'opentofu.destroy', {'plan_id': plan['plan_id']})
-        assert len(rpc('ListCommandExecutions', {'instance_id': iid})['executions']) == 6
+        assert len(rpc('ListCommandExecutions', {'instance_id': iid}, namespace='acceptance')['executions']) == 6
         ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
-        first = initialize('alpha/one', ref, {})
-        other = initialize('beta/one', ref, {})
+        first = initialize('alpha', 'one', ref, {})
+        other = initialize('beta', 'one', ref, {})
         # Discovery includes every available Provider, regardless of saved bindings.
         commands = cli('provider', 'commands')['commands']
         names = {c['name'] for c in commands}
@@ -154,19 +162,18 @@ def daemon_check(tmp, registry, env):
                             for c in wire_commands], commands
         assert cli('provider', 'commands', 'fixture.probe') == next(
             c for c in commands if c['name'] == 'fixture.probe')
-        assert [i['id'] for i in rpc('ListInstances', {'namespace': 'alpha'})['instances']] == [first]
+        assert [i['id'] for i in rpc('ListInstances', namespace='alpha')['instances']] == [first]
         replace('alpha', {'token': 'synthetic-first'})
-        assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'})['names'] == [{'namespace': 'alpha', 'name': 'token'}]
+        assert rpc('ListNamespaceSecretNames', namespace='alpha')['names'] == [{'name': 'token'}]
         assert run(other, 'fixture.probe', {'text': 'isolation'})['secret_count'] == 0
         waiting = submit(first, 'fixture.probe', {'text': 'snapshot', 'wait': True})
         artifacts = data_root / 'alpha/instances' / first / 'artifacts'
         poll(lambda: (artifacts / 'ready').exists())
         queued = submit(first, 'fixture.probe', {'text': 'next snapshot'})
         assert execution(first, queued)['status'] == 'COMMAND_EXECUTION_STATUS_QUEUED'
-        rejected('DeleteNamespace', {'name': 'alpha'}, 'failed_precondition')
         assert artifacts.is_dir()
         # A timed-out CLI wait must not cancel accepted work.
-        result = subprocess.run([str(ROOT / 'bin/inframill'), 'execution', 'wait', waiting, '--instance', first, '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
+        result = subprocess.run([str(ROOT / 'bin/inframill'), 'execution', 'wait', waiting, '--instance', first, '--namespace', 'alpha', '--endpoint', endpoint.rsplit('/inframill', 1)[0], '--timeout', '50ms', '-o', 'json'], capture_output=True, text=True)
         assert result.returncode == 3, result
         assert 'execution wait' in result.stderr and waiting in result.stderr, result.stderr
         assert execution(first, waiting)['status'] == 'COMMAND_EXECUTION_STATUS_RUNNING'
@@ -175,34 +182,42 @@ def daemon_check(tmp, registry, env):
         assert done(first, waiting)['secret_hash'] == expected('synthetic-first')
         assert done(first, queued)['secret_hash'] == expected('synthetic-second')
         for verb in ['get', 'wait']:
-            result = cli('execution', verb, waiting, '--instance', 'alpha/one')['execution']
+            result = cli('execution', verb, waiting, '--instance', 'one', '--namespace', 'alpha')['execution']
             assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
-        history = cli('execution', 'list', '--instance', 'alpha/one', '--all', '--limit', '1')['executions']
+        history = cli('execution', 'list', '--instance', 'one', '--namespace', 'alpha', '--all', '--limit', '1')['executions']
         assert {e['request']['executionId'] for e in history} == {waiting, queued}, history
-        log_reply = rpc('ReadCommandLog', {'instance_id': first, 'execution_id': waiting, 'stream': 'LOG_STREAM_STDOUT', 'limit': 65536})
+        log_reply = rpc('ReadCommandLog', {'instance_id': first, 'execution_id': waiting, 'stream': 'LOG_STREAM_STDOUT', 'limit': 65536}, namespace='alpha')
         output = base64.b64decode(log_reply['data']).decode()
         assert [json.loads(line)['type'] for line in output.splitlines()] == ['message', 'success']
         assert 'synthetic-first' not in output
-        assert cli('execution', 'logs', waiting, '--instance', first, '--follow', '--limit', '16', raw=True) == output
+        assert cli('execution', 'logs', waiting, '--instance', first, '--namespace', 'alpha', '--follow', '--limit', '16', raw=True) == output
         replace('alpha', {})
         assert run(first, 'fixture.probe', {'text': 'cleared'})['secret_count'] == 0
         replace('alpha', {'token': 'synthetic-restart'})
         stop()
         start()
-        assert rpc('ListNamespaces')['namespaces'] == [{'name': name} for name in namespaces]
-        assert rpc('ListNamespaceSecretNames', {'namespace': 'alpha'}).get('names', []) == []
+        assert rpc('ListNamespaces')['namespaces'] == [{'name': name, 'status': 'NAMESPACE_STATUS_ACTIVE'} for name in namespaces]
+        assert rpc('ListNamespaceSecretNames', namespace='alpha').get('names', []) == []
         assert run(first, 'fixture.probe', {'text': 'restart'})['secret_count'] == 0
         replace('beta', {'token': 'synthetic-deleted'})
-        rpc('ReplaceNamespaceRegistries', {'namespace': 'beta', 'registries': {
-            'example.invalid': {'username': 'example', 'password': 'synthetic-registry'}}})
+        rpc('ReplaceNamespaceRegistries', {'registries': {
+            'example.invalid': {'username': 'example', 'password': 'synthetic-registry'}}}, namespace='beta')
+        busy = submit(other, 'fixture.probe', {'text': 'delete while busy', 'wait': True})
+        beta_artifacts = data_root / 'beta/instances' / other / 'artifacts'
+        poll(lambda: (beta_artifacts / 'ready').exists())
         rpc('DeleteNamespace', {'name': 'beta'})
-        assert not (data_root / 'beta').exists()
-        assert other not in [i['id'] for i in rpc('ListInstances')['instances']]
+        assert rpc('GetNamespace', {'name': 'beta'})['namespace']['status'] == 'NAMESPACE_STATUS_DELETING'
+        rejected('SubmitCommand', {'instance_id': other, 'command_name': 'fixture.probe',
+                                  'arguments': {'json': '{}'}}, 'failed_precondition', namespace='beta')
+        assert beta_artifacts.is_dir()
+        (beta_artifacts / 'release').write_text('continue')
+        done(other, busy)
+        poll(lambda: not (data_root / 'beta').exists())
         assert run(first, 'fixture.probe', {'text': 'sibling preserved'})['secret_count'] == 0
         rpc('CreateNamespace', {'name': 'beta'})
-        assert rpc('ListNamespaceSecretNames', {'namespace': 'beta'}).get('names', []) == []
-        assert rpc('ListNamespaceRegistryHosts', {'namespace': 'beta'}).get('hosts', []) == []
-        assert rpc('ListBlueprints', {'namespace': 'beta'}).get('blueprints', []) == []
+        assert rpc('ListNamespaceSecretNames', namespace='beta').get('names', []) == []
+        assert rpc('ListNamespaceRegistryHosts', namespace='beta').get('hosts', []) == []
+        assert rpc('ListBlueprints', namespace='beta').get('blueprints', []) == []
         for path in data_root.rglob('*'):
             if path.is_file():
                 content = path.read_bytes()

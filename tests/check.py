@@ -114,11 +114,11 @@ def cache_check(tmp, address, env):
         client.create_namespace('sibling')
         info = client.fetch(reference, 'test')
         assert info['status'] == 'BLUEPRINT_STATUS_READY', info
-        assert info['namespace'] == 'test', info
+        assert 'namespace' not in info, info
         assert info['repository'] == address + '/inframill/blueprints/local-resource', info
-        assert client.rpc('ListBlueprints', {'namespace': 'sibling'}).get('blueprints', []) == []
+        assert client.rpc('ListBlueprints', namespace='sibling').get('blueprints', []) == []
         sibling = client.fetch(reference, 'sibling')
-        assert sibling['namespace'] == 'sibling', sibling
+        assert 'namespace' not in sibling, sibling
     offline = {**env, 'INFRAMILL_HTTP_REGISTRIES': ''}
     with engine(tmp / 'offline', offline, data) as client:
         # Explicit init never fetches; the registry isn't authorized in this daemon.
@@ -127,10 +127,10 @@ def cache_check(tmp, address, env):
     cached_schema.write_bytes(cached_schema.read_bytes() + b'\n')
     before = set((data / 'test/instances').iterdir())
     with engine(tmp / 'tampered', offline, data) as client:
-        entries = client.rpc('ListBlueprints', {'namespace': 'test'})['blueprints']
+        entries = client.rpc('ListBlueprints', namespace='test')['blueprints']
         assert len(entries) == 1 and entries[0]['status'] == 'BLUEPRINT_STATUS_FAILED', entries
         try:
-            client.initialize('test/tampered', reference, {'architecture': 'arm64'})
+            client.initialize('test', 'tampered', reference, {'architecture': 'arm64'})
         except urllib.error.HTTPError as error:
             failure = json.load(error)
             assert 'blueprint' in failure.get('message', '').lower(), failure
@@ -138,11 +138,11 @@ def cache_check(tmp, address, env):
             raise RuntimeError('Corrupted cached source was accepted')
         assert set((data / 'test/instances').iterdir()) == before
         # Removal of a failed catalogue entry preserves existing Instance snapshots.
-        client.rpc('DeleteBlueprint', {'reference': reference, 'namespace': 'test'})
-        assert client.rpc('ListBlueprints', {'namespace': 'test'}).get('blueprints', []) == []
-        sibling = client.rpc('GetBlueprint', {'reference': reference, 'namespace': 'sibling'})['blueprint']
-        assert sibling['status'] == 'BLUEPRINT_STATUS_READY' and sibling['namespace'] == 'sibling', sibling
-        assert len(client.rpc('ListInstances')['instances']) == 1
+        client.rpc('DeleteBlueprint', {'reference': reference}, namespace='test')
+        assert client.rpc('ListBlueprints', namespace='test').get('blueprints', []) == []
+        sibling = client.rpc('GetBlueprint', {'reference': reference}, namespace='sibling')['blueprint']
+        assert sibling['status'] == 'BLUEPRINT_STATUS_READY' and 'namespace' not in sibling, sibling
+        assert len(client.rpc('ListInstances', namespace='test')['instances']) == 1
     print('Namespace cache isolation, offline reuse, failed catalogue entry and safe deletion passed', flush=True)
 
 

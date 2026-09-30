@@ -58,7 +58,7 @@ func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	}
 	commands["plan"] = runmill.CommandDefinition{Description: "Save an integrity-bound plan", ArgumentsSchema: object(map[string]any{"destroy": map[string]any{"type": "boolean"}, "refresh_only": map[string]any{"type": "boolean"}})}
 	for _, name := range []string{"apply", "destroy"} {
-		commands[name] = runmill.CommandDefinition{Description: name + " using a saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "format": "uuid"}}, "plan_id")}
+		commands[name] = runmill.CommandDefinition{Description: name + " using a saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$", "not": map[string]any{"const": "00000000000000000000000000"}}}, "plan_id")}
 	}
 	return runmill.ProviderDefinition{Name: "opentofu", Commands: commands}, nil
 }

@@ -90,7 +90,7 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 	work := filepath.Join(t.TempDir(), "opentofu")
 	os.Mkdir(work, 0700)
 	os.WriteFile(filepath.Join(work, "kit-provider.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0600)
-	scope := runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "22222222-2222-4222-8222-222222222222", Settings: runmill.Settings{"id": "opentofu", "backend": "local", "node_output": "nodes", "settings_file": "kit-provider.json", "artifact": "opentofu-nodes-v1.json"}}
+	scope := runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "opentofu", "backend": "local", "node_output": "nodes", "settings_file": "kit-provider.json", "artifact": "opentofu-nodes-v1.json"}}
 	p, e := m.Prepare(t.Context(), runmill.Execution{ProviderID: "opentofu", Command: "plan", Context: scope})
 	if e != nil {
 		t.Fatal(e)
@@ -181,7 +181,7 @@ esac
 			if e := manager.Load(t.Context(), map[string]runmill.Executable{"broken": {Path: path}}); e != nil {
 				t.Fatal(e)
 			}
-			scope := runmill.ExecutionContext{Settings: runmill.Settings{}, WorkspaceDir: t.TempDir(), ArtifactDir: t.TempDir(), ExecutionID: "22222222-2222-4222-8222-222222222222"}
+			scope := runmill.ExecutionContext{Settings: runmill.Settings{}, WorkspaceDir: t.TempDir(), ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV"}
 			prepared, e := manager.Prepare(t.Context(), runmill.Execution{ProviderID: "broken", Command: "probe", Context: scope})
 			if e != nil {
 				t.Fatal(e)

@@ -2,6 +2,7 @@
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import time
 import urllib.error
@@ -29,10 +30,11 @@ def image_check(tmp, image, arch, network):
     def docker(args, check=True, timeout=90):
         return subprocess.run(list(map(str, args)), check=check, text=True, capture_output=True, timeout=timeout)
 
-    def rpc(endpoint, method, body=None):
-        request = urllib.request.Request(endpoint + method, json.dumps(body or {}).encode(), {
-            'Content-Type': 'application/json', 'Connect-Protocol-Version': '1',
-        })
+    def rpc(endpoint, method, body=None, *, namespace=None):
+        headers = {'Content-Type': 'application/json', 'Connect-Protocol-Version': '1'}
+        if namespace is not None:
+            headers['X-Namespace-ID'] = namespace
+        request = urllib.request.Request(endpoint + method, json.dumps(body or {}).encode(), headers)
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response)
 
@@ -81,37 +83,37 @@ def image_check(tmp, image, arch, network):
         name, endpoint = start(mounts, port, workdir)
         namespace_cli = ['docker', 'exec', name, 'inframill', 'namespace',
                          'create', 'image', '--endpoint', 'http://127.0.0.1:' + str(port), '-o', 'json']
-        assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'name': 'image'}
-        rpc(endpoint, 'FetchBlueprint', {'reference': reference, 'namespace': 'image'})
-        instance = rpc(endpoint, 'InitInstance', {'name': 'image/persistence',
+        assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'name': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}
+        rpc(endpoint, 'FetchBlueprint', {'reference': reference}, namespace='image')
+        instance = rpc(endpoint, 'InitInstance', {'name': 'persistence',
             'blueprint_reference': reference, 'values': {'json': json.dumps({'architecture': arch})},
-        })['instance']['id']
+        }, namespace='image')['instance']['id']
         command = rpc(endpoint, 'SubmitCommand', {'instance_id': instance,
-                      'command_name': ids['ansible'] + '.syntax-check', 'arguments': {'json': json.dumps({'playbook': 'site'})}})['executionId']
-        assert uuid.UUID(instance).version == 7 and uuid.UUID(command).version == 7
+                      'command_name': ids['ansible'] + '.syntax-check', 'arguments': {'json': json.dumps({'playbook': 'site'})}}, namespace='image')['executionId']
+        assert all(re.fullmatch(r'[0-7][0-9A-HJKMNP-TV-Z]{25}', value) for value in (instance, command))
 
         def completed():
-            result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'execution_id': command})['execution']
+            result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'execution_id': command}, namespace='image')['execution']
             return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None
         result = poll(completed)
         assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']
         stop(name)
         name, endpoint = start(mounts, port, workdir)
-        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [{'name': 'image'}]
-        instances = rpc(endpoint, 'ListInstances')['instances']
+        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [{'name': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}]
+        instances = rpc(endpoint, 'ListInstances', namespace='image')['instances']
         assert any(i['id'] == instance for i in instances), instances
-        history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance})['executions']
+        history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance}, namespace='image')['executions']
         assert len(history) == 1 and history[0]['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', history
         cli = ['docker', 'exec', name, 'inframill']
         namespaces = json.loads(docker(cli + ['namespace', 'list', '--endpoint',
                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
-        assert namespaces == [{'name': 'image'}], namespaces
+        assert namespaces == [{'name': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}], namespaces
         history_cli = json.loads(docker(cli + ['execution', 'list',
-                                 '--instance', instance, '--endpoint',
+                                 '--instance', instance, '--namespace', 'image', '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
         assert len(history_cli) == 1 and history_cli[0]['request']['executionId'] == command, history_cli
-        remote = json.loads(docker(cli + ['instance', 'list', '--endpoint',
+        remote = json.loads(docker(cli + ['instance', 'list', '--namespace', 'image', '--endpoint',
                             'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['instances']
         assert any(i['id'] == instance for i in remote), remote
         remote_providers = json.loads(docker(cli + ['provider', 'list', '--endpoint',

@@ -69,11 +69,14 @@ class Engine:
             time.sleep(0.05)
         raise RuntimeError('Daemon operation timed out')
 
-    def rpc(self, method, body=None):
+    def rpc(self, method, body=None, *, namespace=None):
+        headers = {'Content-Type': 'application/json', 'Connect-Protocol-Version': '1'}
+        if namespace is not None:
+            headers['X-Namespace-ID'] = namespace
         request = urllib.request.Request(
             self.endpoint + '/inframill.v1.EngineService/' + method,
             json.dumps(body or {}).encode(),
-            {'Content-Type': 'application/json', 'Connect-Protocol-Version': '1'})
+            headers)
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.load(response)
 
@@ -81,23 +84,23 @@ class Engine:
         return self.rpc('CreateNamespace', {'name': name})['namespace']
 
     def fetch(self, reference, namespace):
-        return self.rpc('FetchBlueprint', {'reference': reference, 'namespace': namespace})['blueprint']
+        return self.rpc('FetchBlueprint', {'reference': reference}, namespace=namespace)['blueprint']
 
-    def initialize(self, name, reference, values):
+    def initialize(self, namespace, name, reference, values):
         # Fetch is explicit: this also exercises initialization from an offline cache.
         return self.rpc('InitInstance', {
             'name': name, 'blueprint_reference': reference, 'values': {'json': json.dumps(values)},
-        })['instance']['id']
+        }, namespace=namespace)['instance']['id']
 
-    def execute(self, instance, command, args=None):
+    def execute(self, namespace, instance, command, args=None):
         execution_id = self.rpc('SubmitCommand', {
             'instance_id': instance, 'command_name': command, 'arguments': {'json': json.dumps(args or {})},
-        })['executionId']
+        }, namespace=namespace)['executionId']
 
         def completed():
             result = self.rpc('GetCommandExecution', {
                 'instance_id': instance, 'execution_id': execution_id,
-            })['execution']
+            }, namespace=namespace)['execution']
             return result if result['status'] in (
                 'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
                 'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None

@@ -19,7 +19,7 @@ func fixture(t *testing.T) (Provider, runmill.ExecutionContext) {
 	work := filepath.Join(shared, "opentofu")
 	os.Mkdir(work, 0700)
 	artifacts.Write(work, "kit-provider.json", Settings{Schema: 1, Backend: map[string]any{}, Environment: map[string]string{}})
-	return Provider{Version: "0.3.0", ToolVersion: "1.11.5", Tool: "/missing"}, runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "22222222-2222-4222-8222-222222222222", Settings: runmill.Settings{"id": "tofu", "settings_file": "kit-provider.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
+	return Provider{Version: "0.3.0", ToolVersion: "1.11.5", Tool: "/missing"}, runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "tofu", "settings_file": "kit-provider.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
 }
 func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 	d, s := fixture(t)
@@ -86,7 +86,7 @@ esac
 		t.Fatal(e)
 	}
 	id := v.(PlanResult).PlanID
-	s.ExecutionID = "33333333-3333-4333-8333-333333333333"
+	s.ExecutionID = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
 	args := map[string]any{"plan_id": id}
 	bad := s
 	bad.ArtifactDir = t.TempDir()
