@@ -30,6 +30,7 @@ tasks:
           'Start:     task providers:build && task bundle' \
           'Check:     task check-fast' \
           'Image:     task bundle && task check-full' \
+          'Run:       task docker:up' \
           'Publish:   docker login ghcr.io && task bundle:push' \
           'Blueprint: task blueprints:build' \
           '' \
@@ -55,6 +56,32 @@ tasks:
   config:
     desc: Print local engine JSON configuration using native providers/dist outputs
     cmds: ['python3 build.py config']
+
+  docker:up:
+    desc: Pull the current Kit version and recreate the local Inframill container
+    dir: '{{.ROOT_DIR}}'
+    summary: |
+      Pulls ghcr.io/inframill/kit using the root VERSION file before stopping Inframill.
+      Binds .inframill and .inframill.yaml from the repository root, and publishes
+      port 8080 on loopback. Creates the data directory if needed.
+    preconditions:
+      - sh: test -f .inframill.yaml
+        msg: Create .inframill.yaml before running task docker:up.
+    cmds:
+      - |
+        set -eu
+        image="ghcr.io/inframill/kit:$(cat VERSION)"
+        docker pull "$image"
+        mkdir -p .inframill
+        if docker container inspect inframill >/dev/null 2>&1; then
+          docker stop inframill
+          docker rm inframill
+        fi
+        docker run -d --name inframill --restart unless-stopped \
+          -p 127.0.0.1:8080:8080 \
+          -v "$PWD/.inframill:/var/lib/inframill" \
+          -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
+          "$image"
 
   # Verification: full checks require an already-built image.
   check-fast:

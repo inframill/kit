@@ -1,0 +1,28 @@
+main:
+  port: 8080
+  shutdownTimeout: 10s
+  readHeaderTimeout: 5s
+  readTimeout: 30s
+  writeTimeout: 150s
+  idleTimeout: 60s
+
+logger:
+  type: slog
+  settings:
+    level: debug
+    format: json
+
+engine:
+  dataDir: /var/lib/inframill
+  providers:
+    debug:
+      path: /usr/local/bin/inframill
+      args: [debug, provider]
+
+handlers:
+  - type: connect-engine
+
+workers:
+  - type: namespace-cleanup
+    settings:
+      interval: 10s

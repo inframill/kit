@@ -97,20 +97,33 @@ unless you also change the corresponding mounts. The supplied file replaces the
 whole default configuration; it is not merged or rewritten. Keep the
 `connect-engine` handler without settings; the RPC route is fixed by Inframill.
 
-If the default container above is running, remove it before creating its replacement:
+To use the repository's `.inframill.yaml` and persist data in `.inframill/`, run:
 
 ```sh
+task docker:up
+```
+
+This pulls `ghcr.io/inframill/kit:<VERSION>` before replacing any existing
+`inframill` container. It creates `.inframill/` if needed and binds both paths from
+the repository root. The checked-in configuration selects the debug provider;
+use the provider definitions from `runtime/inframill.yaml` for OpenTofu and Ansible.
+
+The equivalent manual commands for the current version are:
+
+```sh
+docker pull ghcr.io/inframill/kit:0.17.0-dev
+mkdir -p .inframill
 docker stop inframill
 docker rm inframill
 docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
-  --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  --mount type=bind,src="$PWD/inframill.yaml",dst=/etc/inframill/inframill.yaml,readonly \
+  -v "$PWD/.inframill:/var/lib/inframill" \
+  -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
   ghcr.io/inframill/kit:0.17.0-dev
 ```
 
-The existing named volume is reused. To keep data in a host directory instead,
-create it with `mkdir -p data` and replace the data mount with:
+The `.inframill/` directory is reused on subsequent runs. To use another host
+directory, create it with `mkdir -p data` and replace the data mount with:
 
 ```sh
 --mount type=bind,src="$PWD/data",dst=/var/lib/inframill
