@@ -199,7 +199,9 @@ def validate_definition(entries, release):
         require(required == '.'.join(provider['version'].split('.')[:2]),
                 'provider binding version differs from the release')
         config = binding['settings']
-        require(isinstance(config, dict) and config.get('id') == provider['id'], 'provider settings ID differs from its binding')
+        require(isinstance(config, dict), 'provider settings must be an object')
+        if 'id' in config:
+            require(config['id'] == provider['id'], 'provider settings ID differs from its binding')
         prefix = 'templates/' + provider['id']
         require(entries.get(prefix, False) is None, 'missing configured provider template directory')
         if 'settings_file' in config:

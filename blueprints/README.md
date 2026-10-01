@@ -6,7 +6,8 @@ packaging and calls to `docker load` / `docker push`. It does not import Kit scr
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
 The current packages target Inframill **0.18.0-dev** and its provider binding
-contract. pv-cloud is **0.3.0**. OpenTofu files live in `templates/opentofu/`;
+contract. `hello-world` **0.1.0** uses only the built-in debug provider;
+`pv-cloud` is **0.3.0**. OpenTofu files live in `templates/opentofu/`;
 Ansible playbooks and roles live in `templates/ansible/`. Each directory contains
 its own `kit-provider.json.gotmpl`. These directory names match the configured provider IDs. Each `provider_settings`
 entry wraps a major.minor `version` string and a nested `settings` object.
@@ -41,6 +42,53 @@ Or use `task setup PYTHON=python3.14`. Python dependencies validate YAML and JSO
 Schema. Run `docker login ghcr.io` yourself before pushing. The script never
 logs in, reads credentials, exchanges authentication tokens, or creates a registry.
 Docker manages authentication and registry access. No ORAS installation is needed.
+
+## Hello world
+
+`hello-world:0.1.0` accepts exactly two required string Values:
+
+```json
+{"greeting": "Hello", "name": "world"}
+```
+
+It renders `workspace/debug/message.txt` as `Hello, world!`. The example is saved
+in [`examples/hello-world-0.1.0.json`](examples/hello-world-0.1.0.json).
+It requires only debug provider `0.0.0`, bundled in Inframill. Add this binding
+under `engine.providers` in the server configuration:
+
+```yaml
+debug:
+  path: /usr/local/bin/inframill
+  args: [debug, provider]
+```
+
+That path is for the Kit container; for a native server use the absolute path to
+`bin/inframill`. Restart the server after changing its configuration.
+The default Kit configuration enables OpenTofu and Ansible, so add debug before
+fetching this blueprint.
+
+Build and test locally from the Kit root:
+
+```sh
+task blueprints:build -- --name hello-world --version 0.1.0
+BLUEPRINT=hello-world BLUEPRINT_VERSION=0.1.0 python3 tests/check.py blueprint:check
+```
+
+After publishing the package to your registry, use its reference to fetch and
+initialize an Instance:
+
+```sh
+inframill namespace create demo
+inframill blueprint fetch ghcr.io/inframill/blueprints/hello-world:0.1.0 --namespace demo
+inframill instance init hello-world --namespace demo \
+  --blueprint ghcr.io/inframill/blueprints/hello-world:0.1.0 \
+  --values-file blueprints/examples/hello-world-0.1.0.json
+printf '%s\n' '{"message":"Hello, world!"}' | \
+  inframill instance exec hello-world debug.echo --namespace demo --arguments-file - --wait
+```
+
+Values render the workspace file. `debug.echo` receives its message separately
+through command Arguments; it does not read the rendered file.
 
 ## Commands
 

@@ -100,6 +100,21 @@ def local_flow(client, version, reference, name=None, fetch=True):
     do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
 
 
+def hello_world_flow(client, reference, namespace='test'):
+    values = json.loads((BLUEPRINTS / 'examples/hello-world-0.1.0.json').read_text())
+    client.fetch(reference, namespace)
+    iid = client.initialize(namespace, 'hello-world', reference, values)
+    workspace = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid / 'workspace'
+    assert {path.name for path in workspace.iterdir()} == {'debug'}
+    message = f"{values['greeting']}, {values['name']}!"
+    assert (workspace / 'debug/message.txt').read_text() == message + '\n'
+    assert client.execute(namespace, iid, 'debug.echo', {'message': message}) == {'message': message}
+    artifact = {'name': 'greeting.txt', 'content': message}
+    assert client.execute(namespace, iid, 'debug.write-artifact', artifact) == artifact
+    assert client.execute(namespace, iid, 'debug.read-artifact', {'name': 'greeting.txt'}) == artifact
+    print('Hello-world rendering and debug-only commands passed', flush=True)
+
+
 def pv_flow(client, reference, tofu):
     client.fetch(reference, 'test')
     ids = provider_ids('pv-cloud', '0.3.0')
@@ -137,6 +152,10 @@ def local_state_check(work, tofu):
 
 
 def verify(client, name, version, reference):
+    if (name, version) == ('hello-world', '0.1.0'):
+        client.create_namespace('verify')
+        hello_world_flow(client, reference, 'verify')
+        return
     values = json.loads((blueprint_root(name) / f'examples/{name}-{version}.json').read_text())
     release = next(b for b in json.loads((blueprint_root(name) / 'releases.json').read_text())['blueprints']
                    if b['name'] == name and b['version'] == version)

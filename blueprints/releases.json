@@ -28,6 +28,29 @@
       "status": "supported",
       "source_sha256": "sha256:8b6225ca1b30e09ea4d612547768192a72ce1ee3e9701a1d8c407378b58e0bb3",
       "inframill_version": "0.18.0-dev"
+    },
+    {
+      "name": "hello-world",
+      "version": "0.1.0",
+      "protocol": 1,
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "providers": [
+        {
+          "id": "debug",
+          "name": "debug",
+          "version": "0.0.0"
+        }
+      ],
+      "status": "supported",
+      "source_sha256": "sha256:4093df8596f5d3d5f2cb223ac4709647c6a78e3a75d7a68583d4baf705300b34",
+      "inframill_version": "0.18.0-dev"
     }
   ]
 }

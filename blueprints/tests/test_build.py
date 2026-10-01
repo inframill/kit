@@ -159,6 +159,33 @@ class BuildTests(unittest.TestCase):
         aliased['blueprint.yaml'] = json.dumps(definition).encode()
         build.validate_definition(aliased, release)
 
+    def test_debug_provider_accepts_empty_settings_and_sealed_example(self):
+        import yaml
+        from jsonschema import Draft202012Validator
+
+        release = next(entry for entry in build.releases(build.ROOT / 'releases.json')
+                       if entry['name'] == 'hello-world')
+        layer, entries = build.archive(build.source_path(build.ROOT, release))
+        self.assertEqual(build.digest(layer), release['source_sha256'])
+        build.validate_definition(entries, release)
+        definition = yaml.safe_load(entries['blueprint.yaml'])
+        self.assertEqual(definition['provider_settings'], {'debug': {'version': '0.0', 'settings': {}}})
+        values = json.loads((build.ROOT / 'examples/hello-world-0.1.0.json').read_text())
+        validator = Draft202012Validator(definition['values_schema'])
+        validator.validate(values)
+        for invalid in [{}, {'greeting': 'Hello'}, {'name': 'world'},
+                        {'greeting': 123, 'name': 'world'},
+                        {'greeting': 'Hello', 'name': 123}, {**values, 'extra': True}]:
+            with self.subTest(values=invalid):
+                self.assertFalse(validator.is_valid(invalid))
+
+    def test_supplied_provider_settings_id_must_match_binding(self):
+        _, entries = build.archive(self.source)
+        definition = json.loads(entries['blueprint.yaml'])
+        definition['provider_settings']['opentofu']['settings']['id'] = 'wrong'
+        with self.assertRaisesRegex(ValueError, 'settings ID differs'):
+            build.validate_definition({**entries, 'blueprint.yaml': json.dumps(definition).encode()}, self.entry)
+
     def test_definition_validation(self):
         _, entries = build.archive(self.source)
         original = json.loads(entries['blueprint.yaml'])

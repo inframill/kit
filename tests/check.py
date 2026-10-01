@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_image,
                                           blueprint_releases, publish, local_flow,
-                                          pv_flow, verify)
+                                          pv_flow, hello_world_flow, verify)
 from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from query_check import query_check
@@ -37,7 +37,13 @@ def tools():
     return tofu, ansible
 
 
-def engine(tmp, env=None, data=None):
+def engine(tmp, env=None, data=None, debug_only=False):
+    if debug_only:
+        config = {'logger': {'type': 'slog', 'settings': {'level': 'info', 'format': 'json'}},
+            'engine': {'dataDir': str(data or tmp / 'data'), 'providers': {
+            'debug': {'path': str(ROOT / 'bin/inframill'), 'args': ['debug', 'provider']}}},
+            'handlers': [{'type': 'connect-engine'}]}
+        return Engine(tmp, config, ROOT / 'bin/inframill', env)
     tofu, ansible = tools()
     config = configuration(providers_dist(), data or tmp / 'data',
                            {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
@@ -90,16 +96,18 @@ def registry_env(tmp, address, push_address):
 
 
 def blueprint_check(name, version):
-    if name != 'local-resource' and (name, version) != ('pv-cloud', '0.3.0'):
+    if name != 'local-resource' and (name, version) not in [('pv-cloud', '0.3.0'), ('hello-world', '0.1.0')]:
         raise RuntimeError('No declared integration fixture for this blueprint version')
     with registry() as (address, _, push_address), tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
         env = registry_env(tmp, address, push_address)
         publish(name, version, env)
         reference = f'{address}/inframill/blueprints/{name}:{version}'
-        with engine(tmp / 'engine', env) as client:
+        with engine(tmp / 'engine', env, debug_only=name == 'hello-world') as client:
             client.create_namespace('test')
-            if name == 'local-resource':
+            if name == 'hello-world':
+                hello_world_flow(client, reference)
+            elif name == 'local-resource':
                 local_flow(client, version, reference)
             else:
                 pv_flow(client, reference, tools()[0])
@@ -175,6 +183,9 @@ def registry_check():
         cases = fixture_cases() + [{'name': b['name'], 'version': b['version']} for b in blueprint_releases()]
         for case in cases:
             publish(case['name'], case['version'], env)
+        with engine(tmp / 'hello-world', env, debug_only=True) as client:
+            client.create_namespace('test')
+            hello_world_flow(client, address + '/inframill/blueprints/hello-world:0.1.0')
         with engine(tmp / 'workflows', env) as client:
             query_check(client, address + '/inframill/blueprints/local-resource:0.1.0',
                         native_platform().split('/')[1])
@@ -199,7 +210,7 @@ def main():
             raise RuntimeError('REFERENCE must be digest-pinned')
         name, version = os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.3.0' if os.environ['BLUEPRINT'] == 'pv-cloud' else '0.1.0')
         with tempfile.TemporaryDirectory(prefix='kit-verify-') as td:
-            with engine(pathlib.Path(td)) as client:
+            with engine(pathlib.Path(td), debug_only=name == 'hello-world') as client:
                 verify(client, name, version, reference)
     else:
         raise RuntimeError('Unknown check')

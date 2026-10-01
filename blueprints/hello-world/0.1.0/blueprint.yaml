@@ -1,0 +1,16 @@
+api_version: inframill.dev/blueprint/v1
+description: Hello world using only the built-in debug provider
+values_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  required: [greeting, name]
+  additionalProperties: false
+  properties:
+    greeting:
+      type: string
+    name:
+      type: string
+provider_settings:
+  debug:
+    version: "0.0"
+    settings: {}
