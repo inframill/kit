@@ -76,7 +76,13 @@ def query_check(client, reference, arch):
             'example.invalid': {'username': 'synthetic-query-user', 'password': 'synthetic-query-password'}}))
         request('registry', 'replace', '--namespace', namespace, '--file', str(registries))
         assert request('blueprint', 'get', reference, '--namespace', namespace) == blueprints[namespace]
-        assert request('blueprint', 'resolve', reference, '--namespace', namespace)['blueprint'] == blueprints[namespace]
+        resolved = request('blueprint', 'resolve', reference, '--namespace', namespace)
+        wire_blueprint = client.rpc('GetBlueprint', {'reference': reference}, namespace=namespace)
+        assert resolved['blueprint'] == wire_blueprint['blueprint'] == blueprints[namespace]
+        schema = json.loads(wire_blueprint['valuesSchema']['json'])
+        assert resolved['valuesSchema'] == schema, resolved
+        assert schema['required'] == ['architecture'], schema
+        assert schema['properties']['architecture']['enum'] == ['amd64', 'arm64'], schema
         instance = request('instance', 'get', 'same', '--namespace', namespace)['instance']
         assert instance['id'] == instances[namespace][0] and instance['name'] == 'same', instance
         assert 'namespace' not in instance

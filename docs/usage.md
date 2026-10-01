@@ -183,7 +183,9 @@ initializing the Instance in the same existing namespace. Blueprint list/get rep
 entries; resolve requires a usable revision. Deleting a cached revision by its digest pin
 preserves existing Instances and their source snapshots.
 With `-o json`, `blueprint get`, `provider get` and `provider commands NAME` return the selected
-resource directly; `blueprint resolve` retains the RPC's `blueprint` wrapper.
+resource directly; `blueprint resolve` returns `blueprint` metadata and the raw
+Values schema as an ordinary `valuesSchema` object. The `GetBlueprint` RPC wraps
+that schema in a `JsonDocument`; human CLI output shows a Values schema section.
 
 ## Providers
 

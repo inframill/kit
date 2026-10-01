@@ -88,7 +88,7 @@ does not configure the daemon. Kit image pulls use Docker credentials.
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.17.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.18.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
@@ -147,7 +147,13 @@ and provider discovery reject namespace headers/flags. Provider protocol and
 blueprint bindings remain unchanged; their current development versions remain
 `0.3.0`. Rebuild providers against the new SDK pin before assembling this image.
 
-Inframill 0.17.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.18 engine exposes a ready Blueprint's Values schema through the
+`GetBlueprint` RPC and `blueprint resolve` CLI output. `blueprint get` remains
+a metadata inspection command. Storage, Blueprint source format and provider
+protocol are unchanged; providers and pv-cloud remain at `0.3.0`. Rebuild
+providers against the new SDK pin before assembling this image.
+
+Inframill 0.18.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
