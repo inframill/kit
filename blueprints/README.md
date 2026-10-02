@@ -16,7 +16,8 @@ Inframill 0.19 accepts an optional top-level `features` list in `blueprint.yaml`
 Entries are unique lowercase snake_case identifiers of 1–64 characters, such as
 `workload_server` or `network_firewall`; catalogue metadata returns them sorted.
 They describe supported capabilities and do not control command eligibility.
-The existing releases omit this field and declare no features.
+`pv-cloud:0.3.0` declares `network_firewall`, `network_load_balancer` and
+`workload_server`. `hello-world:0.1.0` omits this field and declares no features.
 
 Each release is **one architecture-independent OCI artifact** containing
 `blueprint.yaml` and `templates/`. The same tag and digest work on Linux AMD64 and

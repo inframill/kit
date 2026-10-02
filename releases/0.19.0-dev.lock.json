@@ -20,19 +20,19 @@
     "binaries": {
       "darwin/amd64": {
         "path": "0.19.0-dev/inframill_0.19.0-dev_darwin_amd64",
-        "sha256": "e2e3fc95970581a8e8f6b3ef44fdd4ed0f5e86afc60db2c146bf5dfc094c365c"
+        "sha256": "587d34fa5641167a630e3f80788e34c78984e6e0f78ede22d71b377123d6a8ec"
       },
       "darwin/arm64": {
         "path": "0.19.0-dev/inframill_0.19.0-dev_darwin_arm64",
-        "sha256": "5526c09600dbbeb33cc32cf288a9b8f568658806d2082180dc079d8a71bd7481"
+        "sha256": "32d80b5834b87666927f3edd566cc97d35e07d9ecd97e433b759fdda48d492d3"
       },
       "linux/amd64": {
         "path": "0.19.0-dev/inframill_0.19.0-dev_linux_amd64",
-        "sha256": "fad62c08dd8f7ed62f745589e8019e5727b6069a7a56bc339ef642929f1e0da9"
+        "sha256": "1069eb616291181cc1912e9af8eeb7857ca224d079dbc01ff66ab9e9232f1e9d"
       },
       "linux/arm64": {
         "path": "0.19.0-dev/inframill_0.19.0-dev_linux_arm64",
-        "sha256": "2f809ab8e46d6de809d41f422d9676932b38c3b042a22322e416fab93fbd0261"
+        "sha256": "597f5c83e5052951dcd147c5acd76fc9e56f6df07d6f6337272e7aa8698020f2"
       }
     }
   }
