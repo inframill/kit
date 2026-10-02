@@ -166,3 +166,8 @@ provider_settings:
       playbooks:
         site: site.yml
       settings_file: kit-provider.json
+
+features:
+  - network_firewall
+  - network_load_balancer
+  - workload_server

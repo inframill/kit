@@ -161,10 +161,20 @@ def validate_definition(entries, release):
     check(node)
     definition = yaml.safe_load(data)
     encode(definition)  # Reject non-JSON scalar values, including NaN/Infinity.
-    require(isinstance(definition, dict) and set(definition) ==
-            {'api_version', 'description', 'values_schema', 'provider_settings'}, 'invalid blueprint fields')
+    required_fields = {'api_version', 'description', 'values_schema', 'provider_settings'}
+    require(isinstance(definition, dict) and required_fields <= set(definition) <=
+            required_fields | {'features'}, 'invalid blueprint fields')
     require(definition['api_version'] == 'inframill.dev/blueprint/v1', 'unsupported api_version')
     require(isinstance(definition['description'], str) and definition['description'].strip(), 'description is required')
+    features = definition.get('features', [])
+    require(isinstance(features, list), 'features must be a list of strings')
+    seen_features = set()
+    for index, feature in enumerate(features):
+        require(isinstance(feature, str) and len(feature) <= 64 and
+                re.fullmatch(r'[a-z][a-z0-9]*(?:_[a-z0-9]+)*', feature),
+                f'features[{index}] must be a lowercase snake_case identifier of 1–64 characters')
+        require(feature not in seen_features, f'features[{index}] is a duplicate identifier: {feature}')
+        seen_features.add(feature)
     schema = definition['values_schema']
     require(isinstance(schema, dict), 'values_schema must be an object')
     validator = validators.validator_for(schema, default=Draft202012Validator)

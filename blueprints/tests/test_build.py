@@ -186,6 +186,39 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'settings ID differs'):
             build.validate_definition({**entries, 'blueprint.yaml': json.dumps(definition).encode()}, self.entry)
 
+    def test_optional_features_build_and_preserve_source(self):
+        original = json.loads((self.source / 'blueprint.yaml').read_bytes())
+        for features in [None, [], ['workload_server', 'custom_thing2', 'network_firewall'],
+                         ['a', 'a_2', 'a' * 64]]:
+            with self.subTest(features=features):
+                definition = dict(original)
+                if features is not None:
+                    definition['features'] = features
+                data = json.dumps(definition).encode()
+                (self.source / 'blueprint.yaml').write_bytes(data)
+                self.seal()
+                with tempfile.TemporaryDirectory() as output:
+                    build.build(self.root, Path(output), self.entry)
+                    _, _, manifest = build.verify(Path(output) / self.entry['name'] / self.entry['version'],
+                                                   self.entry['version'])
+                    layer = (Path(output) / self.entry['name'] / self.entry['version'] /
+                             'oci/blobs/sha256' / manifest['layers'][0]['digest'][7:]).read_bytes()
+                    with tarfile.open(fileobj=io.BytesIO(layer), mode='r:gz') as tar:
+                        self.assertEqual(tar.extractfile('blueprint.yaml').read(), data)
+
+    def test_invalid_features_are_rejected(self):
+        _, entries = build.archive(self.source)
+        original = json.loads(entries['blueprint.yaml'])
+        invalid = [None, 'workload_server', {}, 42, [None], [True], [42], [{}], [[]],
+                   ['workload_server', 'workload_server'], [''], ['a' * 65],
+                   ['Workload_server'], ['workload-server'], [' workload_server'],
+                   ['workload_server\n'], ['_server'], ['server_'], ['workload__server'],
+                   ['1server'], ['sérver']]
+        for features in invalid:
+            definition = {**original, 'features': features}
+            with self.subTest(features=features), self.assertRaisesRegex(ValueError, 'features'):
+                build.validate_definition({**entries, 'blueprint.yaml': json.dumps(definition).encode()}, self.entry)
+
     def test_definition_validation(self):
         _, entries = build.archive(self.source)
         original = json.loads(entries['blueprint.yaml'])
