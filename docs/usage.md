@@ -186,6 +186,8 @@ With `-o json`, `blueprint get`, `provider get` and `provider commands NAME` ret
 resource directly; `blueprint resolve` returns `blueprint` metadata and the raw
 Values schema as an ordinary `valuesSchema` object. The `GetBlueprint` RPC wraps
 that schema in a `JsonDocument`; human CLI output shows a Values schema section.
+Blueprint metadata also exposes declared `features` as sorted identifiers; an empty
+list may be omitted in JSON. Human details and list output display these capabilities.
 
 ## Providers
 

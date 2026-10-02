@@ -5,12 +5,18 @@ single `build.py` script owns source validation, deterministic archives, OCI
 packaging and calls to `docker load` / `docker push`. It does not import Kit scripts, compile Go,
 read the parent `VERSION`, or require a sibling Inframill checkout.
 
-The current packages target Inframill **0.18.0-dev** and its provider binding
+The current packages target Inframill **0.19.0-dev** and its provider binding
 contract. `hello-world` **0.1.0** uses only the built-in debug provider;
 `pv-cloud` is **0.3.0**. OpenTofu files live in `templates/opentofu/`;
 Ansible playbooks and roles live in `templates/ansible/`. Each directory contains
 its own `kit-provider.json.gotmpl`. These directory names match the configured provider IDs. Each `provider_settings`
 entry wraps a major.minor `version` string and a nested `settings` object.
+
+Inframill 0.19 accepts an optional top-level `features` list in `blueprint.yaml`.
+Entries are unique lowercase snake_case identifiers of 1–64 characters, such as
+`workload_server` or `network_firewall`; catalogue metadata returns them sorted.
+They describe supported capabilities and do not control command eligibility.
+The existing releases omit this field and declare no features.
 
 Each release is **one architecture-independent OCI artifact** containing
 `blueprint.yaml` and `templates/`. The same tag and digest work on Linux AMD64 and

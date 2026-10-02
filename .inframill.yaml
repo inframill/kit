@@ -17,6 +17,9 @@ logger:
 engine:
   dataDir: /var/lib/inframill
   providers:
+    debug:
+      path: /usr/local/bin/inframill
+      args: [debug, provider]
     opentofu:
       path: /opt/inframill/providers/opentofu/0.3.0/provider
       args:
