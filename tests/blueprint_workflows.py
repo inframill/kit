@@ -11,17 +11,14 @@ import subprocess
 import sys
 import uuid
 
-BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1]
-FIXTURES = BLUEPRINTS / 'tests/fixtures'
+BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1] / 'blueprints'
+FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures/blueprints'
+LOCAL_REFERENCE = 'local:local-resource'
 
 
 def run(args, **kwargs):
     print('+', ' '.join(map(str, args)), file=sys.stderr, flush=True)
     return subprocess.run(list(map(str, args)), check=True, text=True, **kwargs)
-
-
-def fixture_reference(version):
-    return 'local:local-resource-' + version.replace('.', '-')
 
 
 def local_paths():
@@ -32,17 +29,6 @@ def provider_ids(name):
     return {'debug': 'debug'} if name == 'hello-world' else {'opentofu': 'opentofu', 'ansible': 'ansible'}
 
 
-def registry_image():
-    image = json.loads((FIXTURES / 'suite.json').read_text())['registry_image']
-    if not re.fullmatch(r'.+@sha256:[0-9a-f]{64}', image):
-        raise ValueError('Registry image must be digest pinned')
-    return image
-
-
-def fixture_cases():
-    return json.loads((FIXTURES / 'suite.json').read_text())['blueprints']
-
-
 def protocol_fixture(tmp):
     source = tmp / 'blueprints/protocol-fixture'
     (source / 'templates/fixture').mkdir(parents=True)
@@ -51,10 +37,10 @@ def protocol_fixture(tmp):
     return str(source.parent)
 
 
-def local_flow(client, version, reference, name=None, fetch=True):
-    data = json.loads((FIXTURES / f'examples/local-resource-{version}.json').read_text())
-    data['architecture'] = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
-    namespace, local_name = (name or 'test/local-' + version.replace('.', '-')).split('/', 1)
+def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True):
+    architecture = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
+    data = {'architecture': architecture}
+    namespace, local_name = name.split('/', 1)
     if fetch:
         client.fetch(reference, namespace)
     iid = client.initialize(namespace, local_name, reference, data)
@@ -155,19 +141,17 @@ def local_state_check(work, tofu):
 
 def runtime_flows(client, arch, tofu):
     client.create_namespace('smoke')
-    for case in fixture_cases():
-        version = case['version']
-        reference = fixture_reference(version)
-        client.fetch(reference, 'smoke')
-        iid = client.initialize('smoke', 'v' + version.replace('.', '-'), reference, {'architecture': arch})
-        ids = provider_ids(case['name'])
-        prefix, ansible = ids['opentofu'], ids['ansible']
-        client.execute('smoke', iid, prefix + '.init')
-        plan = client.execute('smoke', iid, prefix + '.plan')
-        client.execute('smoke', iid, prefix + '.apply', {'plan_id': plan['plan_id']})
-        client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
-        plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
-        client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
+    reference = LOCAL_REFERENCE
+    client.fetch(reference, 'smoke')
+    iid = client.initialize('smoke', 'local', reference, {'architecture': arch})
+    ids = provider_ids('local-resource')
+    prefix, ansible = ids['opentofu'], ids['ansible']
+    client.execute('smoke', iid, prefix + '.init')
+    plan = client.execute('smoke', iid, prefix + '.plan')
+    client.execute('smoke', iid, prefix + '.apply', {'plan_id': plan['plan_id']})
+    client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
+    plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
+    client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
     reference = 'local:pv-cloud'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')

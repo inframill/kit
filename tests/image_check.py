@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from blueprints.tests.integration import provider_ids, BLUEPRINTS, fixture_reference
+from blueprint_workflows import provider_ids, FIXTURES, LOCAL_REFERENCE
 from build import runtime_settings, ROOT, bundle_lock, configuration
 
 CONFIG = '/etc/inframill/inframill.yaml'
@@ -24,7 +24,7 @@ def image_check(tmp, image, arch, network):
     prefix = ['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch]
     containers = set()
     volume = 'kit-data-' + uuid.uuid4().hex
-    reference = fixture_reference('0.1.0')
+    reference = LOCAL_REFERENCE
     ids = provider_ids('local-resource')
 
     def docker(args, check=True, timeout=90):
@@ -52,7 +52,7 @@ def image_check(tmp, image, arch, network):
         containers.add(name)
         docker(prefix + ['-d', '--name', name, '--network', network, '--workdir', workdir,
                          '-p', '127.0.0.1::' + str(port),
-                         '--mount', 'type=bind,src=' + str(BLUEPRINTS / 'tests/fixtures') + ',dst=/opt/inframill/blueprints,readonly',
+                         '--mount', 'type=bind,src=' + str(FIXTURES) + ',dst=/opt/inframill/blueprints,readonly',
                          *mounts, image])  # Exercise the image's ENTRYPOINT and CMD unchanged.
         address = docker(['docker', 'port', name, str(port) + '/tcp']).stdout.strip()
         endpoint = 'http://' + address + '/inframill.v1.EngineService/'

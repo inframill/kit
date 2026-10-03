@@ -92,3 +92,43 @@ class ProviderBuildTests(unittest.TestCase):
             self.assertFalse(build.valid_version(version))
         with self.assertRaisesRegex(ValueError, 'No matching'):
             build.releases(name='missing')
+
+
+class RefreshBuildTests(unittest.TestCase):
+    def test_refresh_preserves_previous_output_on_failure_and_backs_up_on_success(self):
+        from unittest.mock import patch
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            release = build.releases()[1][0]
+            config = build.releases()[0]
+            dist = root / 'dist'
+            output = dist / release['name'] / release['version'] / 'linux/amd64'
+            output.mkdir(parents=True)
+            (output / 'previous').write_text('keep me')
+            (root / 'input.go').write_text('source')
+            sources = {'input.go': build.sha256(b'source')}
+            with patch.object(build, 'source_files', return_value=sources), \
+                 patch.object(build, 'run', side_effect=subprocess.CalledProcessError(1, 'go build')):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build.build(root, dist, release, 'linux/amd64', config, root, root / 'go.mod', refresh=True)
+            self.assertEqual((output / 'previous').read_text(), 'keep me')
+            self.assertEqual(list(output.parent.glob('.previous-*')), [])
+
+            def compile_binary(args, **kwargs):
+                binary = bytearray(64)
+                binary[:6] = b'\x7fELF\x02\x01'
+                struct.pack_into('<H', binary, 18, 62)
+                Path(args[args.index('-o') + 1]).write_bytes(binary)
+            with patch.object(build, 'source_files', return_value=sources), \
+                 patch.object(build, 'run', side_effect=compile_binary) as compile, \
+                 patch.object(build.subprocess, 'check_output', return_value=''), \
+                 patch.object(build, 'verify_source'):
+                build.build(root, dist, release, 'linux/amd64', config, root, root / 'go.mod', refresh=True)
+                self.assertEqual(compile.call_count, 1)
+                build.build(root, dist, release, 'linux/amd64', config, root, root / 'go.mod', refresh=True)
+                self.assertEqual(compile.call_count, 1)
+            backups = list(output.parent.glob('.previous-*'))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual((backups[0] / 'previous').read_text(), 'keep me')
+            build.verify_output(output, release, 'linux/amd64', config, sources)

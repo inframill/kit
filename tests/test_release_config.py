@@ -51,6 +51,6 @@ class ReleaseConfigTests(unittest.TestCase):
 
     def test_version_file_controls_lock_and_output_despite_overrides(self):
         with patch.dict(os.environ, {'VERSION': '9.9.9', 'KIT_VERSION': '9.9.9',
-                                    'BUNDLE_VERSION': '9.9.9', 'BLUEPRINT_VERSION': '9.9.9'}):
+                                    'BUNDLE_VERSION': '9.9.9'}):
             self.assertEqual(release_config.bundle_lock()['version'], release_config.project_version())
             self.assertEqual(release_config.bundle_output().name, release_config.project_version())

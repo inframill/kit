@@ -182,14 +182,73 @@ def valid_version(value, metadata=False):
     return all(not (part.isdigit() and len(part) > 1 and part.startswith('0')) for part in pre.split('.'))
 
 
-def project_version():
+def read_version(path):
     try:
-        version = (ROOT / 'VERSION').read_bytes().removesuffix(b'\n').decode('ascii')
+        version = pathlib.Path(path).read_bytes().removesuffix(b'\n').decode('ascii')
     except (OSError, UnicodeError) as error:
         raise ValueError('VERSION must be a readable file containing one SemVer value') from error
     if not valid_version(version, metadata=True):
         raise ValueError('VERSION must contain exactly one SemVer value without whitespace or a v prefix')
     return version
+
+
+def project_version():
+    return read_version(ROOT / 'VERSION')
+
+
+def prepare_release(source=None, version=None):
+    """Generate release metadata from a clean checkout and its prebuilt binaries."""
+    source = pathlib.Path(source or os.environ.get('INFRAMILL_SOURCE', ROOT.parent / 'inframill')).resolve()
+    engine_version = read_version(source / 'VERSION')
+    version = version or engine_version
+    if not valid_version(version) or not valid_version(engine_version):
+        raise ValueError('Release versions must be exact SemVer registry tags without build metadata')
+    revision = run(['git', 'rev-parse', 'HEAD'], cwd=source, capture_output=True).stdout.strip()
+    changed = run(['git', 'status', '--porcelain', '--untracked-files=all', '--',
+                   'VERSION', 'cmd', 'internal', 'pkg', 'go.mod', 'go.sum', 'LICENSE*', 'NOTICE*'],
+                  cwd=source, capture_output=True).stdout
+    if changed.strip():
+        raise ValueError('Commit Inframill source changes before preparing a release')
+    config_path = ROOT / 'providers/releases.json'
+    config = json.loads(config_path.read_text())
+    engine_dist = (ROOT / os.environ.get('INFRAMILL_DIST_DIR', source / 'dist')).resolve()
+    binaries = {}
+    for target in sorted(PLATFORMS | {'darwin/amd64', 'darwin/arm64'}):
+        system, arch = target.split('/')
+        path = f'{engine_version}/inframill_{engine_version}_{system}_{arch}'
+        file = engine_dist / path
+        if not file.is_file():
+            raise ValueError(f'Missing {file}; build the Inframill release first (task release in its checkout)')
+        entry = {'path': path, 'sha256': digest(file.read_bytes())}
+        read_binary(engine_dist, entry, arch, system)
+        binaries[target] = entry
+    native = engine_dist / binaries[native_platform()]['path']
+    if run([native, '--version'], capture_output=True).stdout.strip() != engine_version:
+        raise ValueError('Prebuilt Inframill version differs from its source VERSION')
+    lock = {'version': version, 'platforms': sorted(PLATFORMS), 'providers': config['providers'],
+            'inframill': {'version': engine_version, 'revision': revision, 'binaries': binaries}}
+    validate_release(lock, version)
+    lock_path = ROOT / f'releases/{version}.lock.json'
+    if lock_path.exists() and json.loads(lock_path.read_text()) != lock:
+        raise ValueError('Release lock already exists with different inputs; choose a new --version')
+    config['inframill'] = {'version': engine_version, 'revision': revision}
+    # Validate every input before updating any selection. Existing locks stay immutable.
+    updates = {lock_path: (json.dumps(lock, indent=2) + '\n').encode(),
+               config_path: (json.dumps(config, indent=2) + '\n').encode(),
+               ROOT / 'VERSION': (version + '\n').encode()}
+    previous = {path: path.read_bytes() if path.exists() else None for path in updates}
+    try:
+        for path, data in updates.items():
+            if previous[path] != data:
+                path.write_bytes(data)
+    except OSError:
+        for path, data in previous.items():
+            if data is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(data)
+        raise
+    print(f'Prepared Kit {version} with Inframill {engine_version} ({revision[:12]})')
 
 
 def validate_release(lock, version):
@@ -498,8 +557,13 @@ def main(argv=None):
         commands.add_parser(command)
     verify = commands.add_parser('verify', help='verify local output, or a published image by digest')
     verify.add_argument('--reference')
+    prepare = commands.add_parser('prepare-release', help='generate Kit version, SDK pin and engine checksums')
+    prepare.add_argument('--version', help='Kit version; defaults to Inframill VERSION')
+    prepare.add_argument('--inframill-source', type=pathlib.Path)
     args = parser.parse_args(argv)
-    if args.command == 'build':
+    if args.command == 'prepare-release':
+        prepare_release(args.inframill_source, args.version)
+    elif args.command == 'build':
         build_image()
     elif args.command == 'push':
         push_image()

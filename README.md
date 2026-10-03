@@ -10,35 +10,39 @@ ready-to-run image for Inframill.
 The Kit image supports Linux AMD64 and ARM64. Blueprint sources are architecture
 independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
-## Current versions
+## Release versions
 
-| Component | Version |
-| --- | --- |
-| Kit image | 0.21.0-dev |
-| Inframill engine | 0.21.0-dev |
-| OpenTofu provider / tool | 0.3.0 / 1.11.5 |
-| Ansible provider / Ansible Core | 0.3.0 / 2.20.1 |
-| pv-cloud blueprint | Local source |
-| hello-world blueprint (debug provider) | Local source |
+[`VERSION`](VERSION) selects the Kit image; its record under [`releases/`](releases/)
+pins the engine and providers. [`providers/releases.json`](providers/releases.json)
+pins provider selections and the Go/SDK dependency. Tool versions live in
+[`runtime/Dockerfile`](runtime/Dockerfile). Local blueprints are selected by name
+and content digest.
 
-Kit and its image follow Inframill's major/minor release line, with independent Kit
-patch releases. The root [`VERSION`](VERSION) file selects the Kit image
-version for builds, pushes and checks. Task arguments and environment values
-cannot override it. Provider releases are selected independently in
-`providers/releases.json`. Local blueprints are selected by name and content digest.
+For a new release, prepare the sibling Inframill release binaries, then run:
+
+```sh
+task release
+# After successful checks and docker login:
+task bundle:push
+```
+
+`task release` generates the version/pins/checksums, refreshes providers, builds the
+image and runs full checks. Routine engine version changes need no documentation
+edits. See [releasing Kit](docs/releases.md) for prerequisites and independent Kit versions.
 
 ## Run with Docker
 
 The image includes [`runtime/inframill.yaml`](runtime/inframill.yaml) unchanged at
 `/etc/inframill/inframill.yaml` and starts the server with both Kit providers configured. Docker
 selects the AMD64 or ARM64 variant for your machine. No local Go or Python setup is
-needed to use the image.
+needed to use the image. Run the examples from this checkout; `cat VERSION` selects
+its release tag. Without a checkout, substitute the desired published tag.
 
 ```sh
 docker run -d --name inframill --rm \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  ghcr.io/inframill/kit:0.21.0-dev
+  "ghcr.io/inframill/kit:$(cat VERSION)"
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -47,7 +51,7 @@ published on loopback because the engine has no built-in authentication; remote
 access requires an authenticated gateway or private tunnel.
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
-With the Inframill 0.21.0-dev CLI installed locally, query the running server with:
+With the matching Inframill CLI installed locally, query the running server with:
 
 ```sh
 inframill server version --endpoint http://localhost:8080
@@ -87,7 +91,7 @@ cp runtime/inframill.yaml inframill.yaml
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.21.0-dev \
+docker run --rm --entrypoint cat "ghcr.io/inframill/kit:$(cat VERSION)" \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
@@ -115,21 +119,6 @@ task docker:down
 
 This also succeeds if the container is already absent.
 
-The equivalent manual commands for the current version are:
-
-```sh
-docker pull ghcr.io/inframill/kit:0.21.0-dev
-mkdir -p .inframill
-docker stop inframill
-docker rm inframill
-docker run -d --name inframill --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 \
-  -v "$PWD/.inframill:/var/lib/inframill" \
-  -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
-  -v "$PWD/blueprints:/opt/inframill/blueprints:ro" \
-  ghcr.io/inframill/kit:0.21.0-dev
-```
-
 The `.inframill/` directory is reused on subsequent runs. To use another host
 directory, create it with `mkdir -p data` and replace the data mount with:
 
@@ -138,7 +127,7 @@ directory, create it with `mkdir -p data` and replace the data mount with:
 ```
 
 Changing mount sources selects different storage; it does not copy existing data.
-Inframill 0.21.0-dev resolves relative YAML paths from the configuration file's directory
+Inframill resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
 ### Logs, restarts and upgrades
@@ -155,12 +144,11 @@ To upgrade, stop and remove the container, then run the selected image version w
 the same config and data mounts. Back up data before upgrading and check the release's
 storage compatibility. Run one engine against a data directory at a time.
 
-For upgrades from 0.15 or earlier, preserve the old data volume and use a fresh
-volume (for example, `src=inframill-data-0.17`) or empty data directory. The new
-`ulid-v1` layout rejects older UUID storage without modifying or migrating it.
-Create namespaces with
-`inframill namespace create ID` before fetching blueprints or initializing
-Instances. See [namespace usage](docs/usage.md#namespaces).
+The current storage contract uses ULID Instance/execution IDs and namespace `id`
+records. Older UUID layouts or namespace `name` records reject without migration;
+preserve those volumes and start with fresh storage when upgrading from them.
+Create namespaces with `inframill namespace create ID` before fetching blueprints
+or initializing Instances. See [namespace usage](docs/usage.md#namespaces).
 
 Without a data mount, data is lost when the container is removed. Namespace secrets
 and registry credentials are held in memory and must be supplied again after a
@@ -196,10 +184,10 @@ python3 build.py test      # root builder tests
 also provides `validate`, `setup`, `config` and `copy-engine` for release checks
 and local acceptance setup. Providers retain their own builder; blueprints need no build step.
 
-Provider builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
+Provider builds need Python 3.9+, the Go version in `providers/releases.json`, and the pinned Inframill SDK checkout
 (default `../inframill` beside this repository). Image assembly needs Docker Buildx
 with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
-prebuilt engine binaries in `../inframill/dist/0.21.0-dev/`. It does not need provider
+prebuilt engine binaries in `../inframill/dist/<engine-version>/`. It does not need provider
 sources or the SDK checkout. Set `PROVIDERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
 other prebuilt artifact locations.
 

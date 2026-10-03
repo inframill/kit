@@ -5,8 +5,7 @@
 `inframill server start` starts the daemon; `inframill server version` queries its
 version. Resource commands are top-level: `inframill namespace`, `instance`,
 `blueprint`, `secret`, `registry`, `execution` and `provider`. They send requests
-to the daemon. The former `inframill server RESOURCE ...` paths are no longer
-supported. Shell completion uses `inframill completion`; `inframill debug provider`
+to the daemon. Shell completion uses `inframill completion`; `inframill debug provider`
 runs the offline debug provider protocol. Each Kit provider is a separate versioned executable.
 
 Only server startup accepts `--config` (default `.inframill.yaml`). Relative data, local blueprint search
@@ -131,7 +130,7 @@ use `namespace create -- -Team-` and `--namespace=-Team-` in scoped CLI commands
 Instance names and Provider/command identifiers use the same character grammar;
 instance and execution IDs remain ULIDs. Blueprint inputs have separate schema rules.
 Namespace RPC create/get/delete bodies and metadata use `id`, for example
-`{"id":"production"}`. In 0.20, stored namespace records and deletion journals also
+`{"id":"production"}`. Stored namespace records and deletion journals also
 use `id`; old `name` records reject without migration. Preserve old data and use a
 fresh data directory or volume when upgrading.
 
@@ -149,8 +148,8 @@ run the appropriate provider destroy commands before deleting storage you still
 need to manage. Recreating a deleted namespace starts empty.
 
 The current `ulid-v1` storage layout rejects older UUID records and journals
-without modification or migration. When upgrading from 0.15 or earlier, preserve
-the old data and start with a fresh data directory or volume.
+without modification or migration. Preserve old data and start with a fresh data
+directory or volume when upgrading from those formats.
 
 ## Namespace registry credentials
 

@@ -1,203 +1,122 @@
-# Building and publishing releases
+# Releasing Kit
 
-## Build inputs
+## Prepare, build and verify
 
-The repository separates providers and local blueprint sources:
+Build the desired Inframill release in its checkout first. Kit consumes that
+checkout's `VERSION`, Git revision and prebuilt binaries; it never pulls upstream
+or changes the upstream version as part of a Kit release.
 
-- [`providers/`](../providers/README.md) builds one executable per provider version for
-  Linux AMD64 and ARM64. Source, metadata, the Python builder and tests live there.
-- [`blueprints/`](../blueprints/README.md) contains local source directories fetched
-  directly by the daemon, without packaging or publication.
-
-The root project assembles the Kit image from prebuilt artifacts. It never compiles
-or rebuilds a provider. Prepare inputs explicitly:
+From Kit, after the one-time `task setup` for native test tools:
 
 ```sh
-task providers:test
-task providers:build
-task release:check
-task bundle
+task release
 ```
 
-`task build` aliases `task bundle`. Both require complete artifacts for each image
-selection at `providers/dist/<name>/<version>/linux/<arch>/`. Build records include
-binary and source checksums, the platform and the exact Inframill SDK pin. Image
-assembly rejects missing artifacts, mismatched architecture, tampering, incompatible
-engine pins and tool requirements. Provider sources and the SDK checkout are not
-inputs to image assembly.
+This prepares release metadata, refreshes Linux AMD64/ARM64 and native providers,
+builds the Kit image and runs `check-full`. Docker must be running. Provider outputs
+that no longer match their sources or SDK pin are rebuilt; previous outputs are
+preserved in `.previous-*` directories beside the replaced platform directory.
+Unchanged provider outputs are reused. Failed provider builds preserve the previous output.
 
-Prebuilt Inframill binaries must also exist in the pinned release layout. The
-Dockerfile installs checksum-pinned OpenTofu and version-pinned Python/Ansible dependencies and
-copies `runtime/inframill.yaml` unchanged. Provider paths in that configuration are
-`/opt/inframill/providers/<name>/<version>/provider`.
+The Kit version defaults to the sibling Inframill `VERSION`. For an independent
+Kit patch or prerelease on the same major/minor line:
 
-| Setting | Purpose | Default |
-| --- | --- | --- |
-| `PROVIDERS_DIST_DIR` | Prebuilt provider input directory | `providers/dist` |
-| `INFRAMILL_DIST_DIR` | Prebuilt engine input directory | `../inframill/dist` |
-| `KIT_DIST_DIR` | Image output directory | `dist` |
-| `REGISTRY` | Publication registry | `ghcr.io` |
-| `NAMESPACE` | Publication namespace | `inframill` |
+```sh
+task release -- --version 0.21.1-dev
+```
 
-The image output is `KIT_DIST_DIR/bundles/<VERSION>/`. Existing image outputs are
-immutable; explicitly move or remove unpublished development output before a
-changed rebuild. The provider builder has its own `--dist` option.
+To prepare only the metadata for review, without building or publishing:
+
+```sh
+task release:prepare
+# Or: task release:prepare -- --version 0.21.1-dev
+```
+
+Preparation updates only these release records:
+
+- `VERSION`: the selected Kit/image version.
+- `releases/<version>.lock.json`: engine revision, four binary checksums, provider
+  selections and Linux image platforms.
+- `providers/releases.json`: the matching Inframill SDK version and revision.
+
+Provider selections come from `providers/releases.json`. The upstream checkout
+must have clean build inputs and all four macOS/Linux AMD64/ARM64 release binaries.
+Preparation validates architectures and the native engine version before writing.
+Existing release locks are immutable: identical inputs are safe to prepare again;
+changed inputs require a new Kit version. Historical locks remain release records.
+
+Routine engine releases need no README, blueprint or provider implementation version
+edits. API or tool changes can still require code/configuration updates and tests.
+The Go compiler pin remains explicit in `providers/releases.json`.
 
 ## Publish
 
+Review the generated metadata and successful checks, then publish explicitly:
+
 ```sh
-docker login ghcr.io -u YOUR_GITHUB_USERNAME
+docker login ghcr.io
 task bundle:push
 ```
 
-This publishes the existing image to `REGISTRY/NAMESPACE/kit:<VERSION>`. Image
-publication verifies the local OCI graph and image lock and rejects a remote tag
-pointing to different content. It loads the verified OCI artifact into Docker and
-uses `docker push`. Configure credentials and any insecure local registries in
-Docker yourself; the script never logs in or creates registries. Image builds
-never publish automatically.
-
-After publication, verify the immutable image reference:
+This publishes the existing image to `REGISTRY/NAMESPACE/kit:<VERSION>`. Publication
+verifies its OCI graph and release lock, uses `docker push`, and rejects a remote tag
+pointing to different content. The builder never logs in or publishes automatically.
+Verify a published image by its immutable reference:
 
 ```sh
 task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ```
 
-Kit image pulls use Docker credentials.
+An existing `dist/bundles/<VERSION>/` is immutable. Resume with checks or push after a
+successful build; choose a new version for changed published content. If discarding
+an unpublished build, move it aside explicitly before rebuilding.
 
-Blueprints have no release or publication workflow. Configure
-`engine.localBlueprintPaths`, edit sources under `blueprints/`, then fetch
-`local:pv-cloud` or `local:hello-world`. See the [local workflow](../blueprints/README.md).
+## Build inputs
 
-## Version policy
+Root image assembly consumes prebuilt providers and engines. It does not compile
+providers or read the SDK checkout. Provider records contain source/binary checksums,
+platforms, tool requirements and the exact SDK pin; incompatible or corrupt inputs reject.
 
-The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
-its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.21.0-dev`, with OpenTofu and Ansible
-providers `0.3.0`. Provider versions are independent of the image; local blueprints are identified by name and content digest.
+| Setting | Purpose | Default |
+| --- | --- | --- |
+| `INFRAMILL_SOURCE` | Clean checkout for preparation and provider builds | `../inframill` |
+| `INFRAMILL_DIST_DIR` | Prebuilt engine binaries | `../inframill/dist` |
+| `PROVIDERS_DIST_DIR` | Prebuilt provider inputs for image assembly | `providers/dist` |
+| `KIT_DIST_DIR` | Image output directory | `dist` |
+| `REGISTRY` | Publication registry | `ghcr.io` |
+| `NAMESPACE` | Publication namespace | `inframill` |
 
-The 0.10 engine introduces explicit namespaces and namespace-owned storage.
-Shared-root data from 0.9 is unsupported, with no automatic migration; preserve
-the old data and select a fresh volume or directory. Namespace support does not
-change Blueprint or provider formats.
+For a non-default checkout, set both `INFRAMILL_SOURCE` and `INFRAMILL_DIST_DIR`.
+The full `task release` workflow writes providers to `PROVIDERS_DIST_DIR` and uses
+those same outputs for image assembly. Standalone provider builds accept `--dist`.
 
-The 0.11 engine adds all-namespace blueprint and credential metadata lists when
-`--namespace` is omitted. Secret and registry lists now accept `--namespace NAME`
-instead of a positional namespace and return namespace-qualified records in JSON.
-Storage and mutation scopes remain unchanged from 0.10.
+Individual steps remain available:
 
-The 0.12 CLI moves resource commands directly under `inframill`, for example
-`inframill instance list` and `inframill blueprint fetch`. Update scripts that use
-`inframill server RESOURCE ...`; those routes have no compatibility aliases.
-`server start`, `server version` and `other` utilities keep their existing paths.
-RPC APIs, storage and provider contracts are unchanged by this CLI rearrangement.
+```sh
+task release:prepare
+task providers:build -- --refresh
+task providers:build -- --native --refresh
+task inframill:copy
+task check-fast
+task bundle
+task check-full
+```
 
-The 0.13 CLI uses `get` for resource inspection and `blueprint resolve` for ready-only
-resolution. Execution commands move from `command execution` to `execution` and use
-`--instance UUID_OR_NAMESPACE/NAME`; `execution logs ID` replaces stdout/stderr verbs
-and supports `--stream` and `--follow`. Credential replace/clear require `--namespace`.
-Completion moves to `completion`, and the offline debug provider to `debug provider`.
-Old paths and flags have no compatibility aliases. Instance and execution lists
-support `--all`; command discovery can be scoped with `--instance`. The corresponding
-`ListCommandDefinitions` RPC adds an optional `instance_id`; the Go method now takes
-a `CommandDefinitionQuery`. Storage, blueprint format and Runmill protocol are
-unchanged from 0.12, so the providers and pv-cloud remain at `0.3.0`.
+## Ownership of version pins
 
-The 0.14 CLI replaces `command list/get` with `provider commands [NAME]`, with no
-compatibility aliases or `--instance` scope. Discovery lists cached commands from
-all available providers and excludes built-in operations; use `instance delete`
-for deletion. `ListCommandDefinitions` now takes an empty RPC request, with its
-former `instance_id` field reserved; the Go method takes only the context.
-The engine also fixes namespace lifecycle and credential cleanup consistency.
-Storage, blueprint format and Runmill protocol remain compatible, so the providers
-and pv-cloud remain at `0.3.0`.
+`VERSION` selects one self-contained image lock. Kit and its engine share major/minor;
+patches and prereleases can differ. Environment variables never override `VERSION`.
+Normal build/push commands do not infer versions from Git or modify release metadata.
 
-The 0.15 engine makes namespace deletion asynchronous: deletion requests persist
-across restarts, reject new work and allow admitted operations to finish. The
-default cleanup worker removes idle flagged namespaces and retries failures.
-Namespace lists expose `active`, `deleting` and `failed` status. Provider and
-blueprint contracts are unchanged, so providers and pv-cloud remain at `0.3.0`.
+Provider versions change independently. See [provider versioning](../providers/README.md#add-a-version)
+when changing provider implementations. Local blueprints have no release manifest;
+edit sources and fetch `local:pv-cloud` or `local:hello-world` again.
 
-The 0.16 engine requires `X-Namespace-ID` on every namespace-owned RPC and
-`--namespace` on the corresponding CLI commands, including lists and ID lookups.
-Instance names are local to the selected namespace; qualified names and
-all-namespace resource queries are removed. Scoped responses omit namespace
-identities. Instance and execution IDs are canonical uppercase ULIDs; old UUID
-storage is rejected without migration, so upgrades require a fresh data directory.
-Kit updates saved-plan and node-artifact validation to the ULID contract.
+[`runtime/Dockerfile`](../runtime/Dockerfile) owns tool, base image, Debian and Python
+dependency pins. Tool changes also need matching provider `release.json` requirements
+and paths in `runtime/inframill.yaml`. `task setup` reads these same tool pins.
 
-The 0.17 engine adds `GetNamespace` and `namespace get NAME`, returning the name
-and lifecycle status without acquiring resource scope. Namespace administration
-and provider discovery reject namespace headers/flags. Provider protocol and
-blueprint bindings remain unchanged; their current development versions remain
-`0.3.0`. Rebuild providers against the new SDK pin before assembling this image.
-
-The 0.18 engine exposes a ready Blueprint's Values schema through the
-`GetBlueprint` RPC and `blueprint resolve` CLI output. `blueprint get` remains
-a metadata inspection command. Storage, Blueprint source format and provider
-protocol are unchanged; providers and pv-cloud remain at `0.3.0`. Rebuild
-providers against the new SDK pin before assembling this image.
-
-The 0.19 engine adds optional top-level `features` identifiers to Blueprint
-definitions and exposes them through catalogue RPC metadata and CLI details/list
-output. Identifiers are unique lowercase snake_case strings of 1–64 characters;
-metadata returns them sorted. Omission or `[]` declares no capabilities. Existing
-Blueprint sources remain valid without changes, and provider protocol is unchanged;
-providers and pv-cloud remain at `0.3.0`, and hello-world remains at `0.1.0`.
-Rebuild providers against the new SDK pin before assembling this image.
-
-The 0.20 engine renames namespace request, response and stored metadata fields from
-`name` to `id`. Namespace administration uses `namespace create/get/delete ID` and
-RPC bodies such as `{"id":"production"}`. Namespace IDs, Instance names, Provider
-IDs/names and local command names accept `[a-zA-Z0-9-]+`, preserving case. Instance
-and execution IDs remain ULIDs; blueprint Values keep their own schema rules.
-Existing namespace metadata and deletion journals containing `name` are rejected
-without migration or modification. Preserve existing data and select a fresh data
-directory or volume for this release.
-
-`instance exec --stream` submits once, follows stdout and stderr, drains final
-output and exits according to the execution outcome. It uses the existing unary
-RPCs and implies waiting. Stopping the client leaves admitted work running.
-Provider protocol and Blueprint source format are unchanged. Provider and Blueprint
-versions remain independent; rebuild providers using the updated SDK pin.
-
-The 0.21 engine adds `engine.localBlueprintPaths` and `local:NAME` fetches.
-Kit now uses local sources for pv-cloud and hello-world, with no blueprint packaging
-or publication. Docker development mounts the source directory read-only. Re-fetch
-after editing and initialize a new Instance; existing snapshots remain unchanged.
-Provider versions stay at `0.3.0`; rebuild against the updated SDK pin.
-
-Inframill 0.21.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
-major.minor `version` string and a nested `settings` object. `templates/` must
-contain exactly one directory per configured ID, and the engine passes that
-individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
-pv-cloud is a local source directory. Only the current development contract is supported.
-
-The image lock selects provider **names and versions**, engine binaries/checksums,
-and image platforms. [`runtime/Dockerfile`](../runtime/Dockerfile) owns the base
-image digest, Debian snapshot, build timestamp, OpenTofu checksums, and Ansible
-and Python dependency versions. Provider metadata
-lives in each version's `release.json`; `providers/releases.json` selects versions
-and pins their compiler and SDK dependency. Local blueprints have no release manifest.
-
-To add a provider version, follow the [provider instructions](../providers/README.md#add-a-version),
-then separately select it in the image lock and update `runtime/inframill.yaml`.
-To add a blueprint, add a directory containing `blueprint.yaml` and `templates/` under `blueprints/`.
-To add an image release, update `VERSION` and add its image lock. Exact versions
-are required; changed published bytes require a new tag, including development tags.
-
-`VERSION`, `KIT_VERSION` and `BUNDLE_VERSION` environment variables do not override
-the root file. Builds do not infer versions from Git or change release metadata.
-
-Update tool pins in `runtime/Dockerfile`, along with the provider's `tool_version`
-and paths in `runtime/inframill.yaml` when needed. Image assembly checks the
-provider's required tool version against the Dockerfile before building. Native
-`task setup` reads the same Dockerfile defaults. The runtime helper installs
-OpenTofu and downloads matching source archives; the Dockerfile installs Ansible
-and its explicitly versioned dependencies with pip and runs `pip check`.
-
-The selected release lock ships at `/usr/share/inframill/bundle.lock.json`.
-Pip records installed package versions and download hashes in
-`/usr/share/inframill/python-packages.json`; matching source archives and their
-checksums are recorded under `/usr/share/inframill/sources/`. These records are
-build outputs, not release-lock inputs.
+The image carries its lock at `/usr/share/inframill/bundle.lock.json`, provider build
+records and source/license notices. Python package versions/download hashes live in
+`/usr/share/inframill/python-packages.json`; matching source archives and checksums
+live in `/usr/share/inframill/sources/`.

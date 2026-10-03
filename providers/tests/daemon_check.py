@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 
-from blueprints.tests.integration import protocol_fixture, local_paths, fixture_reference
+from blueprint_workflows import protocol_fixture, local_paths, LOCAL_REFERENCE
 from build import ROOT, configuration, local_tools, bundle_lock, providers_dist, native_platform
 
 
@@ -128,7 +128,7 @@ def daemon_check(tmp, env):
     try:
         start()
         assert rpc('ListNamespaces').get('namespaces', []) == []
-        reference = fixture_reference('0.1.0')
+        reference = LOCAL_REFERENCE
         rejected('InitInstance', {'name': 'local', 'blueprint_reference': reference,
                                  'values': {'json': '{}'}}, 'not_found', namespace='missing')
         rejected('FetchBlueprint', {'reference': reference}, 'not_found', namespace='missing')
@@ -142,7 +142,7 @@ def daemon_check(tmp, env):
         assert statuses['opentofu'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['ansible'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['unavailable'] == 'PROVIDER_AVAILABILITY_UNAVAILABLE', statuses
-        iid = initialize('acceptance', 'local', fixture_reference('0.1.0'), {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
+        iid = initialize('acceptance', 'local', LOCAL_REFERENCE, {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
         run(iid, 'opentofu.init')
         plan = run(iid, 'opentofu.plan')
         run(iid, 'opentofu.apply', {'plan_id': plan['plan_id']})

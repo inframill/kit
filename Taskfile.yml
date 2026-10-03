@@ -30,6 +30,7 @@ tasks:
           'Run:       task docker:up' \
           'Stop:      task docker:down' \
           'Publish:   docker login ghcr.io && task bundle:push' \
+          'Release:   task release (prepare metadata, build and check; then bundle:push)' \
           'Blueprint: inframill blueprint fetch local:pv-cloud --namespace production' \
           '' \
           'Versions: root VERSION file=Kit/image; blueprints are local source directories;' \
@@ -101,7 +102,7 @@ tasks:
     desc: Run image tooling and provider tests and validate release versions
     cmds:
       - python3 build.py test
-      - task: providers:test
+      - python3 providers/build.py test
       - task: release:check
   check-full:
     desc: Run fast checks, native workflows and both Linux images in a disposable registry
@@ -116,6 +117,26 @@ tasks:
   release:check:
     desc: Validate the selected image release and provider selections
     cmds: ['python3 build.py validate']
+  release:prepare:
+    desc: Generate VERSION, image lock and SDK pin from the sibling Inframill release
+    summary: |
+      Requires a clean Inframill checkout and its four prebuilt release binaries.
+      Defaults Kit's version to Inframill VERSION; override with -- --version X.Y.Z.
+      Refuses to replace an existing lock with different inputs. Does not pull or publish.
+    cmds: ['python3 build.py prepare-release {{.CLI_ARGS}}']
+  release:
+    desc: Prepare release metadata, refresh providers, build the image and run full checks
+    summary: |
+      First build the new release in ../inframill and run task setup once in Kit.
+      Requires Docker. Updates release metadata, rebuilds stale provider outputs with
+      backups, builds the image and runs check-full. Publish with task bundle:push.
+    cmds:
+      - task: release:prepare
+        vars: {CLI_ARGS: '{{.CLI_ARGS}}'}
+      - python3 providers/build.py build --refresh --dist "$PROVIDERS_DIST_DIR"
+      - python3 providers/build.py build --native --refresh --dist "$PROVIDERS_DIST_DIR"
+      - task: build
+      - task: check-full
   # The bundle is the Kit image: engine, providers and pinned tools for both platforms.
   build:
     aliases: [bundle]

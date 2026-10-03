@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parent
 LINUX = ['linux/amd64', 'linux/arm64']
@@ -135,13 +136,18 @@ def verify_output(folder, release, target, config=None, sources=None):
     return record
 
 
-def build(root, dist, release, target, config, source, modfile):
+def build(root, dist, release, target, config, source, modfile, refresh=False):
     sources = source_files(root, release)
     output = dist / release['name'] / release['version'] / target
     if output.exists():
-        verify_output(output, release, target, config, sources)
-        print('Already built:', output)
-        return
+        try:
+            verify_output(output, release, target, config, sources)
+        except (ValueError, OSError, KeyError):
+            if not refresh:
+                raise
+        else:
+            print('Already built:', output)
+            return
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.provider-', dir=output.parent) as td:
         stage = Path(td)
@@ -182,7 +188,18 @@ def build(root, dist, release, target, config, source, modfile):
                   'source_files': sources,
                   'files': {str(p.relative_to(stage)): sha256(p.read_bytes()) for p in sorted(stage.rglob('*')) if p.is_file()}}
         (stage / 'build.json').write_text(json.dumps(record, indent=2) + '\n')
-        stage.rename(output)
+        backup = None
+        if output.exists():
+            backup = output.with_name('.previous-' + output.name + '-' + str(time.time_ns()))
+            output.rename(backup)
+        try:
+            stage.rename(output)
+        except OSError:
+            if backup is not None:
+                backup.rename(output)
+            raise
+        if backup is not None:
+            print('Previous output saved:', backup)
     print('Built:', output)
 
 
@@ -194,6 +211,7 @@ def main(argv=None):
     parser.add_argument('--dist', type=Path, default=ROOT / 'dist')
     parser.add_argument('--platform', action='append', choices=PLATFORMS)
     parser.add_argument('--native', action='store_true', help='select the host platform instead of both Linux architectures')
+    parser.add_argument('--refresh', action='store_true', help='rebuild stale outputs, preserving previous artifacts')
     parser.add_argument('--inframill-source', type=Path,
                         default=Path(os.environ.get('INFRAMILL_SOURCE', ROOT.parent.parent / 'inframill')))
     args = parser.parse_args(argv)
@@ -232,7 +250,7 @@ def main(argv=None):
         else:
             for release in selected:
                 for target in targets:
-                    build(ROOT, dist, release, target, config, source, modfile)
+                    build(ROOT, dist, release, target, config, source, modfile, refresh=args.refresh)
 
 
 if __name__ == '__main__':

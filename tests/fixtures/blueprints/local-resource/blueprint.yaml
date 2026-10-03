@@ -1,6 +1,6 @@
 {
   "api_version": "inframill.dev/blueprint/v1",
-  "description": "local-resource 0.1.0",
+  "description": "Local provider workflow fixture",
   "values_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",

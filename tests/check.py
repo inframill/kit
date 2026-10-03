@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -11,11 +12,11 @@ import tempfile
 import urllib.error
 import uuid
 
-# Make the sibling blueprint test package available when invoked as a script.
+# Make the Kit build and provider helpers available when invoked as a script.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from blueprints.tests.integration import (BLUEPRINTS, fixture_cases, registry_image,
-                                          local_paths, fixture_reference, local_flow,
+from blueprint_workflows import (BLUEPRINTS,
+                                          local_paths, LOCAL_REFERENCE, local_flow,
                                           pv_flow, hello_world_flow)
 from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
@@ -50,6 +51,13 @@ def engine(tmp, env=None, data=None, debug_only=False, paths=None):
                                {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
     config['engine']['localBlueprintPaths'] = local_paths() if paths is None else paths
     return Engine(tmp, config, ROOT / 'bin/inframill', env)
+
+
+def registry_image():
+    image = json.loads((ROOT / 'tests/fixtures/registry.json').read_text())['image']
+    if not re.fullmatch(r'.+@sha256:[0-9a-f]{64}', image):
+        raise ValueError('Registry image must be digest pinned')
+    return image
 
 
 @contextlib.contextmanager
@@ -91,29 +99,29 @@ def registry():
         run(['docker', 'network', 'rm', name], stdout=subprocess.DEVNULL)
 
 
-def registry_env(tmp, address, push_address):
+def registry_env(tmp, push_address):
     return {**os.environ, 'KIT_DIST_DIR': str(tmp / 'dist'), 'REGISTRY': push_address,
-            'NAMESPACE': 'inframill', 'INFRAMILL_HTTP_REGISTRIES': address}
+            'NAMESPACE': 'inframill'}
 
 
-def blueprint_check(name, version=None):
-    if name not in ('pv-cloud', 'hello-world', 'local-resource') or (name == 'local-resource' and version not in ('0.1.0', '0.2.0')):
-        raise RuntimeError('No declared integration fixture for this blueprint version')
+def blueprint_check(name):
+    if name not in ('pv-cloud', 'hello-world', 'local-resource'):
+        raise RuntimeError('Unknown local blueprint')
     with tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
-        reference = fixture_reference(version) if name == 'local-resource' else 'local:' + name
+        reference = 'local:' + name
         with engine(tmp / 'engine', debug_only=name == 'hello-world') as client:
             client.create_namespace('test')
             if name == 'hello-world':
                 hello_world_flow(client, reference)
             elif name == 'local-resource':
-                local_flow(client, version, reference)
+                local_flow(client, reference)
             else:
                 pv_flow(client, reference, tools()[0])
 
 
 def cache_check(tmp, env):
-    reference = fixture_reference('0.1.0')
+    reference = LOCAL_REFERENCE
     data = tmp / 'fresh-data'
     with engine(tmp / 'fetch', env, data) as client:
         client.create_namespace('test')
@@ -126,10 +134,10 @@ def cache_check(tmp, env):
         assert client.rpc('ListBlueprints', namespace='sibling').get('blueprints', []) == []
         sibling = client.fetch(reference, 'sibling')
         assert 'namespace' not in sibling, sibling
-    offline = {**env, 'INFRAMILL_HTTP_REGISTRIES': ''}
+    offline = env
     with engine(tmp / 'offline', offline, data, paths=[]) as client:
         # Explicit init never fetches; local source access is disabled in this daemon.
-        local_flow(client, '0.1.0', reference, 'test/offline', fetch=False)
+        local_flow(client, reference, 'test/offline', fetch=False)
     cached_schema = next((data / 'test/blueprints').rglob('blueprint.yaml'))
     cached_schema.write_bytes(cached_schema.read_bytes() + b'\n')
     before = set((data / 'test/instances').iterdir())
@@ -205,10 +213,9 @@ def native_checks(tmp, env):
         client.create_namespace('test')
         hello_world_flow(client, 'local:hello-world')
     with engine(tmp / 'workflows', env) as client:
-        query_check(client, fixture_reference('0.1.0'), native_platform().split('/')[1])
+        query_check(client, LOCAL_REFERENCE, native_platform().split('/')[1])
         client.create_namespace('test')
-        for case in fixture_cases():
-            local_flow(client, case['version'], fixture_reference(case['version']))
+        local_flow(client)
         pv_flow(client, 'local:pv-cloud', tools()[0])
     daemon_check(tmp, env)
     cache_check(tmp, env)
@@ -219,7 +226,7 @@ def registry_check():
         tmp = pathlib.Path(td)
         native_checks(tmp, os.environ.copy())
         with registry() as (address, network, push_address):
-            container_checks(tmp, network, registry_env(tmp, address, push_address))
+            container_checks(tmp, network, registry_env(tmp, push_address))
 
 
 def main():
@@ -230,7 +237,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='kit-native-') as td:
             native_checks(pathlib.Path(td), os.environ.copy())
     elif action == 'blueprint:check':
-        blueprint_check(os.environ['BLUEPRINT'], os.environ.get('BLUEPRINT_VERSION', '0.1.0'))
+        blueprint_check(os.environ['BLUEPRINT'])
     else:
         raise RuntimeError('Unknown check')
 

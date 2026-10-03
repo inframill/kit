@@ -22,7 +22,7 @@ providers/
 
 ## Requirements
 
-Use Python 3.9 or newer, Go 1.27.0 and Git. The Python script uses only the standard
+Use Python 3.9 or newer, the Go version pinned in `releases.json` and Git. The Python script uses only the standard
 library; no virtual environment or Python dependencies are required. Docker is
 not needed to build or test providers.
 
@@ -97,6 +97,14 @@ to exercise real tools, blueprints and both container architectures. Those check
 require the parent image and development prerequisites; standalone provider tests
 do not depend on the parent project.
 
+## Refresh for a Kit release
+
+From the Kit root, `task release` prepares the SDK pin and refreshes stale provider
+outputs automatically. For an individual build, use `task build -- --refresh` here.
+Matching outputs are reused. A stale output is replaced only after a successful
+build, and its previous contents are saved beside it under `.previous-*`.
+The normal build command continues to reject mismatched existing artifacts.
+
 ## Add a version
 
 1. Create `roots/<name>/<version>/` with its implementation, tests, `release.json` and
@@ -116,7 +124,7 @@ input directory for image assembly.
 
 ## Provider workspaces
 
-Inframill 0.21.0-dev passes each provider its `workspace/<configured-id>/` directory.
+Inframill passes each provider its `workspace/<configured-id>/` directory.
 Providers use that supplied directory directly for settings, tools, playbooks and
 roles. Kit configures IDs `opentofu` and `ansible`, so Blueprint sources belong
 under `templates/opentofu/` and `templates/ansible/`. Configured aliases work when

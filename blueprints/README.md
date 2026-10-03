@@ -1,6 +1,6 @@
 # Local blueprints
 
-`pv-cloud` and `hello-world` are local source directories for Inframill **0.21.0-dev**.
+`pv-cloud` and `hello-world` are local source directories for the pinned Inframill release.
 Each contains `blueprint.yaml` and `templates/`. Edit these files directly; there
 is no build, packaging, release manifest or publication step.
 
@@ -54,7 +54,7 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 `local:pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.3.0`.
 Enable their definitions from `runtime/inframill.yaml` when using the repository's
 debug-only configuration. [Example Values](examples/pv-cloud.json) demonstrate
-mixed AMD64/ARM64 nodes. Single-architecture examples live in `tests/fixtures/examples/`.
+mixed AMD64/ARM64 nodes. Single-architecture examples live in `../tests/fixtures/blueprints/examples/`.
 
 ```sh
 inframill namespace create production
@@ -95,11 +95,3 @@ They create no cloud resources and require no blueprint registry. `task check-fu
 also exercises local fixtures through both Linux runtime images; its disposable
 registry is used only to verify Kit image publication.
 
-Optional source tests validate schemas, example Values and provider template
-directories. Run them directly from the Kit root:
-
-```sh
-python3 -m venv blueprints/.venv
-blueprints/.venv/bin/python -m pip install -r blueprints/requirements.txt
-blueprints/.venv/bin/python -m unittest discover -s blueprints/tests -p 'test_*.py'
-```
