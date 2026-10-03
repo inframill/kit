@@ -5,4 +5,5 @@
 *.pyc
 __pycache__/
 .idea
-/registries.json
+registries.json
+secrets.json
