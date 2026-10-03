@@ -33,6 +33,22 @@ class BuildTests(unittest.TestCase):
         entry['source_sha256'] = build.digest(build.archive(build.source_path(self.root, entry))[0])
         return entry
 
+    def test_provider_identifiers_follow_engine_020_grammar(self):
+        manifest = self.root / 'releases.json'
+        config = json.loads(manifest.read_text())
+        for valid in ['OpenTofu', '-Provider-', '123', 'a-b']:
+            provider = config['blueprints'][0]['providers'][0]
+            provider.update(id=valid, name=valid)
+            manifest.write_text(json.dumps(config))
+            self.assertEqual(build.releases(manifest)[0]['providers'][0]['id'], valid)
+        for field in ['id', 'name']:
+            for invalid in ['', 'has_under', 'a/b', 'with space', 'é']:
+                provider.update(id='tofu', name='opentofu')
+                provider[field] = invalid
+                manifest.write_text(json.dumps(config))
+                with self.subTest(field=field, invalid=invalid), self.assertRaisesRegex(ValueError, 'invalid provider'):
+                    build.releases(manifest)
+
     def test_build_from_detached_project_and_unrelated_working_directory(self):
         shutil.copy(build.ROOT / 'build.py', self.root)
         # The detached script still uses only its project files and the Docker CLI.

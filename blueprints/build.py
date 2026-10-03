@@ -20,6 +20,7 @@ ARTIFACT = 'application/vnd.inframill.blueprint.v1'
 LAYER = 'application/vnd.inframill.blueprint.layer.v1.tar+gzip'
 EMPTY = 'application/vnd.oci.empty.v1+json'
 NAME = r'[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*'
+PROVIDER_ID = r'[a-zA-Z0-9-]+'
 PRERELEASE = r'(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
 VERSION = r'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-' + PRERELEASE + r'(?:\.' + PRERELEASE + r')*)?'
 DIGEST = r'sha256:[0-9a-f]{64}'
@@ -71,8 +72,8 @@ def releases(path):
         providers = entry['providers']
         require(providers and len({d['id'] for d in providers}) == len(providers), 'invalid or duplicate providers')
         for provider in providers:
-            require(re.fullmatch(NAME, provider['id']) and provider['id'] != 'builtin' and
-                    re.fullmatch(NAME, provider['name']) and re.fullmatch(VERSION, provider['version']),
+            require(re.fullmatch(PROVIDER_ID, provider['id']) and provider['id'] != 'builtin' and
+                    re.fullmatch(PROVIDER_ID, provider['name']) and re.fullmatch(VERSION, provider['version']),
                     'invalid provider requirement')
     return entries
 
