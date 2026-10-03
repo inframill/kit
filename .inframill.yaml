@@ -16,6 +16,8 @@ logger:
 
 engine:
   dataDir: /var/lib/inframill
+  localBlueprintPaths:
+    - /opt/inframill/blueprints
   providers:
     debug:
       path: /usr/local/bin/inframill

@@ -9,7 +9,7 @@ to the daemon. The former `inframill server RESOURCE ...` paths are no longer
 supported. Shell completion uses `inframill completion`; `inframill debug provider`
 runs the offline debug provider protocol. Each Kit provider is a separate versioned executable.
 
-Only server startup accepts `--config` (default `.inframill.yaml`). Relative data
+Only server startup accepts `--config` (default `.inframill.yaml`). Relative data, local blueprint search
 and provider paths resolve beside that file. The `connect-engine` handler accepts
 no settings; its route is fixed. Resource requests and `server version` accept `--endpoint` and `--timeout`,
 falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
@@ -25,7 +25,7 @@ Restart the daemon after changing its provider configuration.
 
 ## Running a deployment
 
-Run these commands from the repository root. `blueprints/examples/pv-cloud-0.3.0.json`
+Run these commands from the repository root. `blueprints/examples/pv-cloud.json`
 contains plain Values JSON with both AMD64 and ARM64 nodes. The same Blueprint
 supports either architecture or a mix, selected per node. Generate configuration using
 the installed local tools and `task providers:build -- --native` outputs, then start the daemon:
@@ -37,21 +37,22 @@ ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
 bin/inframill server start --config /tmp/kit-config.json
 ```
 
-In another terminal, create a namespace, fetch a published blueprint and initialize an Instance.
+In another terminal, create a namespace, fetch a local blueprint and initialize an Instance.
 Initialization validates Values and renders files without executing a provider:
 
 ```sh
 bin/inframill namespace create production
-bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
+bin/inframill blueprint fetch local:pv-cloud \
   --namespace production
 bin/inframill instance init example --namespace production \
-  --blueprint ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
-  --values-file blueprints/examples/pv-cloud-0.3.0.json
+  --blueprint local:pv-cloud \
+  --values-file blueprints/examples/pv-cloud.json
 bin/inframill secret replace --namespace production --file /private/path/secrets.json
 bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
-Use your published tag or digest reference. Commands such as init/plan/apply contact
+The generated configuration allows the local `blueprints/` directory. Re-fetch after
+editing source files and initialize a new Instance to use the new snapshot. Commands such as init/plan/apply contact
 real services and require your chosen credentials and infrastructure inputs.
 Use `--arguments-file` for execution arguments, `--wait` to wait for an outcome and
 `-o json` for structured output. A failed command has a failed outcome; cancelling
@@ -68,10 +69,12 @@ bin/inframill instance exec example --namespace production opentofu.init --strea
 It rejects JSON output and `builtin.delete`. Stopping the CLI leaves admitted work
 running and prints continuation commands with independent log offsets.
 
-Blueprints are fetched through OCI. To check unpublished sources, run
-`BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check`: it packages them into a disposable local
-registry, starts a daemon, renders examples, checks Ansible syntax and runs OpenTofu
-provider mocks. Docker and the installed local tools are required.
+To check local sources, run
+`BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check`: it starts a disposable
+daemon, fetches the source directory, renders examples, checks Ansible syntax and
+runs OpenTofu provider mocks. The installed local tools are required; no blueprint
+registry is involved. For Docker development, `task docker:up` mounts `blueprints/`
+at the configured `/opt/inframill/blueprints` path. See [local blueprints](../blueprints/README.md).
 
 Inspect providers, Instances and command history with:
 
@@ -151,13 +154,14 @@ the old data and start with a fresh data directory or volume.
 
 ## Namespace registry credentials
 
-Every blueprint fetch requires `--namespace`, including anonymous pulls. For a
-private package, supply registry credentials to an existing namespace before fetching:
+Every blueprint fetch requires `--namespace`. Local Kit blueprints do not need
+registry credentials. For other private OCI blueprints, supply registry credentials
+to an existing namespace before fetching:
 
 ```sh
 bin/inframill registry replace --namespace production --file /private/path/registries.json
 bin/inframill registry list --namespace production
-bin/inframill blueprint fetch ghcr.io/inframill/blueprints/pv-cloud:0.3.0 \
+bin/inframill blueprint fetch ghcr.io/example/blueprints/custom:1.0.0 \
   --namespace production
 ```
 
@@ -194,7 +198,7 @@ The `InitInstance` RPC requires the HTTP header `X-Namespace-ID: production`
 and accepts these top-level fields:
 
 ```json
-{"name":"example","blueprint_reference":"ghcr.io/inframill/blueprints/pv-cloud:0.3.0","values":{"json":"{}"}}
+{"name":"example","blueprint_reference":"local:pv-cloud","values":{"json":"{}"}}
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before

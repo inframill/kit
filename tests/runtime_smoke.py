@@ -2,7 +2,6 @@
 """Run daemon workflows inside each runtime using disposable built-in resources."""
 import hashlib
 import json
-import os
 import pathlib
 import platform
 import subprocess
@@ -11,12 +10,10 @@ import tempfile
 
 import yaml
 sys.path.insert(0, '/')  # The harness mounts the blueprint subproject at /blueprints.
-from blueprints.tests.integration import runtime_flows
+from blueprints.tests.integration import runtime_flows, local_paths, fixture_reference
 from engine_client import Engine
 from query_check import query_check
 
-registry = os.environ['KIT_TEST_REGISTRY']
-os.environ['INFRAMILL_HTTP_REGISTRIES'] = registry
 arch = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
 lock = json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
 assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest() == lock['inframill']['binaries']['linux/'+arch]['sha256']
@@ -30,9 +27,10 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     tmp = pathlib.Path(td)
     config = yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text())
     config['engine']['dataDir'] = str(tmp / 'data')
+    config['engine']['localBlueprintPaths'] = local_paths()
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
         assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
-        query_check(client, registry + '/inframill/blueprints/local-resource:0.1.0', arch)
+        query_check(client, fixture_reference('0.1.0'), arch)
         tofu = config['engine']['providers']['opentofu']['args'][1]
-        runtime_flows(client, registry, arch, tofu)
+        runtime_flows(client, arch, tofu)
 print('Runtime workflow and provider mocks passed on ' + arch)

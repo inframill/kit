@@ -1,5 +1,5 @@
 api_version: inframill.dev/blueprint/v1
-description: pv-cloud 0.3.0
+description: pv-cloud
 
 values_schema:
   title: pv-cloud Instance

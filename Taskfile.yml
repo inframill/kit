@@ -33,9 +33,9 @@ tasks:
           'Run:       task docker:up' \
           'Stop:      task docker:down' \
           'Publish:   docker login ghcr.io && task bundle:push' \
-          'Blueprint: task blueprints:build' \
+          'Blueprint: inframill blueprint fetch local:pv-cloud --namespace production' \
           '' \
-          'Versions: root VERSION file=Kit/image; blueprints/releases.json=blueprints;' \
+          'Versions: root VERSION file=Kit/image; blueprints are local source directories;' \
           '          providers/releases.json=providers. Kit/image version overrides are ignored.' \
           'Registry: REGISTRY=ghcr.io NAMESPACE=inframill; image repository is /kit.' \
           'Builds stay local. Push tasks upload existing artifacts.' \
@@ -63,7 +63,7 @@ tasks:
     dir: '{{.ROOT_DIR}}'
     summary: |
       Pulls ghcr.io/inframill/kit using the root VERSION file before stopping Inframill.
-      Binds .inframill and .inframill.yaml from the repository root, and publishes
+      Binds .inframill, .inframill.yaml and local blueprints from the repository root; publishes
       port 8080 on loopback. Creates the data directory if needed.
     preconditions:
       - sh: test -f .inframill.yaml
@@ -82,6 +82,7 @@ tasks:
           -p 127.0.0.1:8080:8080 \
           -v "$PWD/.inframill:/var/lib/inframill" \
           -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
+          -v "$PWD/blueprints:/opt/inframill/blueprints:ro" \
           "$image"
 
   docker:down:

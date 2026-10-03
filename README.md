@@ -5,30 +5,27 @@ ready-to-run image for Inframill.
 
 - **[`providers/`](providers/README.md)** builds one executable per provider version and architecture.
 - **`ghcr.io/inframill/kit`** bundles Inframill, the providers, OpenTofu and Ansible.
-- **`ghcr.io/inframill/blueprints/<name>`** contains separately published blueprint packages.
+- **[`blueprints/`](blueprints/README.md)** contains local `pv-cloud` and `hello-world` sources.
 
-The Kit image supports Linux AMD64 and ARM64. Blueprint packages are architecture
+The Kit image supports Linux AMD64 and ARM64. Blueprint sources are architecture
 independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
 ## Current versions
 
 | Component | Version |
 | --- | --- |
-| Kit image | 0.20.0-dev |
-| Inframill engine | 0.20.0-dev |
+| Kit image | 0.21.0-dev |
+| Inframill engine | 0.21.0-dev |
 | OpenTofu provider / tool | 0.3.0 / 1.11.5 |
 | Ansible provider / Ansible Core | 0.3.0 / 2.20.1 |
-| pv-cloud blueprint | 0.3.0 |
-| hello-world blueprint (debug provider) | 0.1.0 |
+| pv-cloud blueprint | Local source |
+| hello-world blueprint (debug provider) | Local source |
 
 Kit and its image follow Inframill's major/minor release line, with independent Kit
 patch releases. The root [`VERSION`](VERSION) file selects the Kit image
 version for builds, pushes and checks. Task arguments and environment values
-cannot override it. Blueprint releases are selected by `blueprints/releases.json`
-and optional `--name` / `--version` flags. Provider releases are selected independently in `providers/releases.json`.
-
-Release descriptors select exact `MAJOR.MINOR.PATCH` versions. Blueprints and
-providers support multiple names and versions, with explicit implementation selection.
+cannot override it. Provider releases are selected independently in
+`providers/releases.json`. Local blueprints are selected by name and content digest.
 
 ## Run with Docker
 
@@ -41,7 +38,7 @@ needed to use the image.
 docker run -d --name inframill --rm \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  ghcr.io/inframill/kit:0.20.0-dev
+  ghcr.io/inframill/kit:0.21.0-dev
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -50,7 +47,7 @@ published on loopback because the engine has no built-in authentication; remote
 access requires an authenticated gateway or private tunnel.
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
-With the Inframill 0.20.0-dev CLI installed locally, query the running server with:
+With the Inframill 0.21.0-dev CLI installed locally, query the running server with:
 
 ```sh
 inframill server version --endpoint http://localhost:8080
@@ -73,6 +70,7 @@ daemon to probe providers again.
 | Container path | Purpose |
 | --- | --- |
 | `/etc/inframill/inframill.yaml` | Default configuration; replace with a read-only file mount |
+| `/opt/inframill/blueprints` | Optional read-only mount for local blueprint sources |
 | `/var/lib/inframill` | Persistent blueprint cache, Instances, workspaces and command history |
 | `/opt/inframill/providers/<name>/<version>/provider` | Versioned provider executable referenced by the configuration |
 
@@ -89,7 +87,7 @@ cp runtime/inframill.yaml inframill.yaml
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.20.0-dev \
+docker run --rm --entrypoint cat ghcr.io/inframill/kit:0.21.0-dev \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
@@ -105,7 +103,7 @@ task docker:up
 ```
 
 This pulls `ghcr.io/inframill/kit:<VERSION>` before replacing any existing
-`inframill` container. It creates `.inframill/` if needed and binds both paths from
+`inframill` container. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
 the repository root. The checked-in configuration selects the debug provider;
 use the provider definitions from `runtime/inframill.yaml` for OpenTofu and Ansible.
 
@@ -120,7 +118,7 @@ This also succeeds if the container is already absent.
 The equivalent manual commands for the current version are:
 
 ```sh
-docker pull ghcr.io/inframill/kit:0.20.0-dev
+docker pull ghcr.io/inframill/kit:0.21.0-dev
 mkdir -p .inframill
 docker stop inframill
 docker rm inframill
@@ -128,7 +126,8 @@ docker run -d --name inframill --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   -v "$PWD/.inframill:/var/lib/inframill" \
   -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
-  ghcr.io/inframill/kit:0.20.0-dev
+  -v "$PWD/blueprints:/opt/inframill/blueprints:ro" \
+  ghcr.io/inframill/kit:0.21.0-dev
 ```
 
 The `.inframill/` directory is reused on subsequent runs. To use another host
@@ -139,7 +138,7 @@ directory, create it with `mkdir -p data` and replace the data mount with:
 ```
 
 Changing mount sources selects different storage; it does not copy existing data.
-Inframill 0.20.0-dev resolves relative YAML paths from the configuration file's directory
+Inframill 0.21.0-dev resolves relative YAML paths from the configuration file's directory
 inside the container: `dataDir: ./data` here means `/etc/inframill/data`.
 
 ### Logs, restarts and upgrades
@@ -171,8 +170,8 @@ restart, even with a volume.
 
 Provider sources, release metadata, the Python builder and tests live in the
 [provider subproject](providers/README.md). Each version has a root such as
-`providers/roots/opentofu/0.3.0/`. Blueprint packaging remains in the independent
-[blueprint subproject](blueprints/README.md).
+`providers/roots/opentofu/0.3.0/`. The [local blueprints](blueprints/README.md)
+are fetched directly from their source directories.
 
 ```sh
 task providers:test
@@ -195,30 +194,28 @@ python3 build.py test      # root builder tests
 
 `publish` runs build then push; `push` uses the existing image. The root script
 also provides `validate`, `setup`, `config` and `copy-engine` for release checks
-and local acceptance setup. Providers and blueprints retain their own builders.
+and local acceptance setup. Providers retain their own builder; blueprints need no build step.
 
 Provider builds need Python 3.9+, Go 1.27.0 and the pinned Inframill SDK checkout
 (default `../inframill` beside this repository). Image assembly needs Docker Buildx
 with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
-prebuilt engine binaries in `../inframill/dist/0.20.0-dev/`. It does not need provider
+prebuilt engine binaries in `../inframill/dist/0.21.0-dev/`. It does not need provider
 sources or the SDK checkout. Set `PROVIDERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
 other prebuilt artifact locations.
 
-```sh
-task blueprints:setup PYTHON=python3.14
-task blueprints:build
-docker login ghcr.io
-task blueprints:push
-task bundle:push
-```
+For local blueprint development, `task config` configures the repository's source
+path. `task docker:up` mounts `blueprints/` read-only at `/opt/inframill/blueprints`.
+Fetch with `inframill blueprint fetch local:pv-cloud --namespace production` or
+`local:hello-world`. After editing sources, fetch again and initialize a new Instance.
+See [local blueprint usage](blueprints/README.md) for provider configuration and examples.
 
-Blueprints default to `ghcr.io/inframill/blueprints/<name>:<version>`; the Kit image
-defaults to `ghcr.io/inframill/kit:<VERSION>`. Builds do not publish automatically.
-See [releases](docs/releases.md) for image inputs and publishing.
+The Kit image defaults to `ghcr.io/inframill/kit:<VERSION>`. Builds do not publish
+automatically. See [releases](docs/releases.md) for image inputs and publishing.
 
 ## Verification
 
 ```sh
+task blueprints:setup PYTHON=python3.14
 task check-fast
 ```
 
@@ -244,7 +241,7 @@ platforms. Run `task check-full` to verify the current source and artifacts.
 ## Documentation
 
 - [Providers](providers/README.md): independent version roots, Python builds and tests.
-- [Blueprints](blueprints/README.md): architecture-independent source packages.
+- [Blueprints](blueprints/README.md): local sources, development workflow and validation.
 - [Usage](docs/usage.md): configuration, commands, secrets and provider behavior.
 - [Architecture](docs/architecture.md): ownership, execution and artifact contracts.
 - [Releases](docs/releases.md): image assembly, publication and version selection.

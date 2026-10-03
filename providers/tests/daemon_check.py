@@ -10,19 +10,20 @@ import time
 import urllib.error
 import urllib.request
 
-from blueprints.tests.integration import publish_protocol_fixture
+from blueprints.tests.integration import protocol_fixture, local_paths, fixture_reference
 from build import ROOT, configuration, local_tools, bundle_lock, providers_dist, native_platform
 
 
-def daemon_check(tmp, registry, env):
+def daemon_check(tmp, env):
     tmp = pathlib.Path(tmp) / 'daemon'
     tmp.mkdir()
     binary = tmp / 'kit-fixtures'
     subprocess.run(['go', 'build', '-o', str(binary), './tests/harness'], cwd=ROOT / 'providers', check=True)
-    publish_protocol_fixture(tmp, env, bundle_lock()['inframill']['version'])
+    fixture_root = protocol_fixture(tmp)
     tofu, ansible = local_tools()
     data_root = tmp / 'data'
     config = configuration(providers_dist(), data_root, {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+    config['engine']['localBlueprintPaths'] = local_paths() + [fixture_root]
     config['engine']['providers']['fixture'] = {'path': str(binary), 'args': ['provider', 'fixture', '--provider-version', '0.1.0']}
     config['engine']['providers']['unavailable'] = {'path': str(tmp / 'missing')}
     with socket.socket() as reservation:
@@ -127,7 +128,7 @@ def daemon_check(tmp, registry, env):
     try:
         start()
         assert rpc('ListNamespaces').get('namespaces', []) == []
-        reference = registry + '/inframill/blueprints/local-resource:0.1.0'
+        reference = fixture_reference('0.1.0')
         rejected('InitInstance', {'name': 'local', 'blueprint_reference': reference,
                                  'values': {'json': '{}'}}, 'not_found', namespace='missing')
         rejected('FetchBlueprint', {'reference': reference}, 'not_found', namespace='missing')
@@ -141,7 +142,7 @@ def daemon_check(tmp, registry, env):
         assert statuses['opentofu'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['ansible'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['unavailable'] == 'PROVIDER_AVAILABILITY_UNAVAILABLE', statuses
-        iid = initialize('acceptance', 'local', registry + '/inframill/blueprints/local-resource:0.1.0', {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
+        iid = initialize('acceptance', 'local', fixture_reference('0.1.0'), {'architecture': 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'})
         run(iid, 'opentofu.init')
         plan = run(iid, 'opentofu.plan')
         run(iid, 'opentofu.apply', {'plan_id': plan['plan_id']})
@@ -149,7 +150,7 @@ def daemon_check(tmp, registry, env):
         plan = run(iid, 'opentofu.plan', {'destroy': True})
         run(iid, 'opentofu.destroy', {'plan_id': plan['plan_id']})
         assert len(rpc('ListCommandExecutions', {'instance_id': iid}, namespace='acceptance')['executions']) == 6
-        ref = registry + '/inframill/blueprints/protocol-fixture:0.1.0'
+        ref = 'local:protocol-fixture'
         first = initialize('alpha', 'one', ref, {})
         other = initialize('beta', 'one', ref, {})
         # Discovery includes every available Provider, regardless of saved bindings.

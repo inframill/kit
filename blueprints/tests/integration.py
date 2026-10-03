@@ -1,6 +1,6 @@
 """Blueprint fixtures and workflows used by the parent Kit integration harness.
 
-Only tests import this module; build.py remains the standalone publisher.
+Only tests import this module; production Blueprints are fetched from local sources.
 """
 import json
 import os
@@ -13,7 +13,6 @@ import uuid
 
 BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES = BLUEPRINTS / 'tests/fixtures'
-BLUEPRINT_PYTHON = BLUEPRINTS / '.venv/bin/python'
 
 
 def run(args, **kwargs):
@@ -21,18 +20,16 @@ def run(args, **kwargs):
     return subprocess.run(list(map(str, args)), check=True, text=True, **kwargs)
 
 
-def blueprint_root(name):
-    return FIXTURES if (FIXTURES / name).is_dir() else BLUEPRINTS
+def fixture_reference(version):
+    return 'local:local-resource-' + version.replace('.', '-')
 
 
-def requirements(name, version):
-    root = blueprint_root(name)
-    release = json.loads((root / 'releases.json').read_text())
-    return next(b['providers'] for b in release['blueprints'] if b['name'] == name and b['version'] == version)
+def local_paths():
+    return [str(BLUEPRINTS), str(FIXTURES)]
 
 
-def provider_ids(name, version):
-    return {d['name']: d['id'] for d in requirements(name, version)}
+def provider_ids(name):
+    return {'debug': 'debug'} if name == 'hello-world' else {'opentofu': 'opentofu', 'ansible': 'ansible'}
 
 
 def registry_image():
@@ -46,34 +43,12 @@ def fixture_cases():
     return json.loads((FIXTURES / 'suite.json').read_text())['blueprints']
 
 
-def blueprint_releases():
-    return json.loads((BLUEPRINTS / 'releases.json').read_text())['blueprints']
-
-
-def publish(name, version, env):
-    for action in ['build', 'push', 'push']:
-        run([BLUEPRINT_PYTHON, BLUEPRINTS / 'build.py', action,
-             '--root', blueprint_root(name), '--name', name, '--version', version,
-             '--dist', pathlib.Path(env['KIT_DIST_DIR']) / 'blueprints'], cwd=BLUEPRINTS, env=env)
-
-
-def publish_protocol_fixture(tmp, env, engine_version):
-    # This blueprint and provider exist only in test builds, never the release set.
-    source = tmp / 'blueprints/protocol-fixture/0.1.0'
+def protocol_fixture(tmp):
+    source = tmp / 'blueprints/protocol-fixture'
     (source / 'templates/fixture').mkdir(parents=True)
     (source / 'templates/fixture/readme.txt').write_text('secret snapshot test\n')
     (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'provider_settings': {'fixture': {'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'}}}}))
-    prefix = [str(BLUEPRINT_PYTHON), str(BLUEPRINTS / 'build.py')]
-    selectors = ['--root', str(tmp / 'blueprints'), '--name', 'protocol-fixture', '--version', '0.1.0',
-                 '--dist', str(tmp / 'dist')]
-    digest = subprocess.check_output(prefix + ['source-digest'] + selectors, env=env, text=True).strip()
-    release = tmp / 'blueprints/releases.json'
-    release.write_text(json.dumps({'schema': 1, 'blueprints': [{'name': 'protocol-fixture', 'version': '0.1.0',
-        'inframill_version': engine_version, 'protocol': 1,
-        'platforms': ['linux/amd64', 'linux/arm64'], 'architectures': ['amd64', 'arm64'],
-        'providers': [{'id': 'fixture', 'name': 'fixture', 'version': '0.1.0'}], 'source_sha256': digest, 'status': 'test'}]}))
-    for action in ['build', 'push']:
-        subprocess.run(prefix + [action] + selectors, env=env, check=True)
+    return str(source.parent)
 
 
 def local_flow(client, version, reference, name=None, fetch=True):
@@ -83,7 +58,7 @@ def local_flow(client, version, reference, name=None, fetch=True):
     if fetch:
         client.fetch(reference, namespace)
     iid = client.initialize(namespace, local_name, reference, data)
-    ids = provider_ids('local-resource', version)
+    ids = provider_ids('local-resource')
     prefix, ansible = ids['opentofu'], ids['ansible']
 
     def do(command, args=None):
@@ -101,7 +76,7 @@ def local_flow(client, version, reference, name=None, fetch=True):
 
 
 def hello_world_flow(client, reference, namespace='test'):
-    values = json.loads((BLUEPRINTS / 'examples/hello-world-0.1.0.json').read_text())
+    values = json.loads((BLUEPRINTS / 'examples/hello-world.json').read_text())
     client.fetch(reference, namespace)
     iid = client.initialize(namespace, 'hello-world', reference, values)
     workspace = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid / 'workspace'
@@ -144,12 +119,12 @@ def hello_world_flow(client, reference, namespace='test'):
 
 def pv_flow(client, reference, tofu):
     client.fetch(reference, 'test')
-    ids = provider_ids('pv-cloud', '0.3.0')
+    ids = provider_ids('pv-cloud')
     instances = []
     cases = [
         ('arm64', FIXTURES / 'examples/pv-cloud-arm64.json'),
         ('amd64', FIXTURES / 'examples/pv-cloud-amd64.json'),
-        ('mixed', BLUEPRINTS / 'examples/pv-cloud-0.3.0.json'),
+        ('mixed', BLUEPRINTS / 'examples/pv-cloud.json'),
     ]
     for name, path in cases:
         values = json.loads(path.read_text())
@@ -178,31 +153,14 @@ def local_state_check(work, tofu):
     assert stored['resources'] == pulled['resources'] == []
 
 
-def verify(client, name, version, reference):
-    if (name, version) == ('hello-world', '0.1.0'):
-        client.create_namespace('verify')
-        hello_world_flow(client, reference, 'verify')
-        return
-    values = json.loads((blueprint_root(name) / f'examples/{name}-{version}.json').read_text())
-    release = next(b for b in json.loads((blueprint_root(name) / 'releases.json').read_text())['blueprints']
-                   if b['name'] == name and b['version'] == version)
-    candidates = [d['id'] for d in release['providers'] if d['name'] == 'ansible']
-    if len(candidates) != 1:
-        raise RuntimeError('Verification requires a fixture selecting one Ansible provider')
-    client.create_namespace('verify')
-    client.fetch(reference, 'verify')
-    iid = client.initialize('verify', 'blueprint', reference, values)
-    client.execute('verify', iid, candidates[0] + '.syntax-check', {'playbook': 'site'})
-
-
-def runtime_flows(client, registry, arch, tofu):
+def runtime_flows(client, arch, tofu):
     client.create_namespace('smoke')
     for case in fixture_cases():
         version = case['version']
-        reference = f'{registry}/inframill/blueprints/local-resource:{version}'
+        reference = fixture_reference(version)
         client.fetch(reference, 'smoke')
         iid = client.initialize('smoke', 'v' + version.replace('.', '-'), reference, {'architecture': arch})
-        ids = provider_ids(case['name'], version)
+        ids = provider_ids(case['name'])
         prefix, ansible = ids['opentofu'], ids['ansible']
         client.execute('smoke', iid, prefix + '.init')
         plan = client.execute('smoke', iid, prefix + '.plan')
@@ -210,12 +168,11 @@ def runtime_flows(client, registry, arch, tofu):
         client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
         plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
         client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = registry + '/inframill/blueprints/pv-cloud:0.3.0'
-    values = json.loads((BLUEPRINTS / 'examples/pv-cloud-0.3.0.json').read_text())
+    reference = 'local:pv-cloud'
+    values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')
     iid = client.initialize('smoke', 'pv-cloud', reference, values)
-    release = next(b for b in blueprint_releases() if b['name'] == 'pv-cloud' and b['version'] == '0.3.0')
-    ids = {d['name']: d['id'] for d in release['providers']}
+    ids = provider_ids('pv-cloud')
     client.execute('smoke', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     work = pathlib.Path(client.config['engine']['dataDir']) / 'smoke/instances' / iid / 'workspace' / 'opentofu'
     client.execute('smoke', iid, ids['opentofu'] + '.init')

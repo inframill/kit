@@ -2,12 +2,12 @@
 
 ## Build inputs
 
-The repository has two independent source projects:
+The repository separates providers and local blueprint sources:
 
 - [`providers/`](../providers/README.md) builds one executable per provider version for
   Linux AMD64 and ARM64. Source, metadata, the Python builder and tests live there.
-- [`blueprints/`](../blueprints/README.md) builds architecture-independent OCI source
-  packages using its own Python script, metadata, tasks and tests.
+- [`blueprints/`](../blueprints/README.md) contains local source directories fetched
+  directly by the daemon, without packaging or publication.
 
 The root project assembles the Kit image from prebuilt artifacts. It never compiles
 or rebuilds a provider. Prepare inputs explicitly:
@@ -41,7 +41,7 @@ copies `runtime/inframill.yaml` unchanged. Provider paths in that configuration 
 
 The image output is `KIT_DIST_DIR/bundles/<VERSION>/`. Existing image outputs are
 immutable; explicitly move or remove unpublished development output before a
-changed rebuild. Provider and blueprint scripts have independent `--dist` options.
+changed rebuild. The provider builder has its own `--dist` option.
 
 ## Publish
 
@@ -57,39 +57,24 @@ uses `docker push`. Configure credentials and any insecure local registries in
 Docker yourself; the script never logs in or creates registries. Image builds
 never publish automatically.
 
-Blueprints use their own workflow:
-
-```sh
-task blueprints:setup PYTHON=python3.14
-task blueprints:build
-docker login ghcr.io
-task blueprints:push
-```
-
-Blueprint build loads each artifact into Docker; push invokes `docker push` for
-its tag. Authentication and remote tag policy are handled by Docker and the
-registry. `task blueprints:publish` performs build followed by push. Use
-`-- --name pv-cloud --version 0.3.0` to select one release. Provider builds publish
-no registry artifacts; their output is consumed by image assembly.
-
-After publication, verify the immutable reference:
+After publication, verify the immutable image reference:
 
 ```sh
 task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ```
 
-Create namespaces with `namespace create ID` before use. Blueprint
-fetch/show/get/delete require `--namespace`; fetches use that namespace's registry
-credentials when configured, otherwise anonymous access. Supply private registry
-credentials with `registry replace --namespace NAMESPACE_ID --file FILE`; Docker login
-does not configure the daemon. Kit image pulls use Docker credentials.
+Kit image pulls use Docker credentials.
+
+Blueprints have no release or publication workflow. Configure
+`engine.localBlueprintPaths`, edit sources under `blueprints/`, then fetch
+`local:pv-cloud` or `local:hello-world`. See the [local workflow](../blueprints/README.md).
 
 ## Version policy
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.20.0-dev`, with OpenTofu and Ansible
-providers `0.3.0`. Provider and blueprint versions are independent of the image.
+The current baseline is Kit and Inframill `0.21.0-dev`, with OpenTofu and Ansible
+providers `0.3.0`. Provider versions are independent of the image; local blueprints are identified by name and content digest.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
 Shared-root data from 0.9 is unsupported, with no automatic migration; preserve
@@ -176,23 +161,28 @@ RPCs and implies waiting. Stopping the client leaves admitted work running.
 Provider protocol and Blueprint source format are unchanged. Provider and Blueprint
 versions remain independent; rebuild providers using the updated SDK pin.
 
-Inframill 0.20.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.21 engine adds `engine.localBlueprintPaths` and `local:NAME` fetches.
+Kit now uses local sources for pv-cloud and hello-world, with no blueprint packaging
+or publication. Docker development mounts the source directory read-only. Re-fetch
+after editing and initialize a new Instance; existing snapshots remain unchanged.
+Provider versions stay at `0.3.0`; rebuild against the updated SDK pin.
+
+Inframill 0.21.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;
-pv-cloud is `0.3.0`. Only the current development contract is supported.
+pv-cloud is a local source directory. Only the current development contract is supported.
 
 The image lock selects provider **names and versions**, engine binaries/checksums,
 and image platforms. [`runtime/Dockerfile`](../runtime/Dockerfile) owns the base
 image digest, Debian snapshot, build timestamp, OpenTofu checksums, and Ansible
 and Python dependency versions. Provider metadata
 lives in each version's `release.json`; `providers/releases.json` selects versions
-and pins their compiler and SDK dependency. Blueprint releases have their own
-`blueprints/releases.json`.
+and pins their compiler and SDK dependency. Local blueprints have no release manifest.
 
 To add a provider version, follow the [provider instructions](../providers/README.md#add-a-version),
 then separately select it in the image lock and update `runtime/inframill.yaml`.
-To add a blueprint, follow its [release instructions](../blueprints/README.md#add-a-release).
+To add a blueprint, add a directory containing `blueprint.yaml` and `templates/` under `blueprints/`.
 To add an image release, update `VERSION` and add its image lock. Exact versions
 are required; changed published bytes require a new tag, including development tags.
 

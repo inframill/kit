@@ -522,8 +522,10 @@ def main(argv=None):
         setup()
     elif args.command == 'config':
         tofu, ansible = local_tools()
-        print(json.dumps(configuration(providers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
-                                       {'opentofu': tofu, 'ansible': ansible}, target=native_platform()), indent=2))
+        config = configuration(providers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
+                               {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+        config['engine']['localBlueprintPaths'] = [str(ROOT / 'blueprints')]
+        print(json.dumps(config, indent=2))
     elif args.command == 'test':
         run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], cwd=ROOT)
 

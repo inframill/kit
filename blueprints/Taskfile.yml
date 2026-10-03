@@ -8,23 +8,10 @@ tasks:
     silent: true
     cmds: ['task --list']
   setup:
-    desc: Install build dependencies in the local .venv
+    desc: Install test dependencies in the local .venv
     cmds:
       - '"{{.PYTHON}}" -m venv .venv'
       - '"./.venv/bin/python" -m pip install -r requirements.txt'
-  build:
-    desc: Build all blueprint packages
-    cmds: ['"./.venv/bin/python" build.py build {{.CLI_ARGS}}']
-  source-digest:
-    desc: Print a blueprint source checksum (-- --name NAME --version VERSION)
-    silent: true
-    cmds: ['"./.venv/bin/python" build.py source-digest {{.CLI_ARGS}}']
-  push:
-    desc: Push all existing blueprint packages
-    cmds: ['"./.venv/bin/python" build.py push {{.CLI_ARGS}}']
-  publish:
-    desc: Build all packages, then push all
-    cmds: ['"./.venv/bin/python" build.py publish {{.CLI_ARGS}}']
   test:
-    internal: true
+    desc: Validate local blueprint sources and integration configuration
     cmds: ['"./.venv/bin/python" -m unittest discover -s tests -p "test_*.py"']

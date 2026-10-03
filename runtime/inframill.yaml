@@ -16,6 +16,8 @@ logger:
 
 engine:
   dataDir: /var/lib/inframill
+  localBlueprintPaths:
+    - /opt/inframill/blueprints
   providers:
     opentofu:
       path: /opt/inframill/providers/opentofu/0.3.0/provider

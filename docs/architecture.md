@@ -1,8 +1,8 @@
 # Kit architecture
 
-Kit 0.20.0-dev targets the Inframill 0.20.0-dev API. The `providers/` subproject builds
+Kit 0.21.0-dev targets the Inframill 0.21.0-dev API. The `providers/` subproject builds
 independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
-prebuilt provider outputs with the engine and tools. Blueprints are separate OCI packages.
+prebuilt provider outputs with the engine and tools. Blueprints are local source directories.
 
 ## Ownership
 
@@ -59,24 +59,21 @@ The current providers are OpenTofu and Ansible 0.3.0. Each binary embeds its ver
 `release.json`; its executable path selects the implementation. Provider builds use
 `providers/releases.json`, independently of the image release. Synthetic test providers
 under `providers/tests` exercise version coexistence and distinct contracts.
-Blueprints are a standalone subproject under `blueprints/`. Its `releases.json`
-selects production packages independently of Kit's version and declares each
-blueprint's engine and provider requirements. Fixtures, examples, test configuration,
-tasks and blueprint workflow checks live in that subproject too. One Python script validates
-source metadata, offline schemas, provider requirement agreement and source seals,
-then builds OCI packages, loads them into Docker and invokes `docker push`.
-The publisher does not handle credentials or registry lifecycle. Provider implementation validation remains in
-Kit's engine integration checks. OCI sources are architecture-independent; Kit
-image indices contain both Linux architectures.
+Blueprints are local directories under `blueprints/`, each containing a definition
+and provider templates. Inframill fetches `local:pv-cloud` and `local:hello-world`
+from `engine.localBlueprintPaths`, creating namespace-scoped snapshots. Native
+configuration includes the repository source path; Docker mounts it read-only.
+Edits become new revisions on the next fetch; existing Instances retain their
+snapshots. There are no blueprint release manifests, archives or publishing tasks.
+Fixtures, examples and source/workflow checks live beside the local blueprints.
 
 Image assembly reads prebuilt `providers/dist/<name>/<version>/linux/<arch>/`
 outputs and engine binaries. It checks recorded hashes, ELF architectures and
 engine/tool compatibility without accessing provider source or the SDK checkout.
 Each provider ships with its build record, corresponding sources and dependency
 notices. Native development outputs use the same layout with the host OS/architecture.
-Kit image push verifies existing bytes and rejects conflicting version tags. Blueprint
-push uses standard Docker tag semantics. Publication is
-manual; local acceptance uses a disposable registry.
+Kit image push verifies existing bytes and rejects conflicting version tags. Image
+publication is manual; acceptance uses a disposable registry only for Kit images.
 
 ## Container configuration and storage
 
@@ -90,7 +87,7 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.20.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.21.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while namespace secrets and registry credentials remain in memory. Namespaces must

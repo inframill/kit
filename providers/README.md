@@ -44,7 +44,7 @@ python3 build.py verify
 ```
 
 `build` builds **every selected provider for both Linux AMD64 and ARM64** with CGO
-disabled. These are separate binaries; unlike blueprint text packages, one provider
+disabled. These are separate binaries; unlike local blueprint sources, one provider
 binary cannot run on both architectures. The script checks ELF architecture and
 records checksums before exposing each completed output.
 
@@ -116,7 +116,7 @@ input directory for image assembly.
 
 ## Provider workspaces
 
-Inframill 0.20.0-dev passes each provider its `workspace/<configured-id>/` directory.
+Inframill 0.21.0-dev passes each provider its `workspace/<configured-id>/` directory.
 Providers use that supplied directory directly for settings, tools, playbooks and
 roles. Kit configures IDs `opentofu` and `ansible`, so Blueprint sources belong
 under `templates/opentofu/` and `templates/ansible/`. Configured aliases work when
