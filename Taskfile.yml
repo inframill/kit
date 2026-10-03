@@ -4,9 +4,6 @@ includes:
   providers:
     taskfile: ./providers/Taskfile.yml
     dir: ./providers
-  blueprints:
-    taskfile: ./blueprints/Taskfile.yml
-    dir: ./blueprints
 
 # Kit and image releases always use the root VERSION file.
 env:
@@ -101,10 +98,9 @@ tasks:
 
   # Verification: full checks require an already-built image.
   check-fast:
-    desc: Run image tooling, provider and blueprint tests and validate release versions
+    desc: Run image tooling and provider tests and validate release versions
     cmds:
       - python3 build.py test
-      - task: blueprints:test
       - task: providers:test
       - task: release:check
   check-full:

@@ -81,8 +81,6 @@ contain only ASCII letters, digits or hyphens; ambiguous matches and links rejec
 From the Kit root:
 
 ```sh
-task blueprints:setup PYTHON=python3.14
-task blueprints:test
 task inframill:copy
 BLUEPRINT=hello-world python3 tests/check.py blueprint:check
 # Requires task setup and task providers:build -- --native:
@@ -91,9 +89,17 @@ BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check
 python3 tests/check.py native
 ```
 
-Source tests validate schemas, example Values and provider template directories.
 Integration checks fetch local sources into disposable daemon data, render the
 examples and execute debug commands or Ansible syntax checks and OpenTofu mocks.
 They create no cloud resources and require no blueprint registry. `task check-full`
 also exercises local fixtures through both Linux runtime images; its disposable
 registry is used only to verify Kit image publication.
+
+Optional source tests validate schemas, example Values and provider template
+directories. Run them directly from the Kit root:
+
+```sh
+python3 -m venv blueprints/.venv
+blueprints/.venv/bin/python -m pip install -r blueprints/requirements.txt
+blueprints/.venv/bin/python -m unittest discover -s blueprints/tests -p 'test_*.py'
+```

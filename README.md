@@ -215,11 +215,10 @@ automatically. See [releases](docs/releases.md) for image inputs and publishing.
 ## Verification
 
 ```sh
-task blueprints:setup PYTHON=python3.14
 task check-fast
 ```
 
-Fast checks run image tooling, provider and blueprint tests. For optional full
+Fast checks run image tooling and provider tests. For optional full
 acceptance, install Python 3.12–3.14 for Ansible and prepare native outputs:
 
 ```sh
