@@ -108,8 +108,8 @@ task docker:up
 
 This pulls `ghcr.io/inframill/kit:<VERSION>` before replacing any existing
 `inframill` container. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
-the repository root. The checked-in configuration selects the debug provider;
-use the provider definitions from `runtime/inframill.yaml` for OpenTofu and Ansible.
+the repository root. The checked-in configuration enables debug, OpenTofu and
+Ansible; the image default enables OpenTofu and Ansible.
 
 To stop and remove the container while preserving the data, configuration and image:
 
@@ -145,7 +145,8 @@ the same config and data mounts. Back up data before upgrading and check the rel
 storage compatibility. Run one engine against a data directory at a time.
 
 The current storage contract uses ULID Instance/execution IDs and namespace `id`
-records. Older UUID layouts or namespace `name` records reject without migration;
+records. Older UUID layouts, namespace `name` records and `local:` blueprint catalogue
+identities reject without migration;
 preserve those volumes and start with fresh storage when upgrading from them.
 Create namespaces with `inframill namespace create ID` before fetching blueprints
 or initializing Instances. See [namespace usage](docs/usage.md#namespaces).
@@ -193,8 +194,9 @@ other prebuilt artifact locations.
 
 For local blueprint development, `task config` configures the repository's source
 path. `task docker:up` mounts `blueprints/` read-only at `/opt/inframill/blueprints`.
-Fetch with `inframill blueprint fetch local:pv-cloud --namespace production` or
-`local:hello-world`. After editing sources, fetch again and initialize a new Instance.
+Fetch with `inframill blueprint fetch build.in/pv-cloud --namespace production` or
+`build.in/hello-world`. These default to the `latest/` source directories. After editing
+sources, fetch again and initialize a new Instance. Add `:TAG` to select another tag.
 See [local blueprint usage](blueprints/README.md) for provider configuration and examples.
 
 The Kit image defaults to `ghcr.io/inframill/kit:<VERSION>`. Builds do not publish

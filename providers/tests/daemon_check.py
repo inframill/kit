@@ -150,7 +150,7 @@ def daemon_check(tmp, env):
         plan = run(iid, 'opentofu.plan', {'destroy': True})
         run(iid, 'opentofu.destroy', {'plan_id': plan['plan_id']})
         assert len(rpc('ListCommandExecutions', {'instance_id': iid}, namespace='acceptance')['executions']) == 6
-        ref = 'local:protocol-fixture'
+        ref = 'build.in/protocol-fixture'
         first = initialize('alpha', 'one', ref, {})
         other = initialize('beta', 'one', ref, {})
         # Discovery includes every available Provider, regardless of saved bindings.

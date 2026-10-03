@@ -60,12 +60,12 @@ The current providers are OpenTofu and Ansible 0.3.0. Each binary embeds its ver
 `release.json`; its executable path selects the implementation. Provider builds use
 `providers/releases.json`, independently of the image release. Synthetic test providers
 under `providers/tests` exercise version coexistence and distinct contracts.
-Blueprints are local directories under `blueprints/`, each containing a definition
-and provider templates. Inframill fetches `local:pv-cloud` and `local:hello-world`
+Blueprints are local directories under `blueprints/<repository>/<tag>/`, each
+containing a definition and provider templates. Kit uses the `latest` tag. Inframill fetches `build.in/pv-cloud` and `build.in/hello-world`
 from `engine.localBlueprintPaths`, creating namespace-scoped snapshots. Native
 configuration includes the repository source path; Docker mounts it read-only.
-Edits become new revisions on the next fetch; existing Instances retain their
-snapshots. There are no blueprint release manifests, archives or publishing tasks.
+Edits become new revisions on the next fetch of that tag; existing Instances retain
+their snapshots. Bare repository references resolve `latest`. There are no blueprint release manifests, archives or publishing tasks.
 Fixtures, examples and source/workflow checks live beside the local blueprints.
 
 Image assembly reads prebuilt `providers/dist/<name>/<version>/linux/<arch>/`

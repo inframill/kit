@@ -15,9 +15,8 @@ import uuid
 # Make the Kit build and provider helpers available when invoked as a script.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from blueprint_workflows import (BLUEPRINTS,
-                                          local_paths, LOCAL_REFERENCE, local_flow,
-                                          pv_flow, hello_world_flow)
+from blueprint_workflows import (BLUEPRINTS, local_paths, LOCAL_REFERENCE,
+                                 local_flow, pv_flow, hello_world_flow)
 from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from query_check import query_check
@@ -109,7 +108,7 @@ def blueprint_check(name):
         raise RuntimeError('Unknown local blueprint')
     with tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
-        reference = 'local:' + name
+        reference = 'build.in/' + name
         with engine(tmp / 'engine', debug_only=name == 'hello-world') as client:
             client.create_namespace('test')
             if name == 'hello-world':
@@ -184,26 +183,44 @@ def container_checks(tmp, network, env):
 
 def local_revision_check(tmp):
     source_root = tmp / 'sources'
-    source = source_root / 'hello-world'
-    shutil.copytree(BLUEPRINTS / 'hello-world', source)
-    reference = 'local:hello-world'
+    repository = source_root / 'hello-world'
+    shutil.copytree(BLUEPRINTS / 'hello-world', repository)
+    latest = repository / 'latest'
+    shutil.copytree(latest, repository / '0.1.0')
+    reference = 'build.in/hello-world'
+    tagged = reference + ':0.1.0'
     with engine(tmp / 'revisions', debug_only=True, paths=[str(source_root)]) as client:
         client.create_namespace('test')
         first = client.fetch(reference, 'test')
-        assert client.fetch(reference, 'test')['digest'] == first['digest']
+        assert first['repository'] == reference and first['tags'] == ['latest'], first
+        assert client.fetch(reference + ':latest', 'test')['digest'] == first['digest']
+        shared = client.fetch(tagged, 'test')
+        assert shared['digest'] == first['digest'] and shared['tags'] == ['0.1.0', 'latest'], shared
         values = {'greeting': 'Hello', 'name': 'world'}
         original = client.initialize('test', 'original', reference, values)
-        template = source / 'templates/debug/message.txt.gotmpl'
-        template.write_text(template.read_text() + 'edited locally\n')
+        template = latest / 'templates/debug/message.txt.gotmpl'
+        template.write_text(template.read_text() + 'edited latest\n')
         second = client.fetch(reference, 'test')
-        assert second['digest'] != first['digest']
+        assert second['digest'] != first['digest'] and second['tags'] == ['latest'], second
+        tagged_info = client.rpc('GetBlueprint', {'reference': tagged}, namespace='test')['blueprint']
+        assert tagged_info['digest'] == first['digest'] and tagged_info['tags'] == ['0.1.0'], tagged_info
+        # Fetching another tag must not change the bare repository's latest mapping.
+        client.fetch(tagged, 'test')
         changed = client.initialize('test', 'changed', reference, values)
+        versioned = client.initialize('test', 'versioned', tagged, values)
         pinned = client.initialize('test', 'pinned', reference + '@' + first['digest'], values)
+        try:
+            client.fetch(reference + ':missing', 'test')
+        except urllib.error.HTTPError:
+            pass
+        else:
+            raise AssertionError('Missing tag unexpectedly fell back to latest')
+        assert client.rpc('GetBlueprint', {'reference': reference}, namespace='test')['blueprint']['digest'] == second['digest']
         instances = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances'
         rendered = lambda iid: (instances / iid / 'workspace/debug/message.txt').read_text()
-        assert rendered(original) == rendered(pinned) == 'Hello, world!\n'
-        assert rendered(changed) == 'Hello, world!\nedited locally\n'
-    print('Local re-fetch, changed revisions and immutable Instance snapshots passed', flush=True)
+        assert rendered(original) == rendered(pinned) == rendered(versioned) == 'Hello, world!\n'
+        assert rendered(changed) == 'Hello, world!\nedited latest\n'
+    print('Local tags, latest mapping, changed revisions and immutable Instance snapshots passed', flush=True)
 
 
 def native_checks(tmp, env):
@@ -211,12 +228,12 @@ def native_checks(tmp, env):
     local_revision_check(tmp)
     with engine(tmp / 'hello-world', env, debug_only=True) as client:
         client.create_namespace('test')
-        hello_world_flow(client, 'local:hello-world')
+        hello_world_flow(client, 'build.in/hello-world')
     with engine(tmp / 'workflows', env) as client:
         query_check(client, LOCAL_REFERENCE, native_platform().split('/')[1])
         client.create_namespace('test')
         local_flow(client)
-        pv_flow(client, 'local:pv-cloud', tools()[0])
+        pv_flow(client, 'build.in/pv-cloud', tools()[0])
     daemon_check(tmp, env)
     cache_check(tmp, env)
 

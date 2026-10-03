@@ -41,16 +41,18 @@ Initialization validates Values and renders files without executing a provider:
 
 ```sh
 bin/inframill namespace create production
-bin/inframill blueprint fetch local:pv-cloud \
+bin/inframill blueprint fetch build.in/pv-cloud \
   --namespace production
 bin/inframill instance init example --namespace production \
-  --blueprint local:pv-cloud \
+  --blueprint build.in/pv-cloud \
   --values-file blueprints/examples/pv-cloud.json
 bin/inframill secret replace --namespace production --file /private/path/secrets.json
 bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
-The generated configuration allows the local `blueprints/` directory. Re-fetch after
+The generated configuration allows the local `blueprints/` directory.
+`build.in/pv-cloud` selects `blueprints/pv-cloud/latest/`; append `:TAG` to use
+`blueprints/pv-cloud/TAG/`. These references require no registry. Re-fetch after
 editing source files and initialize a new Instance to use the new snapshot. Commands such as init/plan/apply contact
 real services and require your chosen credentials and infrastructure inputs.
 Use `--arguments-file` for execution arguments, `--wait` to wait for an outcome and
@@ -197,7 +199,7 @@ The `InitInstance` RPC requires the HTTP header `X-Namespace-ID: production`
 and accepts these top-level fields:
 
 ```json
-{"name":"example","blueprint_reference":"local:pv-cloud","values":{"json":"{}"}}
+{"name":"example","blueprint_reference":"build.in/pv-cloud","values":{"json":"{}"}}
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before

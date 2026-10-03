@@ -13,7 +13,7 @@ import uuid
 
 BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1] / 'blueprints'
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures/blueprints'
-LOCAL_REFERENCE = 'local:local-resource'
+LOCAL_REFERENCE = 'build.in/local-resource'
 
 
 def run(args, **kwargs):
@@ -30,11 +30,11 @@ def provider_ids(name):
 
 
 def protocol_fixture(tmp):
-    source = tmp / 'blueprints/protocol-fixture'
+    source = tmp / 'blueprints/protocol-fixture/latest'
     (source / 'templates/fixture').mkdir(parents=True)
     (source / 'templates/fixture/readme.txt').write_text('secret snapshot test\n')
     (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'provider_settings': {'fixture': {'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'}}}}))
-    return str(source.parent)
+    return str(source.parent.parent)
 
 
 def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True):
@@ -152,7 +152,7 @@ def runtime_flows(client, arch, tofu):
     client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
     plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
     client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = 'local:pv-cloud'
+    reference = 'build.in/pv-cloud'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')
     iid = client.initialize('smoke', 'pv-cloud', reference, values)

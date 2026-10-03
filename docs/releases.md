@@ -115,7 +115,7 @@ Normal build/push commands do not infer versions from Git or modify release meta
 
 Provider versions change independently. See [provider versioning](../providers/README.md#add-a-version)
 when changing provider implementations. Local blueprints have no release manifest;
-edit sources and fetch `local:pv-cloud` or `local:hello-world` again.
+edit sources and fetch `build.in/pv-cloud` or `build.in/hello-world` again.
 
 [`runtime/Dockerfile`](../runtime/Dockerfile) owns tool, base image, Debian and Python
 dependency pins. Tool changes also need matching provider `release.json` requirements
