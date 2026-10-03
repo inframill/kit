@@ -39,6 +39,11 @@ Preparation updates only these release records:
   selections and Linux image platforms.
 - `providers/releases.json`: the matching Inframill SDK version and revision.
 
+`task inframill:copy` also generates a missing lock automatically before copying
+the native binary, creating `releases/` if needed. It keeps the Kit version in
+`VERSION` and reuses an existing lock. Use `task release:prepare` to select a new
+upstream release or an independent Kit version.
+
 Provider selections come from `providers/releases.json`. The upstream checkout
 must have clean build inputs and all four macOS/Linux AMD64/ARM64 release binaries.
 Preparation validates architectures and the native engine version before writing.

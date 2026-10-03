@@ -27,7 +27,6 @@ class PrepareReleaseTests(unittest.TestCase):
         self.source.mkdir()
         (self.source / 'VERSION').write_text('0.22.0-dev\n')
         (self.root / 'VERSION').write_text('0.21.0-dev\n')
-        (self.root / 'releases').mkdir()
         (self.root / 'providers').mkdir()
         self.config_path = self.root / 'providers/releases.json'
         self.config = json.loads((build.ROOT / 'providers/releases.json').read_text())
@@ -86,6 +85,24 @@ class PrepareReleaseTests(unittest.TestCase):
         lock = json.loads((self.root / 'releases/0.22.1-dev.lock.json').read_text())
         self.assertEqual(lock['inframill']['version'], '0.22.0-dev')
         self.assertEqual((self.root / 'VERSION').read_text(), '0.22.1-dev\n')
+
+    def test_copy_generates_missing_directory_and_lock_preserving_kit_version(self):
+        (self.root / 'VERSION').write_text('0.22.1-dev\n')
+        with patch.dict(os.environ, {'INFRAMILL_SOURCE': str(self.source)}), \
+             patch.object(build.subprocess, 'check_output', return_value='0.22.0-dev\n'):
+            build.copy_engine()
+        self.assertTrue((self.root / 'releases/0.22.1-dev.lock.json').is_file())
+        self.assertEqual((self.root / 'VERSION').read_text(), '0.22.1-dev\n')
+        self.assertEqual((self.root / 'bin/inframill').read_bytes(), self.paths['darwin/arm64'].read_bytes())
+        self.assertTrue((self.root / 'bin/inframill').stat().st_mode & 0o111)
+
+    def test_copy_reuses_existing_lock_without_preparing_again(self):
+        build.prepare_release(self.source)
+        before = self.metadata()
+        with patch.object(build, 'prepare_release', side_effect=AssertionError('existing lock regenerated')), \
+             patch.object(build.subprocess, 'check_output', return_value='0.22.0-dev\n'):
+            build.copy_engine()
+        self.assertEqual(self.metadata(), before)
 
     def test_dirty_checkout_and_wrong_native_version_leave_metadata_unchanged(self):
         before = self.metadata()

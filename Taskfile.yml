@@ -50,7 +50,7 @@ tasks:
       Installs tools locally in .cache; leaves the system Python unchanged.
     cmds: ['python3 build.py setup']
   inframill:copy:
-    desc: Verify and copy the prebuilt host engine from the sibling dist (VERSION file)
+    desc: Generate a missing release lock, then verify and copy the prebuilt host engine
     cmds: ['python3 build.py copy-engine']
   config:
     desc: Print local engine JSON configuration using native providers/dist outputs

@@ -237,6 +237,7 @@ def prepare_release(source=None, version=None):
                config_path: (json.dumps(config, indent=2) + '\n').encode(),
                ROOT / 'VERSION': (version + '\n').encode()}
     previous = {path: path.read_bytes() if path.exists() else None for path in updates}
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         for path, data in updates.items():
             if previous[path] != data:
@@ -492,6 +493,9 @@ def push_image():
 
 
 def copy_engine():
+    selected_version = project_version()
+    if not (ROOT / f'releases/{selected_version}.lock.json').exists():
+        prepare_release(version=selected_version)
     lock = bundle_lock()
     target = native_platform()
     if target not in lock['inframill']['binaries']:
