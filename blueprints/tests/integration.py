@@ -109,6 +109,33 @@ def hello_world_flow(client, reference, namespace='test'):
     message = f"{values['greeting']}, {values['name']}!"
     assert (workspace / 'debug/message.txt').read_text() == message + '\n'
     assert client.execute(namespace, iid, 'debug.echo', {'message': message}) == {'message': message}
+    # Exercise the public CLI's new combined submit/follow path against real saved logs.
+    arguments = client.root / 'stream-arguments.json'
+    arguments.write_text(json.dumps({'stdout': 'stream-out-marker\n', 'stderr': 'stream-err-marker\n'}))
+    streamed = subprocess.run(
+        [client.binary, 'instance', 'exec', iid, 'debug.logs', '--namespace', namespace,
+         '--endpoint', client.endpoint, '--arguments-file', str(arguments), '--stream'],
+        env=client.env, capture_output=True, text=True, timeout=30)
+    assert streamed.returncode == 0, streamed.stderr
+    match = re.search(r'Execution admitted: ([0-7][0-9A-HJKMNP-TV-Z]{25})', streamed.stderr)
+    assert match and 'succeeded' in streamed.stderr, streamed.stderr
+    assert 'stream-out-marker' in streamed.stderr and 'stream-err-marker' in streamed.stderr
+    for stream in ['stdout', 'stderr']:
+        saved = subprocess.run(
+            [client.binary, 'execution', 'logs', match[1], '--instance', iid, '--namespace', namespace,
+             '--endpoint', client.endpoint, '--stream', stream],
+            env=client.env, capture_output=True, text=True, timeout=30)
+        assert saved.returncode == 0, saved.stderr
+        if stream == 'stdout':
+            assert streamed.stdout == saved.stdout
+        else:
+            assert saved.stdout in streamed.stderr
+    arguments.write_text(json.dumps({'message': 'expected-stream-failure'}))
+    failed = subprocess.run(
+        [client.binary, 'instance', 'exec', iid, 'debug.fail', '--namespace', namespace,
+         '--endpoint', client.endpoint, '--arguments-file', str(arguments), '--stream'],
+        env=client.env, capture_output=True, text=True, timeout=30)
+    assert failed.returncode == 1 and 'failed' in failed.stderr, failed
     artifact = {'name': 'greeting.txt', 'content': message}
     assert client.execute(namespace, iid, 'debug.write-artifact', artifact) == artifact
     assert client.execute(namespace, iid, 'debug.read-artifact', {'name': 'greeting.txt'}) == artifact

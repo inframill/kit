@@ -58,6 +58,16 @@ Use `--arguments-file` for execution arguments, `--wait` to wait for an outcome 
 or timing out a client wait does not cancel admitted work or roll back tool effects.
 Creation inputs are immutable; use a new Instance name to change them.
 
+To follow live stdout and stderr until completion, use `--stream`:
+
+```sh
+bin/inframill instance exec example --namespace production opentofu.init --stream
+```
+
+`--stream` implies waiting and keeps stdout raw; status notices accompany stderr.
+It rejects JSON output and `builtin.delete`. Stopping the CLI leaves admitted work
+running and prints continuation commands with independent log offsets.
+
 Blueprints are fetched through OCI. To check unpublished sources, run
 `BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check`: it packages them into a disposable local
 registry, starts a daemon, renders examples, checks Ansible syntax and runs OpenTofu
@@ -93,7 +103,7 @@ the admitted execution continues on the daemon.
 ## Namespaces
 
 Namespaces must exist before initializing Instances, managing blueprints or
-setting credentials. Create each namespace once with `namespace create NAME`;
+setting credentials. Create each namespace once with `namespace create ID`;
 `namespace list` includes empty namespaces and persists across restarts.
 Every namespace-owned operation requires `--namespace`, including lists and
 Instance/execution ID lookups. Instance names are local to that namespace;
@@ -109,18 +119,27 @@ bin/inframill registry list --namespace production
 ```
 
 Scoped output omits namespace identifiers. Credential lists expose names and hosts
-only. Namespace create/get/delete take a positional namespace name; namespace
+only. Namespace create/get/delete take a positional namespace ID; namespace
 administration, server version and provider discovery reject `--namespace`.
 Queries read the daemon's local inventory and do not fetch remote resources.
+
+Namespace IDs accept `[a-zA-Z0-9-]+` and preserve case. IDs beginning with a hyphen
+use `namespace create -- -Team-` and `--namespace=-Team-` in scoped CLI commands.
+Instance names and Provider/command identifiers use the same character grammar;
+instance and execution IDs remain ULIDs. Blueprint inputs have separate schema rules.
+Namespace RPC create/get/delete bodies and metadata use `id`, for example
+`{"id":"production"}`. In 0.20, stored namespace records and deletion journals also
+use `id`; old `name` records reject without migration. Preserve old data and use a
+fresh data directory or volume when upgrading.
 
 Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
 `instances/<InstanceID>/`. Fetch a blueprint separately into every namespace that
 uses it; catalogues and cached content are isolated.
 
-`namespace delete NAME` durably requests deletion and returns immediately. The
+`namespace delete ID` durably requests deletion and returns immediately. The
 namespace rejects new work while admitted operations finish. The cleanup worker
 then removes its local blueprints, Instances, history and credentials, checking
-every 10 seconds by default. `namespace list` and `namespace get NAME` report `active`, `deleting` or
+every 10 seconds by default. `namespace list` and `namespace get ID` report `active`, `deleting` or
 `failed`; failed cleanup is retried automatically. Deletion cannot be undone.
 It does not destroy external infrastructure;
 run the appropriate provider destroy commands before deleting storage you still
@@ -272,13 +291,13 @@ all available providers, excluding built-in operations. The former `instance_id`
 field is reserved and no longer scopes discovery.
 
 Every namespace-owned RPC requires exactly one `X-Namespace-ID` header containing
-a valid namespace name. Namespace selectors are absent from request bodies and
+a valid namespace ID. Namespace selectors are absent from request bodies and
 response resources. Missing, empty, duplicate or padded headers reject; foreign
 Instance IDs return not-found. The header selects scope and is not authentication.
 
 `CreateNamespace`, `GetNamespace`, `ListNamespaces`, `DeleteNamespace`,
 `GetServerVersion`, `ListProviders` and `ListCommandDefinitions` require the header
-to be absent. `GetNamespace` accepts `{"name":"production"}` and returns the
+to be absent. `GetNamespace` accepts `{"id":"production"}` and returns the
 namespace identity and lifecycle status.
 
 `ListBlueprints`, `ListNamespaceSecretNames`, `ListNamespaceRegistryHosts` and

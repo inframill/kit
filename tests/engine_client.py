@@ -80,8 +80,8 @@ class Engine:
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.load(response)
 
-    def create_namespace(self, name):
-        return self.rpc('CreateNamespace', {'name': name})['namespace']
+    def create_namespace(self, namespace_id):
+        return self.rpc('CreateNamespace', {'id': namespace_id})['namespace']
 
     def fetch(self, reference, namespace):
         return self.rpc('FetchBlueprint', {'reference': reference}, namespace=namespace)['blueprint']

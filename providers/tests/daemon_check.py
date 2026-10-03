@@ -135,8 +135,8 @@ def daemon_check(tmp, registry, env):
         assert not (data_root / 'missing').exists()
         namespaces = ['acceptance', 'alpha', 'beta', 'empty']
         for namespace in namespaces:
-            rpc('CreateNamespace', {'name': namespace})
-        rejected('CreateNamespace', {'name': 'alpha'}, 'already_exists')
+            rpc('CreateNamespace', {'id': namespace})
+        rejected('CreateNamespace', {'id': 'alpha'}, 'already_exists')
         statuses = {d['id']: d['availability'] for d in rpc('ListProviders')['providers']}
         assert statuses['opentofu'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
         assert statuses['ansible'] == 'PROVIDER_AVAILABILITY_AVAILABLE', statuses
@@ -196,7 +196,7 @@ def daemon_check(tmp, registry, env):
         replace('alpha', {'token': 'synthetic-restart'})
         stop()
         start()
-        assert rpc('ListNamespaces')['namespaces'] == [{'name': name, 'status': 'NAMESPACE_STATUS_ACTIVE'} for name in namespaces]
+        assert rpc('ListNamespaces')['namespaces'] == [{'id': namespace_id, 'status': 'NAMESPACE_STATUS_ACTIVE'} for namespace_id in namespaces]
         assert rpc('ListNamespaceSecretNames', namespace='alpha').get('names', []) == []
         assert run(first, 'fixture.probe', {'text': 'restart'})['secret_count'] == 0
         replace('beta', {'token': 'synthetic-deleted'})
@@ -205,8 +205,8 @@ def daemon_check(tmp, registry, env):
         busy = submit(other, 'fixture.probe', {'text': 'delete while busy', 'wait': True})
         beta_artifacts = data_root / 'beta/instances' / other / 'artifacts'
         poll(lambda: (beta_artifacts / 'ready').exists())
-        rpc('DeleteNamespace', {'name': 'beta'})
-        assert rpc('GetNamespace', {'name': 'beta'})['namespace']['status'] == 'NAMESPACE_STATUS_DELETING'
+        rpc('DeleteNamespace', {'id': 'beta'})
+        assert rpc('GetNamespace', {'id': 'beta'})['namespace']['status'] == 'NAMESPACE_STATUS_DELETING'
         rejected('SubmitCommand', {'instance_id': other, 'command_name': 'fixture.probe',
                                   'arguments': {'json': '{}'}}, 'failed_precondition', namespace='beta')
         assert beta_artifacts.is_dir()
@@ -214,7 +214,7 @@ def daemon_check(tmp, registry, env):
         done(other, busy)
         poll(lambda: not (data_root / 'beta').exists())
         assert run(first, 'fixture.probe', {'text': 'sibling preserved'})['secret_count'] == 0
-        rpc('CreateNamespace', {'name': 'beta'})
+        rpc('CreateNamespace', {'id': 'beta'})
         assert rpc('ListNamespaceSecretNames', namespace='beta').get('names', []) == []
         assert rpc('ListNamespaceRegistryHosts', namespace='beta').get('hosts', []) == []
         assert rpc('ListBlueprints', namespace='beta').get('blueprints', []) == []

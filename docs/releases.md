@@ -78,17 +78,17 @@ After publication, verify the immutable reference:
 task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
 ```
 
-Create namespaces with `namespace create NAME` before use. Blueprint
+Create namespaces with `namespace create ID` before use. Blueprint
 fetch/show/get/delete require `--namespace`; fetches use that namespace's registry
 credentials when configured, otherwise anonymous access. Supply private registry
-credentials with `registry replace NAMESPACE --file FILE`; Docker login
+credentials with `registry replace --namespace NAMESPACE_ID --file FILE`; Docker login
 does not configure the daemon. Kit image pulls use Docker credentials.
 
 ## Version policy
 
 The root `VERSION` selects `releases/<version>.lock.json` for the image. Kit and
 its pinned engine must share a major/minor line; patch releases may differ.
-The current baseline is Kit and Inframill `0.19.0-dev`, with OpenTofu and Ansible
+The current baseline is Kit and Inframill `0.20.0-dev`, with OpenTofu and Ansible
 providers `0.3.0`. Provider and blueprint versions are independent of the image.
 
 The 0.10 engine introduces explicit namespaces and namespace-owned storage.
@@ -161,7 +161,22 @@ Blueprint sources remain valid without changes, and provider protocol is unchang
 providers and pv-cloud remain at `0.3.0`, and hello-world remains at `0.1.0`.
 Rebuild providers against the new SDK pin before assembling this image.
 
-Inframill 0.19.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
+The 0.20 engine renames namespace request, response and stored metadata fields from
+`name` to `id`. Namespace administration uses `namespace create/get/delete ID` and
+RPC bodies such as `{"id":"production"}`. Namespace IDs, Instance names, Provider
+IDs/names and local command names accept `[a-zA-Z0-9-]+`, preserving case. Instance
+and execution IDs remain ULIDs; blueprint Values keep their own schema rules.
+Existing namespace metadata and deletion journals containing `name` are rejected
+without migration or modification. Preserve existing data and select a fresh data
+directory or volume for this release.
+
+`instance exec --stream` submits once, follows stdout and stderr, drains final
+output and exits according to the execution outcome. It uses the existing unary
+RPCs and implies waiting. Stopping the client leaves admitted work running.
+Provider protocol and Blueprint source format are unchanged. Provider and Blueprint
+versions remain independent; rebuild providers using the updated SDK pin.
+
+Inframill 0.20.0-dev uses Runmill providers and requires `provider_settings.<id>` bindings containing a
 major.minor `version` string and a nested `settings` object. `templates/` must
 contain exactly one directory per configured ID, and the engine passes that
 individual workspace to its provider. Kit uses IDs `opentofu` and `ansible`;

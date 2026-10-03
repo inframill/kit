@@ -1,5 +1,6 @@
 """Verify namespace isolation and current RPC/CLI resource contracts."""
 import json
+import pathlib
 import re
 import subprocess
 import urllib.error
@@ -54,11 +55,33 @@ def query_check(client, reference, arch):
         rejected(method, namespace='query-alpha')
     assert invoke('provider', 'list', '--namespace', 'query-alpha').returncode == 2
 
+    # Inframill 0.20 exposes namespace IDs end-to-end, preserving case and hyphens.
+    for namespace_id in ['Query-Team', '-Team-']:
+        created = client.create_namespace(namespace_id)
+        assert created == {'id': namespace_id, 'status': 'NAMESPACE_STATUS_ACTIVE'}, created
+        assert client.rpc('GetNamespace', {'id': namespace_id})['namespace'] == created
+        metadata = client.config['engine']['dataDir']
+        stored = json.loads((pathlib.Path(metadata) / namespace_id / 'namespace.json').read_text())
+        assert stored['id'] == namespace_id and 'name' not in stored, stored
+        result = subprocess.run(
+            [client.binary, 'namespace', 'get', '--endpoint', client.endpoint,
+             '-o', 'json', '--', namespace_id], env=client.env, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0 and json.loads(result.stdout)['namespace'] == created, result
+        client.fetch(reference, namespace_id)
+        instance_id = client.initialize(namespace_id, 'Web-Prod', reference, {'architecture': arch})
+        assert request('instance', 'get', 'Web-Prod', '--namespace=' + namespace_id)['instance']['id'] == instance_id
+        client.rpc('DeleteNamespace', {'id': namespace_id})
+    client.poll(lambda: not client.rpc('ListNamespaces').get('namespaces', []), timeout=30)
+    for invalid in ['', 'bad_name', 'has space', 'team/name']:
+        rejected('CreateNamespace', {'id': invalid})
+    for method in ['CreateNamespace', 'GetNamespace', 'DeleteNamespace']:
+        rejected(method, {'name': 'obsolete'})
+
     instances = {}
     blueprints = {}
     for namespace in ['query-beta', 'query-alpha', 'query-empty']:
         created = client.create_namespace(namespace)
-        assert client.rpc('GetNamespace', {'name': namespace})['namespace'] == created
+        assert client.rpc('GetNamespace', {'id': namespace})['namespace'] == created
         assert request('namespace', 'get', namespace)['namespace'] == created
         assert invoke('namespace', 'get', namespace, '--namespace', namespace).returncode == 2
         if namespace == 'query-empty':
@@ -90,7 +113,7 @@ def query_check(client, reference, arch):
         paged = request('instance', 'list', '--namespace', namespace, '--all', '--limit', '1')['instances']
         assert {i['id'] for i in paged} == set(instances[namespace])
 
-    rejected('GetNamespace', {'name': 'missing'}, code='not_found')
+    rejected('GetNamespace', {'id': 'missing'}, code='not_found')
     foreign = instances['query-beta'][0]
     for method, body in [('GetInstance', {'instance_id': foreign}),
                          ('SubmitCommand', {'instance_id': foreign, 'command_name': 'builtin.delete',
@@ -133,6 +156,6 @@ def query_check(client, reference, arch):
         request('registry', 'clear', '--namespace', namespace)
         assert client.rpc('ListNamespaceSecretNames', namespace=namespace).get('names', []) == []
         assert client.rpc('ListNamespaceRegistryHosts', namespace=namespace).get('hosts', []) == []
-        client.rpc('DeleteNamespace', {'name': namespace})
+        client.rpc('DeleteNamespace', {'id': namespace})
     client.poll(lambda: not client.rpc('ListNamespaces').get('namespaces', []), timeout=30)
     print('Namespace inspection, header isolation, local selectors, ULIDs and scoped pagination passed', flush=True)

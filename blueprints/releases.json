@@ -27,7 +27,7 @@
       ],
       "status": "supported",
       "source_sha256": "sha256:b75cf212529ccb20db905ff4ef878490dc4094fb1bbb7f4ca4357c50b4df52ed",
-      "inframill_version": "0.19.0-dev"
+      "inframill_version": "0.20.0-dev"
     },
     {
       "name": "hello-world",
@@ -50,7 +50,7 @@
       ],
       "status": "supported",
       "source_sha256": "sha256:7b8e343b02e718bd7836f4834cc19576f8c181047573386114eef6f3964e351a",
-      "inframill_version": "0.19.0-dev"
+      "inframill_version": "0.20.0-dev"
     }
   ]
 }

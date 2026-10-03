@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit 0.19.0-dev targets the Inframill 0.19.0-dev API. The `providers/` subproject builds
+Kit 0.20.0-dev targets the Inframill 0.20.0-dev API. The `providers/` subproject builds
 independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
 prebuilt provider outputs with the engine and tools. Blueprints are separate OCI packages.
 
@@ -90,7 +90,7 @@ that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
 `/var/lib/inframill` is the writable data mount, independent of the configuration
-directory. Users explicitly select a named volume or bind mount. Inframill 0.19.0-dev
+directory. Users explicitly select a named volume or bind mount. Inframill 0.20.0-dev
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
 while namespace secrets and registry credentials remain in memory. Namespaces must
@@ -104,8 +104,11 @@ there is no automatic migration. See the [Docker guide](../README.md#run-with-do
 Every namespace-owned RPC requires an `X-Namespace-ID` header; the CLI requires
 `--namespace`, including for ID-based lookups. Scoped responses omit namespace
 identity, and Instance selectors use local names or canonical uppercase ULIDs.
-Namespace administration and provider discovery remain global. `namespace get`
-returns one namespace's lifecycle status. Pagination cursors are bound to scope.
+Namespace administration and provider discovery remain global. Namespace administration
+request/response fields and persisted ownership records use `id`. Namespace IDs,
+Instance names and Provider/command identifiers accept `[a-zA-Z0-9-]+`, retaining case.
+Old namespace `name` records are rejected without migration. `namespace get`
+returns one namespace's ID and lifecycle status. Pagination cursors are bound to scope.
 
 Instance and execution IDs use ULIDs. Kit validates these IDs before using saved
 plans or shared node artifacts. The `ulid-v1` storage layout rejects old UUID data

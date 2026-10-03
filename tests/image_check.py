@@ -83,7 +83,7 @@ def image_check(tmp, image, arch, network):
         name, endpoint = start(mounts, port, workdir)
         namespace_cli = ['docker', 'exec', name, 'inframill', 'namespace',
                          'create', 'image', '--endpoint', 'http://127.0.0.1:' + str(port), '-o', 'json']
-        assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'name': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}
+        assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'id': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}
         rpc(endpoint, 'FetchBlueprint', {'reference': reference}, namespace='image')
         instance = rpc(endpoint, 'InitInstance', {'name': 'persistence',
             'blueprint_reference': reference, 'values': {'json': json.dumps({'architecture': arch})},
@@ -100,7 +100,7 @@ def image_check(tmp, image, arch, network):
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']
         stop(name)
         name, endpoint = start(mounts, port, workdir)
-        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [{'name': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}]
+        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [{'id': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}]
         instances = rpc(endpoint, 'ListInstances', namespace='image')['instances']
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance}, namespace='image')['executions']
@@ -108,7 +108,7 @@ def image_check(tmp, image, arch, network):
         cli = ['docker', 'exec', name, 'inframill']
         namespaces = json.loads(docker(cli + ['namespace', 'list', '--endpoint',
                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
-        assert namespaces == [{'name': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}], namespaces
+        assert namespaces == [{'id': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}], namespaces
         history_cli = json.loads(docker(cli + ['execution', 'list',
                                  '--instance', instance, '--namespace', 'image', '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
