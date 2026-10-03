@@ -14,3 +14,8 @@ provider_settings:
   debug:
     version: "0.0"
     settings: {}
+
+features:
+  - network_firewall
+  - network_load_balancer
+  - workload_server
