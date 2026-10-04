@@ -1,6 +1,7 @@
 package ansible
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,49 @@ import (
 	"github.com/inframill/kit/providers/roots/internal/artifacts"
 	"github.com/sir-hassan/inframill/pkg/runmill"
 )
+
+func TestPingPreparation(t *testing.T) {
+	d, s, n := fixture(t)
+	if _, err := d.Prepare(t.Context(), s, "ping", nil); err == nil {
+		t.Fatal("ping accepted missing nodes")
+	}
+	artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n)
+	os.Remove(filepath.Join(s.WorkspaceDir, "site.yml"))
+	for _, args := range []runmill.Arguments{nil, {"hosts": []string{"local"}}} {
+		if _, err := d.Prepare(t.Context(), s, "ping", args); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range []runmill.Arguments{{"playbook": "site"}, {"tags": []string{}}, {"hosts": []string{"missing"}}, {"hosts": []string{"local", "local"}}} {
+		if _, err := d.Prepare(t.Context(), s, "ping", args); err == nil {
+			t.Fatalf("accepted invalid ping arguments: %v", args)
+		}
+	}
+}
+
+func TestToolFailuresReturnWithDiagnostics(t *testing.T) {
+	for _, command := range []string{"apply", "ping"} {
+		t.Run(command, func(t *testing.T) {
+			d, s, n := fixture(t)
+			artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n)
+			var logs bytes.Buffer
+			s.Diagnostics = &logs
+			d.Tool = filepath.Join(t.TempDir(), "ansible")
+			os.WriteFile(d.Tool, []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then printf '[core 2.20.1]'; else printf 'host unreachable\\n' >&2; exit 4; fi\n"), 0700)
+			args := runmill.Arguments{}
+			if command == "apply" {
+				args["playbook"] = "site"
+			}
+			p, err := d.Prepare(t.Context(), s, command, args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = p.Execute(t.Context(), nil); err == nil || !bytes.Contains(logs.Bytes(), []byte("host unreachable")) {
+				t.Fatal("lost tool failure or diagnostics", err)
+			}
+		})
+	}
+}
 
 func fixture(t *testing.T) (Provider, runmill.ExecutionContext, artifacts.Nodes) {
 	t.Helper()

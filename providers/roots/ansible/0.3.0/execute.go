@@ -81,7 +81,16 @@ func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any,
 	if err = artifacts.Write(tmp, "inventory.json", inventory); err != nil {
 		return nil, err
 	}
-	args := []string{"-i", filepath.Join(tmp, "inventory.json"), p.static.Playbooks[p.args.Playbook]}
+	playbook := p.static.Playbooks[p.args.Playbook]
+	if p.command == "ping" {
+		// Use the same interpreter, inventory and callback as apply, without
+		// running a user playbook or waiting for a guest to finish booting.
+		if err = artifacts.WriteBytes(tmp, "ping.yml", []byte("- hosts: all\n  gather_facts: false\n  tasks:\n    - name: Verify connectivity and Python\n      ansible.builtin.ping:\n      timeout: 30\n")); err != nil {
+			return nil, err
+		}
+		playbook = filepath.Join(tmp, "ping.yml")
+	}
+	args := []string{"-i", filepath.Join(tmp, "inventory.json"), playbook}
 	if p.command == "syntax-check" {
 		args = append(args, "--syntax-check")
 	}

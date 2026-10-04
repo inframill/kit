@@ -54,11 +54,37 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     plan = do(prefix + '.plan')
     do(prefix + '.apply', {'plan_id': plan['plan_id']})
     do(ansible + '.inventory')
+    ping = do(ansible + '.ping')
+    assert ping['hosts'] and all(host['ok'] == 1 for host in ping['hosts'].values()), ping
     do(ansible + '.syntax-check', {'playbook': 'site'})
     do(ansible + '.check', {'playbook': 'site'})
     do(ansible + '.apply', {'playbook': 'site'})
+    ansible_failure_flow(client, namespace, iid)
     destroy = do(prefix + '.plan', {'destroy': True})
     do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
+
+
+def ansible_failure_flow(client, namespace, iid):
+    # Alter only this disposable instance. Prove real Ansible failures finish
+    # and --stream shows task progress without leaking module result text.
+    site = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid / 'workspace/ansible/site.yml'
+    original = site.read_bytes()
+    site.write_text('- hosts: all\n  gather_facts: false\n  tasks:\n'
+                    '    - ansible.builtin.fail:\n        msg: synthetic-private-result\n')
+    try:
+        failed = subprocess.run(
+            [client.binary, 'instance', 'exec', iid, 'ansible.apply', '--namespace', namespace,
+             '--endpoint', client.endpoint, '--arguments', '{"playbook":"site"}', '--stream'],
+            env=client.env, capture_output=True, text=True, timeout=30)
+        assert failed.returncode == 1 and 'failed' in failed.stderr, failed
+        assert 'ansible.builtin.fail' in failed.stderr and '"ansible": "failed"' in failed.stderr, failed
+        assert 'synthetic-private-result' not in failed.stdout + failed.stderr, failed
+        match = re.search(r'Execution admitted: ([0-7][0-9A-HJKMNP-TV-Z]{25})', failed.stderr)
+        assert match, failed
+        result = client.rpc('GetCommandExecution', {'instance_id': iid, 'execution_id': match[1]}, namespace=namespace)
+        assert result['execution']['status'] == 'COMMAND_EXECUTION_STATUS_FAILED', result
+    finally:
+        site.write_bytes(original)
 
 
 def hello_world_flow(client, reference, namespace='test'):
@@ -75,7 +101,7 @@ def hello_world_flow(client, reference, namespace='test'):
     arguments.write_text(json.dumps({'stdout': 'stream-out-marker\n', 'stderr': 'stream-err-marker\n'}))
     streamed = subprocess.run(
         [client.binary, 'instance', 'exec', iid, 'debug.logs', '--namespace', namespace,
-         '--endpoint', client.endpoint, '--arguments-file', str(arguments), '--stream'],
+         '--endpoint', client.endpoint, '--arguments', arguments.read_text(), '--stream'],
         env=client.env, capture_output=True, text=True, timeout=30)
     assert streamed.returncode == 0, streamed.stderr
     match = re.search(r'Execution admitted: ([0-7][0-9A-HJKMNP-TV-Z]{25})', streamed.stderr)
@@ -149,7 +175,9 @@ def runtime_flows(client, arch, tofu):
     client.execute('smoke', iid, prefix + '.init')
     plan = client.execute('smoke', iid, prefix + '.plan')
     client.execute('smoke', iid, prefix + '.apply', {'plan_id': plan['plan_id']})
+    client.execute('smoke', iid, ansible + '.ping')
     client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
+    ansible_failure_flow(client, 'smoke', iid)
     plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
     client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
     reference = 'build.in/pv-cloud'

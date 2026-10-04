@@ -48,6 +48,7 @@ var userName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	commands := map[string]runmill.CommandDefinition{"inventory": {Description: "Write inventory from a verified node artifact", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}}}
 	list := map[string]any{"type": "array", "maxItems": 100, "uniqueItems": true, "items": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
+	commands["ping"] = runmill.CommandDefinition{Description: "Verify SSH/local connectivity and Python on every selected host", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"hosts": list}}}
 	for _, name := range []string{"syntax-check", "check", "apply"} {
 		commands[name] = runmill.CommandDefinition{Description: name + " the selected playbook and verify the outcome", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"playbook"}, "properties": map[string]any{"playbook": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}, "hosts": list, "tags": list}}}
 	}
@@ -120,6 +121,12 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 	case "inventory":
 		if len(args) > 0 {
 			return nil, errors.New("inventory takes no arguments")
+		}
+	case "ping":
+		for key := range args {
+			if key != "hosts" {
+				return nil, errors.New("ping only accepts hosts")
+			}
 		}
 	case "syntax-check", "check", "apply":
 		path, ok := m.Playbooks[a.Playbook]

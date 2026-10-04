@@ -55,7 +55,8 @@ The generated configuration allows the local `blueprints/` directory.
 `blueprints/pv-cloud/TAG/`. These references require no registry. Re-fetch after
 editing source files and initialize a new Instance to use the new snapshot. Commands such as init/plan/apply contact
 real services and require your chosen credentials and infrastructure inputs.
-Use `--arguments-file` for execution arguments, `--wait` to wait for an outcome and
+Use `--arguments '{"playbook":"site"}'` for inline execution arguments or
+`--arguments-file` for a file (the two flags are mutually exclusive), `--wait` to wait for an outcome and
 `-o json` for structured output. A failed command has a failed outcome; cancelling
 or timing out a client wait does not cancel admitted work or roll back tool effects.
 Creation inputs are immutable; use a new Instance name to change them.
@@ -248,11 +249,42 @@ so failures and partial effects require a fresh plan. It invalidates shared node
 before mutation and only publishes verified output. Destroy verifies empty managed
 state. Refresh-only and destroy plans are distinct modes.
 
-Ansible supplies inventory, syntax-check, check and apply. It consumes a bound node
+Ansible supplies inventory, ping, syntax-check, check and apply. It consumes a bound node
 artifact, selects the requested address without fallback, and checks the complete
 host recap. Failed, unreachable, ignored or rescued failures reject. Check mode is a
 prediction. Syntax-check needs no previously applied infrastructure. SSH uses an
 agent, batch mode and explicit host-key policy; Kit does not write private keys.
+
+Use ping after OpenTofu apply/output to check SSH authentication and remote Python
+without applying a playbook. It accepts optional `hosts`, but no playbook or tags:
+
+```sh
+bin/inframill instance exec example ansible.ping --namespace production --stream
+bin/inframill instance exec example ansible.ping --namespace production \
+  --arguments '{"hosts":["web-1"]}' --stream
+```
+
+Ping uses `ansible.builtin.ping`, not ICMP, with a 30-second task timeout.
+Ansible streams module/task status, safe connection failure categories and host
+counters to stderr; arbitrary task results and arguments stay private. The pv-cloud
+playbook waits up to 300 seconds for SSH while guests boot. A running execution
+at that step is waiting for connectivity; restarting the daemon interrupts it.
+The CLI's default two-minute timeout only stops waiting, so allow more time for
+an apply after checking connectivity:
+
+```sh
+bin/inframill instance exec example ansible.apply --namespace production \
+  --arguments '{"playbook":"site"}' --stream --timeout 15m
+```
+
+For Docker, load the matching private key into your host SSH agent with `ssh-add`.
+`task docker:up` forwards it when `SSH_AUTH_SOCK` is set, using Docker Desktop's
+agent socket on macOS and the host socket on Linux. `KIT_SSH_AUTH_SOCK` overrides
+the Docker-host socket path; set it to an empty string to disable forwarding.
+The container can authenticate with keys loaded in that agent. Public keys in
+blueprint values only authorize guest access; they do not supply client credentials.
+Also check `ssh_user`, guest readiness, and that `ssh_source_ips` allows your client
+address. Native daemons inherit the agent from the shell that starts them.
 
 The executable's configured prefix is:
 

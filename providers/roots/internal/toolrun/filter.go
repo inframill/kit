@@ -28,19 +28,12 @@ type filter struct {
 	sink     io.Writer
 	patterns [][]byte
 	pending  []byte
-	keep     int
 	err      error
 	total    int
 }
 
 func newFilter(sink io.Writer, secrets map[string]string) *filter {
-	f := &filter{sink: sink, patterns: patterns(secrets), keep: 1}
-	for _, p := range f.patterns {
-		if len(p) > f.keep {
-			f.keep = len(p)
-		}
-	}
-	return f
+	return &filter{sink: sink, patterns: patterns(secrets)}
 }
 func (f *filter) Write(p []byte) (int, error) {
 	f.mu.Lock()
@@ -59,9 +52,15 @@ func (f *filter) Write(p []byte) (int, error) {
 }
 func (f *filter) drain(final bool) {
 	var out bytes.Buffer
-	for len(f.pending) > 0 && (final || len(f.pending) >= f.keep) {
+drain:
+	for len(f.pending) > 0 {
 		n := 0
 		for _, pattern := range f.patterns {
+			// Hold only a possible split secret, so short progress messages
+			// are visible immediately even with long credentials in scope.
+			if !final && len(f.pending) < len(pattern) && bytes.HasPrefix(pattern, f.pending) {
+				break drain
+			}
 			if bytes.HasPrefix(f.pending, pattern) {
 				n = len(pattern)
 				break

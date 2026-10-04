@@ -63,6 +63,8 @@ tasks:
       Pulls ghcr.io/inframill/kit using the root VERSION file before stopping Inframill.
       Binds .inframill, .inframill.yaml and local blueprints from the repository root; publishes
       port 8080 on loopback. Creates the data directory if needed.
+      Forwards the SSH agent when SSH_AUTH_SOCK is set (Docker Desktop on macOS).
+      KIT_SSH_AUTH_SOCK overrides the Docker-host socket path; set it empty to disable.
     preconditions:
       - sh: test -f .inframill.yaml
         msg: Create .inframill.yaml before running task docker:up.
@@ -71,6 +73,16 @@ tasks:
         set -eu
         image="ghcr.io/inframill/kit:$(cat VERSION)"
         docker pull "$image"
+        agent="${SSH_AUTH_SOCK:-}"
+        if [ -n "$agent" ] && [ "$(uname -s)" = Darwin ]; then
+          agent=/run/host-services/ssh-auth.sock
+        fi
+        agent="${KIT_SSH_AUTH_SOCK-$agent}"
+        set --
+        if [ -n "$agent" ]; then
+          set -- --mount "type=bind,src=$agent,dst=/run/kit-ssh-agent.sock" \
+            -e SSH_AUTH_SOCK=/run/kit-ssh-agent.sock
+        fi
         mkdir -p .inframill
         if docker container inspect inframill >/dev/null 2>&1; then
           docker stop inframill
@@ -81,6 +93,7 @@ tasks:
           -v "$PWD/.inframill:/var/lib/inframill" \
           -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
           -v "$PWD/blueprints:/opt/inframill/blueprints:ro" \
+          "$@" \
           "$image"
 
   docker:down:

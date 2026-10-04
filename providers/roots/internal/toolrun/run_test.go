@@ -54,3 +54,20 @@ func TestRunnerDoesNotLoseOutputFailures(t *testing.T) {
 		t.Fatal("log failure ignored")
 	}
 }
+
+func TestProgressIsNotBufferedBehindUnrelatedSecrets(t *testing.T) {
+	var out bytes.Buffer
+	f := newFilter(&out, map[string]string{"token": "a-long-credential-value"})
+	f.Write([]byte("task started\n"))
+	if out.String() != "task started\n" {
+		t.Fatal("progress was delayed")
+	}
+	f.Write([]byte("a-long-"))
+	if out.String() != "task started\n" {
+		t.Fatal("partial secret leaked")
+	}
+	f.Write([]byte("credential-value\ndone\n"))
+	if out.String() != "task started\n[REDACTED]\ndone\n" {
+		t.Fatal(out.String())
+	}
+}
