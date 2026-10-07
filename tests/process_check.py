@@ -6,6 +6,7 @@ import urllib.error
 
 from blueprint_workflows import LOCAL_REFERENCE
 from engine_client import Engine
+from events_check import provider_events, stream_check, retention_check
 
 
 def process_check(tmp, config, binary, arch, env=None):
@@ -28,6 +29,7 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
     tool.chmod(0o700)
     config = json.loads(json.dumps(config))
     config['engine']['dataDir'] = str(tmp / 'data')
+    config['engine']['eventJournalMaxBytes'] = 131072
     config['engine']['providers']['opentofu']['args'] = ['--tool', str(tool)]
     terminal = {'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
                 'COMMAND_EXECUTION_STATUS_INTERRUPTED'}
@@ -112,12 +114,19 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
         saved = {eid: execution(eid) for eid in (first, second, writer, later)}
         page = client.rpc('ListCommandExecutions', {'instance_id': iid}, namespace='process')
         assert {r['request']['executionId']: r for r in page['executions']} == saved
+        provider_events(client, 'process', iid)
+        stream_check(client, 'process')
+        retention_check(client)
+        event_head = client.rpc('ReadNamespaceEvents', namespace='process')['headSequence']
 
     # Restart must preserve outcomes/revisions without adopting diagnostic PIDs.
     with Engine(tmp / 'restarted', config, binary, env) as client:
+        page = client.rpc('ReadNamespaceEvents', {'after_sequence': event_head}, namespace='process')
+        assert page['resyncRequired'] and any(e['type'] == 'stream.reset' for e in page['events']), page
         for eid, previous in saved.items():
             result = client.rpc('GetCommandExecution', {
                 'instance_id': iid, 'execution_id': eid,
             }, namespace='process')['execution']
             assert result == previous, (result, previous)
     print('Provider reader overlap, writer fairness, scoped signals, PID/exit codes and durable revisions passed', flush=True)
+    print('Namespace event summaries, CLI live/replay, secret isolation, retention and restart refresh passed', flush=True)

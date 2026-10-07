@@ -1,5 +1,26 @@
 # Releasing Kit
 
+## 0.26.0-dev
+
+This release uses Inframill 0.26.0-dev (`8c69c3fbf0ac`). OpenTofu and Ansible
+remain at provider version 0.4.0 and are rebuilt against this exact SDK revision;
+the Runmill provider API, tool pins and Blueprint requirements are unchanged.
+
+The engine adds persistent per-namespace resource events, read/replay and watch
+APIs, JSON CLI commands, and optional size-based journal retention. Execution
+events carry status, revision and optional PID/exit code. Credential events contain
+counts only. Restart and expired replay positions explicitly require a refresh
+of current resources; the feed is not a complete audit history.
+
+Existing 0.25 command databases keep their schema. Missing event journals initialize
+on open without reconstructing prior events. The older-schema restriction noted
+for 0.25 still applies to upgrades from earlier releases. Retention stays disabled
+by default; setting `engine.eventJournalMaxBytes` explicitly enables pruning.
+
+Release checks exercise both providers' event summaries, CLI live streaming and
+replay, namespace/credential isolation, bounded retention and restart refresh,
+alongside the existing native and Linux AMD64/ARM64 workflows.
+
 ## 0.25.0-dev
 
 This release uses Inframill 0.25.0-dev (`6efa420`) and OpenTofu/Ansible

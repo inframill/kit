@@ -11,6 +11,8 @@ import subprocess
 import sys
 import uuid
 
+from events_check import provider_events
+
 BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1] / 'blueprints'
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures/blueprints'
 LOCAL_REFERENCE = 'build.in/local-resource'
@@ -62,6 +64,7 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     ansible_failure_flow(client, namespace, iid)
     destroy = do(prefix + '.plan', {'destroy': True})
     do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
+    provider_events(client, namespace, iid)
 
 
 def ansible_failure_flow(client, namespace, iid):

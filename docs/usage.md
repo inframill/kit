@@ -22,6 +22,30 @@ Restart the daemon after changing its provider configuration.
 `inframill server version` reports the selected daemon's build version;
 `inframill --version` reports the local CLI version.
 
+## Namespace events
+
+Read a page of resource changes or watch new changes as JSON Lines:
+
+```sh
+bin/inframill namespace events read --namespace production --after-sequence 0 --limit 100
+bin/inframill namespace events watch --namespace production --timeout 24h
+bin/inframill namespace events watch --namespace production --after-sequence 42 --timeout 24h
+```
+
+Watch without a position starts at the current tail; explicit zero replays retained
+history. Read pages expose `nextSequence` for pagination. Sequences and execution
+revisions are decimal strings; retain their full integer precision. On
+`resyncRequired` or `stream.reset`, refresh current resource queries. Events omit
+credentials, command arguments/results and log output. Positions belong to one
+namespace lifetime and must be discarded after its deletion.
+
+Each namespace persists its feed in `events.jsonl`. History is unlimited by default.
+To enable retention, add `eventJournalMaxBytes: 67108864` under `engine` in your
+daemon configuration, then restart. Zero disables retention; nonzero limits must
+be at least 131072 bytes. Enabling or lowering the limit can prune existing history.
+Expired positions explicitly request a refresh. The normal total CLI timeout
+applies to watches; reconnect explicitly after the last event you processed.
+
 ## Running a deployment
 
 Run these commands from the repository root. `blueprints/examples/pv-cloud.json`
