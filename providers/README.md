@@ -9,8 +9,8 @@ providers/
   build.py                 # one Python build/test/verification script
   releases.json            # selected releases, Go version and Inframill SDK pin
   go.mod, go.sum           # independent Go module
-  roots/opentofu/0.3.0/           # implementation, release.json, tests and cmd/main.go
-  roots/ansible/0.3.0/            # implementation, callback, tests and cmd/main.go
+  roots/opentofu/0.4.0/           # implementation, release.json, tests and cmd/main.go
+  roots/ansible/0.4.0/            # implementation, callback, tests and cmd/main.go
   roots/internal/          # shared execution/artifact code and protocol runner
   tests/                   # builder tests and protocol integration tests
   dist/<name>/<version>/<os>/<arch>/
@@ -53,11 +53,11 @@ Task wrappers are `task build` and `task test`. From the repository root, use
 so direct script calls also work from other working directories.
 
 ```sh
-python3 build.py build --name opentofu --version 0.3.0
+python3 build.py build --name opentofu --version 0.4.0
 python3 build.py build --native                 # native development binaries
 python3 build.py build --platform linux/arm64  # one explicit platform
 python3 build.py build --dist /tmp/provider-output
-task build -- --name ansible --version 0.3.0
+task build -- --name ansible --version 0.4.0
 ```
 
 Existing outputs are verified and reused only when their source and dependency
@@ -73,15 +73,24 @@ Configure the exact executable for the required name and version. There is no
 shared `inframill-kit` dispatcher or `--provider-version` argument in production.
 
 ```sh
-dist/opentofu/0.3.0/linux/arm64/provider version
+dist/opentofu/0.4.0/linux/arm64/provider version
 printf '%s\n' '{"protocol":1,"method":"info","params":{}}' \
-  | dist/opentofu/0.3.0/linux/arm64/provider
+  | dist/opentofu/0.4.0/linux/arm64/provider
 ```
 
 Use the executable matching your host architecture, or build with `--native`.
 `--tool /absolute/path` overrides the external OpenTofu or Ansible executable.
 The default tool paths are the versioned paths installed by the Kit image.
 Requests and responses use the Inframill JSON provider protocol.
+
+Version 0.4.0 adopts Inframill 0.24's required command access modes. OpenTofu
+`validate` declares `read_only`. Its other commands declare `read_write`, including
+`output` because it publishes shared node artifacts. All Ansible commands declare
+`read_write`: inventory writes a shared file and even syntax/check/ping commands
+create temporary files in the workspace. Inframill serializes writers across the
+whole Instance and allows consecutive readers to overlap without bypassing a writer.
+The SDK owns process observation and group signalling; child tools remain in the
+provider's process group.
 
 ## Tests
 

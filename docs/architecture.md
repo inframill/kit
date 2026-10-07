@@ -56,7 +56,7 @@ can differ. The image shares Kit's exact version and its lock must pin the decla
 engine target. Normal builds use only these explicit selections. `task release:prepare` generates
 them from the chosen upstream release before building.
 
-The current providers are OpenTofu and Ansible 0.3.0. Each binary embeds its version's
+The current providers are OpenTofu and Ansible 0.4.0. Each binary embeds its version's
 `release.json`; its executable path selects the implementation. Provider builds use
 `providers/releases.json`, independently of the image release. Synthetic test providers
 under `providers/tests` exercise version coexistence and distinct contracts.

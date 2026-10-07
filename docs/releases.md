@@ -1,5 +1,29 @@
 # Releasing Kit
 
+## 0.25.0-dev
+
+This release uses Inframill 0.25.0-dev (`6efa420`) and OpenTofu/Ansible
+providers 0.4.0. Compared with Kit 0.23.0-dev, the engine adds namespace-owned
+scheduling and lifecycle management, tighter namespace/registry/secret isolation,
+required command access modes, process-group signalling, PID/OS exit-code records,
+and durable per-Instance execution revisions. The provider access modes reflect
+actual workspace/artifact writes; only OpenTofu `validate` is read-only.
+
+Runtime paths and the local pv-cloud Blueprint now select providers 0.4.0. Fetch
+the updated Blueprint before creating new Instances. Existing Instance snapshots
+retain their old provider requirements and rendered settings.
+
+The engine rejects previous `commands.sqlite` schemas intact; it does not migrate
+them. Preserve existing data and use a new empty data directory for this release.
+Saved OpenTofu plans and node artifacts are bound to their producer version and
+must be recreated with the new provider. For live infrastructure, retain the
+existing state/backend and follow its normal recovery/import procedure before
+any apply; a new Instance does not automatically adopt infrastructure.
+
+Release acceptance includes native and Linux ARM64/AMD64 provider workflows,
+reader overlap and writer fairness, scoped process-group kills, nullable PID/exit
+outcomes, and revisions/history surviving daemon restart.
+
 ## Prepare, build and verify
 
 Build the desired Inframill release in its checkout first. Kit consumes that

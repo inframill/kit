@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/inframill/kit/providers/roots/ansible/0.3.0"
-	"github.com/inframill/kit/providers/roots/opentofu/0.3.0"
+	"github.com/inframill/kit/providers/roots/ansible/0.4.0"
+	"github.com/inframill/kit/providers/roots/opentofu/0.4.0"
 	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 
@@ -92,10 +92,10 @@ func List() []Release {
 }
 func init() {
 	implementations := map[string]Factory{
-		"opentofu@0.3.0": func(r Release, tool string) runmill.Provider {
+		"opentofu@0.4.0": func(r Release, tool string) runmill.Provider {
 			return opentofu.Provider{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
-		"ansible@0.3.0": func(r Release, tool string) runmill.Provider {
+		"ansible@0.4.0": func(r Release, tool string) runmill.Provider {
 			return ansible.Provider{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
 	}

@@ -33,14 +33,14 @@ func TestVersionedProviderEntrypoints(t *testing.T) {
 	for _, name := range []string{"opentofu", "ansible"} {
 		t.Run(name, func(t *testing.T) {
 			binary := filepath.Join(t.TempDir(), "provider")
-			cmd := exec.Command("go", "build", "-o", binary, "./roots/"+name+"/0.3.0/cmd")
+			cmd := exec.Command("go", "build", "-o", binary, "./roots/"+name+"/0.4.0/cmd")
 			cmd.Dir = root
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("build: %s: %v", output, err)
 			}
 			output, err := exec.Command(binary, "version").Output()
 			var metadata struct{ Name, Version string }
-			if err != nil || json.Unmarshal(output, &metadata) != nil || metadata.Name != name || metadata.Version != "0.3.0" {
+			if err != nil || json.Unmarshal(output, &metadata) != nil || metadata.Name != name || metadata.Version != "0.4.0" {
 				t.Fatalf("version metadata: %s: %v", output, err)
 			}
 			cmd = exec.Command(binary)
@@ -63,7 +63,7 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 	if e := os.WriteFile(tool, []byte("#!/bin/sh\nif [ \"$1\" = version ]; then printf '{\"terraform_version\":\"1.11.5\"}'; exit; fi\n(sleep 0.4; touch escaped-child) &\nwait\n"), 0700); e != nil {
 		t.Fatal(e)
 	}
-	configs["opentofu"] = runmill.Executable{Path: bin, Args: []string{"provider", "opentofu", "--provider-version", "0.3.0", "--tool", tool}}
+	configs["opentofu"] = runmill.Executable{Path: bin, Args: []string{"provider", "opentofu", "--provider-version", "0.4.0", "--tool", tool}}
 	m := runmill.NewHost(os.Environ())
 	if e := m.Load(t.Context(), configs); e != nil {
 		t.Fatal(e)
@@ -121,7 +121,7 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 func TestExecutableUsesOnlyJSONDispatch(t *testing.T) {
 	bin := build(t)
 	for _, extra := range [][]string{nil, {"info"}} {
-		cmd := exec.Command(bin, append([]string{"provider", "opentofu", "--provider-version", "0.3.0"}, extra...)...)
+		cmd := exec.Command(bin, append([]string{"provider", "opentofu", "--provider-version", "0.4.0"}, extra...)...)
 		cmd.Stdin = bytes.NewBufferString(`{"protocol":1,"method":"info","params":{}}`)
 		b, e := cmd.Output()
 		var reply runmill.Reply
@@ -169,7 +169,7 @@ func TestHostRejectsInvalidFinalReplies(t *testing.T) {
 			script := `#!/bin/sh
 read request
 case "$request" in
-*'"method":"info"'*) printf '%s\n' '{"type":"success","data":{"name":"broken","version":"1.0.0","protocolVersion":1,"commands":{"probe":{"description":"probe","argumentsSchema":{"type":"object"}}}}}';;
+*'"method":"info"'*) printf '%s\n' '{"type":"success","data":{"name":"broken","version":"1.0.0","protocolVersion":1,"commands":{"probe":{"accessMode":"read_only","description":"probe","argumentsSchema":{"type":"object"}}}}}';;
 *'"method":"run"'*) printf '%s\n' '` + tc.reply + `'; exit ` + fmt.Sprint(tc.exit) + `;;
 *) printf '%s\n' '{"type":"success"}';;
 esac

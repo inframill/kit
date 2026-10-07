@@ -13,7 +13,7 @@ class CallbackTests(unittest.TestCase):
         # Callback contract tests need no Ansible installation.
         base = types.ModuleType('ansible.plugins.callback')
         base.CallbackBase = type('CallbackBase', (), {})
-        path = pathlib.Path(__file__).parents[1] / 'roots/ansible/0.3.0/callback.py'
+        path = pathlib.Path(__file__).parents[1] / 'roots/ansible/0.4.0/callback.py'
         spec = importlib.util.spec_from_file_location('kit_callback', path)
         module = importlib.util.module_from_spec(spec)
         with patch.dict('sys.modules', {'ansible.plugins.callback': base}):

@@ -1,7 +1,7 @@
 {
-  "name": "opentofu",
-  "version": "0.3.0",
-  "tool_version": "1.11.5",
+  "name": "ansible",
+  "version": "0.4.0",
+  "tool_version": "2.20.1",
   "protocol": 1,
   "platforms": [
     "linux/amd64",

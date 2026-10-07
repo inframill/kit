@@ -18,7 +18,7 @@ class ReleaseConfigTests(unittest.TestCase):
         lock = release_config.bundle_lock()
         self.assertEqual(set(lock), {'version', 'inframill', 'providers', 'platforms'})
         self.assertEqual(set(lock['platforms']), {'linux/arm64', 'linux/amd64'})
-        self.assertEqual({d['version'] for d in lock['providers']}, {'0.3.0'})
+        self.assertEqual({d['version'] for d in lock['providers']}, {'0.4.0'})
         self.assertEqual(set(lock['inframill']['binaries']),
                          {'linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64'})
 

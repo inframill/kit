@@ -1,8 +1,8 @@
 package main
 
 import (
-	implementation "github.com/inframill/kit/providers/roots/ansible/0.3.0"
 	"github.com/inframill/kit/providers/roots/internal/runner"
+	implementation "github.com/inframill/kit/providers/roots/opentofu/0.4.0"
 	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 

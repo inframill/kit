@@ -143,7 +143,7 @@ values_schema:
 
 provider_settings:
   opentofu:
-    version: '0.3'
+    version: '0.4'
     settings:
       id: opentofu
       backend: local
@@ -151,11 +151,11 @@ provider_settings:
       artifact: opentofu-nodes-v1.json
       settings_file: kit-provider.json
   ansible:
-    version: '0.3'
+    version: '0.4'
     settings:
       id: ansible
       producer_id: opentofu
-      producer_version: 0.3.0
+      producer_version: 0.4.0
       artifact: opentofu-nodes-v1.json
       connection: ssh
       host_key_policy: strict

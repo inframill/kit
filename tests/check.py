@@ -20,6 +20,7 @@ from blueprint_workflows import (BLUEPRINTS, local_paths, LOCAL_REFERENCE,
 from providers.tests.daemon_check import daemon_check
 from engine_client import Engine
 from query_check import query_check
+from process_check import process_check
 from image_check import image_check
 from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
 
@@ -224,7 +225,11 @@ def local_revision_check(tmp):
 
 
 def native_checks(tmp, env):
-    tools()
+    tofu, ansible = tools()
+    config = configuration(providers_dist(), tmp / 'unused',
+                           {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+    config['engine']['localBlueprintPaths'] = local_paths()
+    process_check(tmp / 'process', config, ROOT / 'bin/inframill', native_platform().split('/')[1], env)
     local_revision_check(tmp)
     with engine(tmp / 'hello-world', env, debug_only=True) as client:
         client.create_namespace('test')

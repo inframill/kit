@@ -82,7 +82,7 @@ daemon to probe providers again.
 
 The checked-in [default configuration](runtime/inframill.yaml) includes HTTP port
 and timeouts, JSON logging, the data directory, and executable/tool paths for
-OpenTofu 0.3.0 and Ansible 0.3.0. Copy it to start a custom configuration:
+OpenTofu 0.4.0 and Ansible 0.4.0. Copy it to start a custom configuration:
 
 ```sh
 cp runtime/inframill.yaml inframill.yaml
@@ -159,7 +159,7 @@ restart, even with a volume.
 
 Provider sources, release metadata, the Python builder and tests live in the
 [provider subproject](providers/README.md). Each version has a root such as
-`providers/roots/opentofu/0.3.0/`. The [local blueprints](blueprints/README.md)
+`providers/roots/opentofu/0.4.0/`. The [local blueprints](blueprints/README.md)
 are fetched directly from their source directories.
 
 ```sh

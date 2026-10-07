@@ -23,12 +23,12 @@ engine:
       path: /usr/local/bin/inframill
       args: [debug, provider]
     opentofu:
-      path: /opt/inframill/providers/opentofu/0.3.0/provider
+      path: /opt/inframill/providers/opentofu/0.4.0/provider
       args:
         - --tool
         - /opt/inframill/tools/opentofu/1.11.5/tofu
     ansible:
-      path: /opt/inframill/providers/ansible/0.3.0/provider
+      path: /opt/inframill/providers/ansible/0.4.0/provider
       args:
         - --tool
         - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook

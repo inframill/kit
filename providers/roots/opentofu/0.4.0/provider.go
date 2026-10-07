@@ -54,12 +54,17 @@ func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	}
 	commands := map[string]runmill.CommandDefinition{}
 	for _, name := range []string{"init", "validate", "output"} {
-		commands[name] = runmill.CommandDefinition{Description: name + " the OpenTofu workspace", ArgumentsSchema: object(nil)}
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the OpenTofu workspace", ArgumentsSchema: object(nil)}
 	}
-	commands["plan"] = runmill.CommandDefinition{Description: "Save an integrity-bound plan", ArgumentsSchema: object(map[string]any{"destroy": map[string]any{"type": "boolean"}, "refresh_only": map[string]any{"type": "boolean"}})}
+	commands["plan"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Save an integrity-bound plan", ArgumentsSchema: object(map[string]any{"destroy": map[string]any{"type": "boolean"}, "refresh_only": map[string]any{"type": "boolean"}})}
 	for _, name := range []string{"apply", "destroy"} {
-		commands[name] = runmill.CommandDefinition{Description: name + " using a saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$", "not": map[string]any{"const": "00000000000000000000000000"}}}, "plan_id")}
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " using a saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$", "not": map[string]any{"const": "00000000000000000000000000"}}}, "plan_id")}
 	}
+	// Validation only reads the initialized workspace. Output publishes a shared
+	// node artifact; plans and every other command also require exclusive access.
+	validation := commands["validate"]
+	validation.AccessMode = runmill.ReadOnly
+	commands["validate"] = validation
 	return runmill.ProviderDefinition{Name: "opentofu", Commands: commands}, nil
 }
 func (d Provider) parseSettings(config runmill.Settings) (StaticSettings, error) {

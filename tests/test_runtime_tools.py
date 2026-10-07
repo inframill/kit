@@ -16,7 +16,7 @@ class RuntimeToolTests(unittest.TestCase):
         settings = runtime_settings()
         tofu, ansible = local_tools()
         for name, key, path in [('opentofu', 'OPENTOFU_VERSION', tofu), ('ansible', 'ANSIBLE_VERSION', ansible)]:
-            release = json.loads((ROOT / 'providers/roots' / name / '0.3.0/release.json').read_text())
+            release = json.loads((ROOT / 'providers/roots' / name / '0.4.0/release.json').read_text())
             self.assertEqual(settings[key], release['tool_version'])
             self.assertIn(settings[key], str(path))
         self.assertIn('ansible-core==' + settings['ANSIBLE_VERSION'], ansible_requirements(settings))

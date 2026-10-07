@@ -29,7 +29,7 @@ func (d fixtureProvider) Definition() (runmill.ProviderDefinition, error) {
 		key = "message"
 	}
 	schema := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{key: map[string]any{"type": "string"}, "wait": map[string]any{"type": "boolean"}}, "required": []string{key}}
-	return runmill.ProviderDefinition{Name: "fixture", Commands: map[string]runmill.CommandDefinition{"probe": {Description: "Test secret snapshots without emitting credentials", ArgumentsSchema: schema}}}, nil
+	return runmill.ProviderDefinition{Name: "fixture", Commands: map[string]runmill.CommandDefinition{"probe": {AccessMode: runmill.ReadWrite, Description: "Test secret snapshots without emitting credentials", ArgumentsSchema: schema}}}, nil
 }
 func (d fixtureProvider) ValidateSettings(ctx context.Context, c runmill.Settings) error {
 	if c["contract"] != d.version {

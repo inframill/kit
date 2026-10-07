@@ -19,7 +19,7 @@ func fixture(t *testing.T) (Provider, runmill.ExecutionContext) {
 	work := filepath.Join(shared, "opentofu")
 	os.Mkdir(work, 0700)
 	artifacts.Write(work, "kit-provider.json", Settings{Schema: 1, Backend: map[string]any{}, Environment: map[string]string{}})
-	return Provider{Version: "0.3.0", ToolVersion: "1.11.5", Tool: "/missing"}, runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "tofu", "settings_file": "kit-provider.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
+	return Provider{Version: "0.4.0", ToolVersion: "1.11.5", Tool: "/missing"}, runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "tofu", "settings_file": "kit-provider.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
 }
 func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 	d, s := fixture(t)

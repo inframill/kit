@@ -223,7 +223,7 @@ Each entry has a required major.minor version and nested provider settings:
 ```yaml
 provider_settings:
   opentofu:
-    version: "0.3"
+    version: "0.4"
     settings:
       id: opentofu
       settings_file: kit-provider.json
@@ -289,7 +289,7 @@ address. Native daemons inherit the agent from the shell that starts them.
 The executable's configured prefix is:
 
 ```text
-/opt/inframill/providers/opentofu/0.3.0/provider
+/opt/inframill/providers/opentofu/0.4.0/provider
 ```
 
 Inframill sends one JSON request on stdin, without adding protocol arguments. Kit

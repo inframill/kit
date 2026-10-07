@@ -6,19 +6,32 @@ import pathlib
 import platform
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
 
 from blueprint_workflows import protocol_fixture, local_paths, LOCAL_REFERENCE
 from build import ROOT, configuration, local_tools, bundle_lock, providers_dist, native_platform
+from providers.build import verify_source
 
 
 def daemon_check(tmp, env):
     tmp = pathlib.Path(tmp) / 'daemon'
     tmp.mkdir()
     binary = tmp / 'kit-fixtures'
-    subprocess.run(['go', 'build', '-o', str(binary), './tests/harness'], cwd=ROOT / 'providers', check=True)
+    source = pathlib.Path(env.get('INFRAMILL_SOURCE', ROOT.parent / 'inframill')).resolve()
+    verify_source(source, bundle_lock()['inframill']['revision'])
+    with tempfile.TemporaryDirectory(prefix='kit-fixture-go-') as td:
+        modfile = pathlib.Path(td) / 'go.mod'
+        modfile.write_bytes((ROOT / 'providers/go.mod').read_bytes())
+        modfile.with_suffix('.sum').write_bytes((ROOT / 'providers/go.sum').read_bytes())
+        subprocess.run(['go', 'mod', 'edit', '-modfile=' + str(modfile),
+                        '-replace=github.com/sir-hassan/inframill=' + str(source)],
+                       cwd=ROOT / 'providers', env=env, check=True)
+        subprocess.run(['go', 'build', '-mod=readonly', '-modfile=' + str(modfile),
+                        '-o', str(binary), './tests/harness'],
+                       cwd=ROOT / 'providers', env=env, check=True)
     fixture_root = protocol_fixture(tmp)
     tofu, ansible = local_tools()
     data_root = tmp / 'data'

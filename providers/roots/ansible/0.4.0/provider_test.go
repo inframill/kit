@@ -60,9 +60,9 @@ func fixture(t *testing.T) (Provider, runmill.ExecutionContext, artifacts.Nodes)
 	os.Mkdir(work, 0700)
 	artifacts.Write(work, "kit-provider.json", Settings{1, "public_ipv4", "root"})
 	artifacts.WriteBytes(work, "site.yml", []byte("[]"))
-	s := runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "ansible", "settings_file": "kit-provider.json", "producer_id": "tofu", "producer_version": "0.3.0", "artifact": "tofu-nodes-v1.json", "connection": "local", "host_key_policy": "strict", "roles": []string{"local"}, "playbooks": map[string]string{"site": "site.yml"}}}
-	nodes := artifacts.Nodes{Schema: 1, Valid: true, ArtifactScope: artifacts.Scope(s.ArtifactDir), ProducerID: "tofu", ProducerVersion: "0.3.0", ExecutionID: s.ExecutionID, Nodes: []artifacts.Node{{Name: "local", Roles: []string{"local"}, Architecture: "arm64", PublicIPv4: "127.0.0.1"}}}
-	return Provider{"0.3.0", "2.20.1", "/missing"}, s, nodes
+	s := runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "ansible", "settings_file": "kit-provider.json", "producer_id": "tofu", "producer_version": "0.4.0", "artifact": "tofu-nodes-v1.json", "connection": "local", "host_key_policy": "strict", "roles": []string{"local"}, "playbooks": map[string]string{"site": "site.yml"}}}
+	nodes := artifacts.Nodes{Schema: 1, Valid: true, ArtifactScope: artifacts.Scope(s.ArtifactDir), ProducerID: "tofu", ProducerVersion: "0.4.0", ExecutionID: s.ExecutionID, Nodes: []artifacts.Node{{Name: "local", Roles: []string{"local"}, Architecture: "arm64", PublicIPv4: "127.0.0.1"}}}
+	return Provider{"0.4.0", "2.20.1", "/missing"}, s, nodes
 }
 func TestPreparationRequiresOnlyCommandInputs(t *testing.T) {
 	d, s, n := fixture(t)

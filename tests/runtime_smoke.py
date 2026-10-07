@@ -11,6 +11,7 @@ import yaml
 from blueprint_workflows import runtime_flows, local_paths, LOCAL_REFERENCE
 from engine_client import Engine
 from query_check import query_check
+from process_check import process_check
 
 arch = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
 lock = json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
@@ -26,6 +27,7 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     config = yaml.safe_load(pathlib.Path('/etc/inframill/inframill.yaml').read_text())
     config['engine']['dataDir'] = str(tmp / 'data')
     config['engine']['localBlueprintPaths'] = local_paths()
+    process_check(tmp / 'process', config, '/usr/local/bin/inframill', arch)
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
         assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
         query_check(client, LOCAL_REFERENCE, arch)

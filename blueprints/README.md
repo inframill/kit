@@ -52,7 +52,7 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 
 ## pv-cloud
 
-`build.in/pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.3.0`.
+`build.in/pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.4.0`.
 The repository and image configurations enable both providers. [Example Values](examples/pv-cloud.json) demonstrate
 mixed AMD64/ARM64 nodes. Single-architecture examples live in `../tests/fixtures/blueprints/examples/`.
 
