@@ -1,38 +1,36 @@
 {
   "cloud_secret_ref": "hetzner",
-  "instance_name": "example",
+  "instance_name": "zakros",
   "network_zone": "eu-central",
-  "ssh_user": "deploy",
+  "ssh_user": "mostak",
   "ssh_public_keys": [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMOCKexampleKeyReplaceBeforeDeployment"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMhVcDIPQYlXbbdIlzZtXL7GYO2ZFikaS+kLAqF0il0s hassan@Yassirs-MacBook-Pro.local"
   ],
   "ssh_source_ips": [
-    "192.0.2.10/32"
+    "31.172.107.160/32"
   ],
   "private_networks": [],
   "ansible": {
     "address_mode": "public_ipv4"
   },
   "nodes": {
-    "web-amd": {
+    "srv-01": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
       "server_type": "cpx22",
       "location": "fsn1",
       "roles": [
-        "common",
-        "web"
+        "common"
       ],
       "private_networks": []
     },
-    "data-amd": {
+    "srv-02": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
       "server_type": "cpx22",
       "location": "fsn1",
       "roles": [
-        "common",
-        "data"
+        "common"
       ],
       "private_networks": []
     }

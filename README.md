@@ -111,6 +111,15 @@ This pulls `ghcr.io/inframill/kit:<VERSION>` before replacing any existing
 the repository root. The checked-in configuration enables debug, OpenTofu and
 Ansible; the image default enables OpenTofu and Ansible.
 
+The project `ssh/` directory is mounted at `/root/.ssh`, so providers such as
+Ansible use its SSH keys and configuration automatically. Put your private key at
+`ssh/id_ed25519` (or another standard SSH identity filename), with mode `600`;
+use mode `700` for `ssh/`. For other key names, set `IdentityFile` in `ssh/config`
+using the container path, for example `/root/.ssh/deploy_key`. The mount is writable
+so SSH can persist `known_hosts` across container replacements. `ssh/` is ignored
+by Git and keys are not included in the image. Existing SSH agent forwarding
+remains available; see [provider SSH access](docs/usage.md#providers).
+
 To stop and remove the container while preserving the data, configuration and image:
 
 ```sh

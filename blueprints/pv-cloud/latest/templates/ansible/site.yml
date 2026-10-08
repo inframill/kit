@@ -17,6 +17,7 @@
       ansible.builtin.command: timeout 300 cloud-init status --wait
       changed_when: false
       check_mode: false
+
 - name: Configure common services
   hosts: common
   become: true

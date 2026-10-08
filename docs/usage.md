@@ -301,8 +301,17 @@ bin/inframill instance exec example ansible.apply --namespace production \
   --arguments '{"playbook":"site"}' --stream --timeout 15m
 ```
 
-For Docker, load the matching private key into your host SSH agent with `ssh-add`.
-`task docker:up` forwards it when `SSH_AUTH_SOCK` is set, using Docker Desktop's
+For Docker, `task docker:up` mounts the project's `ssh/` directory at `/root/.ssh`.
+Ansible and other providers invoking SSH use the standard identities there, such
+as `ssh/id_ed25519`, along with `ssh/config` and `ssh/known_hosts`. Set directory
+permissions to `700` and private-key permissions to `600`. For a nonstandard key
+name, add an `IdentityFile /root/.ssh/your_key` entry to `ssh/config`. Paths in that
+configuration must refer to the container filesystem. SSH can write `known_hosts`
+to this mount, preserving trusted host keys across container replacements.
+Re-run `task docker:up` to add the mount to an existing container.
+
+Alternatively, load the matching private key into your host SSH agent with `ssh-add`.
+`task docker:up` also forwards it when `SSH_AUTH_SOCK` is set, using Docker Desktop's
 agent socket on macOS and the host socket on Linux. `KIT_SSH_AUTH_SOCK` overrides
 the Docker-host socket path; set it to an empty string to disable forwarding.
 The container can authenticate with keys loaded in that agent. Public keys in
