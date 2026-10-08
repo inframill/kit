@@ -1,5 +1,12 @@
 # Releasing Kit
 
+## 0.26.1-dev
+
+This Kit patch keeps Inframill 0.26.0-dev and providers 0.4.0. Ansible defaults
+to the `strict` host-key policy when omitted; pv-cloud explicitly selects
+`accept-new`. Connection diagnostics now distinguish changed SSH host keys from
+other host-key verification failures.
+
 ## 0.26.0-dev
 
 This release uses Inframill 0.26.0-dev (`8c69c3fbf0ac`). OpenTofu and Ansible

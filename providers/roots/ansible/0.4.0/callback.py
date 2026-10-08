@@ -26,9 +26,11 @@ class CallbackModule(CallbackBase):
             message = str(result._result.get('msg', '')).lower()
             # Classify common connection problems without printing arbitrary
             # module results, arguments, stdout, or credential-bearing errors.
-            if 'permission denied' in message or 'authentication failed' in message:
+            if 'host identification has changed' in message or 'offending ' in message and 'host key' in message:
+                reason = 'SSH host key changed; accept-new rejects changed keys; verify the replacement host before updating known_hosts'
+            elif 'permission denied' in message or 'authentication failed' in message:
                 reason = 'SSH authentication failed; check the agent key and SSH user'
-            elif 'host key verification failed' in message or 'host identification has changed' in message:
+            elif 'host key verification failed' in message:
                 reason = 'SSH host key verification failed; check known_hosts and host-key policy'
             elif 'connection refused' in message:
                 reason = 'SSH connection refused; check the SSH service and port'

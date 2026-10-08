@@ -68,6 +68,9 @@ func (d Provider) parseSettings(config runmill.Settings) (StaticSettings, error)
 	if e = artifacts.Decode(data, &m); e != nil {
 		return m, e
 	}
+	if m.HostKeyPolicy == "" {
+		m.HostKeyPolicy = "strict"
+	}
 	if !runmill.ValidID(m.ID) || !runmill.ValidID(m.ProducerID) || m.ProducerVersion == "" || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ProducerID+"-nodes-") || m.Connection != "local" && m.Connection != "ssh" || m.HostKeyPolicy != "strict" && m.HostKeyPolicy != "accept-new" || len(m.Playbooks) == 0 {
 		return m, errors.New("invalid Ansible static settings")
 	}

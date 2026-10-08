@@ -40,6 +40,38 @@ class CallbackTests(unittest.TestCase):
         self.assertNotIn('authentication', events[3]['reason'])
         self.assertNotIn('synthetic-secret', output.getvalue())
 
+    def test_changed_host_key_has_specific_safe_reason(self):
+        for message in (
+            'WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!\nHost key verification failed.',
+            'Offending ECDSA key in synthetic-secret:3\nHost key verification failed.',
+            'REMOTE HOST IDENTIFICATION HAS CHANGED!\nPermission denied (publickey).',
+        ):
+            with self.subTest(message=message):
+                output = io.StringIO()
+                result = types.SimpleNamespace(
+                    _host=types.SimpleNamespace(get_name=lambda: 'node-1'),
+                    _result={'msg': message + ' synthetic-secret'})
+                with contextlib.redirect_stderr(output):
+                    self.callback.v2_runner_on_unreachable(result)
+                    result._result['_ansible_no_log'] = True
+                    self.callback.v2_runner_on_unreachable(result)
+                events = [json.loads(line) for line in output.getvalue().splitlines()]
+                self.assertIn('SSH host key changed', events[0]['reason'])
+                self.assertIn('accept-new rejects changed keys', events[0]['reason'])
+                self.assertNotIn('host key changed', events[1]['reason'])
+                self.assertNotIn('synthetic-secret', output.getvalue())
+
+    def test_generic_host_key_failure_does_not_claim_key_changed(self):
+        output = io.StringIO()
+        result = types.SimpleNamespace(
+            _host=types.SimpleNamespace(get_name=lambda: 'node-1'),
+            _result={'msg': 'Host key verification failed.'})
+        with contextlib.redirect_stderr(output):
+            self.callback.v2_runner_on_unreachable(result)
+        reason = json.loads(output.getvalue())['reason']
+        self.assertIn('SSH host key verification failed', reason)
+        self.assertNotIn('changed', reason)
+
     def test_recap_remains_machine_readable_and_is_also_visible(self):
         stdout, stderr = io.StringIO(), io.StringIO()
         self.callback._display = types.SimpleNamespace(display=lambda value: print(value))

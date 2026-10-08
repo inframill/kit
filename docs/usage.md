@@ -277,7 +277,10 @@ Ansible supplies inventory, ping, syntax-check, check and apply. It consumes a b
 artifact, selects the requested address without fallback, and checks the complete
 host recap. Failed, unreachable, ignored or rescued failures reject. Check mode is a
 prediction. Syntax-check needs no previously applied infrastructure. SSH uses an
-agent, batch mode and explicit host-key policy; Kit does not write private keys.
+agent and batch mode; Kit does not write private keys. The host-key policy defaults
+to `strict`, which requires hosts to be trusted in `known_hosts` before connecting.
+The pv-cloud blueprint explicitly sets `host_key_policy: accept-new` to
+automatically record unknown SSH hosts while still rejecting changed keys.
 
 Use ping after OpenTofu apply/output to check SSH authentication and remote Python
 without applying a playbook. It accepts optional `hosts`, but no playbook or tags:

@@ -4,11 +4,69 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/inframill/kit/providers/roots/internal/artifacts"
 	"github.com/sir-hassan/inframill/pkg/runmill"
 )
+
+func TestHostKeyPolicy(t *testing.T) {
+	for _, policy := range []string{"", "accept-new", "strict"} {
+		for _, command := range []string{"ping", "syntax-check", "check", "apply"} {
+			t.Run(policy+"/"+command, func(t *testing.T) {
+				d, s, n := fixture(t)
+				s.Settings["connection"] = "ssh"
+				delete(s.Settings, "host_key_policy")
+				if policy != "" {
+					s.Settings["host_key_policy"] = policy
+				}
+				if err := artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n); err != nil {
+					t.Fatal(err)
+				}
+				d.Tool = filepath.Join(t.TempDir(), "ansible")
+				script := `#!/bin/sh
+if [ "$1" = --version ]; then
+  printf '[core 2.20.1]'
+  exit 0
+fi
+printf '%s\n' "$ANSIBLE_HOST_KEY_CHECKING" "$ANSIBLE_SSH_ARGS" > ssh-environment
+printf '%s' '{"schema":1,"hosts":{"local":{"ok":1}}}'
+`
+				if err := os.WriteFile(d.Tool, []byte(script), 0700); err != nil {
+					t.Fatal(err)
+				}
+				args := runmill.Arguments{}
+				if command != "ping" {
+					args["playbook"] = "site"
+				}
+				p, err := d.Prepare(t.Context(), s, command, args)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = p.Execute(t.Context(), nil); err != nil {
+					t.Fatal(err)
+				}
+				data, err := os.ReadFile(filepath.Join(s.WorkspaceDir, "ssh-environment"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := "yes"
+				if policy == "accept-new" {
+					want = "accept-new"
+				}
+				if got := strings.TrimSpace(string(data)); got != "True\n-o BatchMode=yes -o StrictHostKeyChecking="+want {
+					t.Fatalf("unexpected SSH environment: %q", got)
+				}
+			})
+		}
+	}
+	d, s, _ := fixture(t)
+	s.Settings["host_key_policy"] = "invalid"
+	if err := d.ValidateSettings(t.Context(), s.Settings); err == nil {
+		t.Fatal("accepted invalid host-key policy")
+	}
+}
 
 func TestPingPreparation(t *testing.T) {
 	d, s, n := fixture(t)
