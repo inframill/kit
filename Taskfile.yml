@@ -31,7 +31,7 @@ tasks:
           'Stop:      task docker:down' \
           'Publish:   docker login ghcr.io && task bundle:push' \
           'Release:   task release (prepare metadata, build and check; then bundle:push)' \
-          'Blueprint: inframill blueprint fetch build.in/pv-cloud --namespace production' \
+          'Blueprint: inframill blueprint fetch built.in/pv-cloud --namespace production' \
           '' \
           'Versions: root VERSION file=Kit/image; blueprints are local source directories;' \
           '          providers/releases.json=providers. Kit/image version overrides are ignored.' \

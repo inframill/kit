@@ -203,8 +203,8 @@ other prebuilt artifact locations.
 
 For local blueprint development, `task config` configures the repository's source
 path. `task docker:up` mounts `blueprints/` read-only at `/opt/inframill/blueprints`.
-Fetch with `inframill blueprint fetch build.in/pv-cloud --namespace production` or
-`build.in/hello-world`. These default to the `latest/` source directories. After editing
+Fetch with `inframill blueprint fetch built.in/pv-cloud --namespace production` or
+`built.in/hello-world`. These default to the `latest/` source directories. After editing
 sources, fetch again and initialize a new Instance. Add `:TAG` to select another tag.
 See [local blueprint usage](blueprints/README.md) for provider configuration and examples.
 

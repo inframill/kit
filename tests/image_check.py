@@ -95,7 +95,7 @@ def image_check(tmp, image, arch, network):
 
         def completed():
             result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'execution_id': command}, namespace='image')['execution']
-            return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None
+            return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
         result = poll(completed)
         assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']

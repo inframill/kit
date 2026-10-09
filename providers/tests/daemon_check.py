@@ -5,6 +5,7 @@ import json
 import pathlib
 import platform
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -107,7 +108,7 @@ def daemon_check(tmp, env):
         return rpc('GetCommandExecution', {'instance_id': instance, 'execution_id': command}, namespace=scopes[instance])['execution']
 
     def done(instance, command):
-        value = poll(lambda: (r if r['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None) if (r := execution(instance, command)) else None)
+        value = poll(lambda: (r if r['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None) if (r := execution(instance, command)) else None)
         assert value['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', value
         return json.loads(value['result']['json']) if 'result' in value else None
 
@@ -163,7 +164,7 @@ def daemon_check(tmp, env):
         plan = run(iid, 'opentofu.plan', {'destroy': True})
         run(iid, 'opentofu.destroy', {'plan_id': plan['plan_id']})
         assert len(rpc('ListCommandExecutions', {'instance_id': iid}, namespace='acceptance')['executions']) == 6
-        ref = 'build.in/protocol-fixture'
+        ref = 'built.in/protocol-fixture'
         first = initialize('alpha', 'one', ref, {})
         other = initialize('beta', 'one', ref, {})
         # Discovery includes every available Provider, regardless of saved bindings.
@@ -220,18 +221,22 @@ def daemon_check(tmp, env):
         beta_artifacts = data_root / 'beta/instances' / other / 'artifacts'
         poll(lambda: (beta_artifacts / 'ready').exists())
         rpc('DeleteNamespace', {'id': 'beta'})
-        assert rpc('GetNamespace', {'id': 'beta'})['namespace']['status'] == 'NAMESPACE_STATUS_DELETING'
+        rejected('GetNamespace', {'id': 'beta'}, 'not_found')
         rejected('SubmitCommand', {'instance_id': other, 'command_name': 'fixture.probe',
                                   'arguments': {'json': '{}'}}, 'failed_precondition', namespace='beta')
         assert beta_artifacts.is_dir()
         (beta_artifacts / 'release').write_text('continue')
-        done(other, busy)
-        poll(lambda: not (data_root / 'beta').exists())
+        # Deleted namespaces hide history, but admitted work still drains to disk.
+        def drained():
+            path = data_root / 'beta/instances' / other / 'commands.sqlite'
+            with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as db:
+                return db.execute('SELECT status FROM commands WHERE id = ?', (busy,)).fetchone() == ('succeeded',)
+        poll(drained)
+        assert (data_root / 'beta').is_dir()
         assert run(first, 'fixture.probe', {'text': 'sibling preserved'})['secret_count'] == 0
-        rpc('CreateNamespace', {'id': 'beta'})
-        assert rpc('ListNamespaceSecretNames', namespace='beta').get('names', []) == []
-        assert rpc('ListNamespaceRegistryHosts', namespace='beta').get('hosts', []) == []
-        assert rpc('ListBlueprints', namespace='beta').get('blueprints', []) == []
+        rejected('CreateNamespace', {'id': 'beta'}, 'already_exists')
+        for method in ('ListNamespaceSecretNames', 'ListNamespaceRegistryHosts', 'ListBlueprints'):
+            rejected(method, {}, 'not_found', namespace='beta')
         for path in data_root.rglob('*'):
             if path.is_file():
                 content = path.read_bytes()

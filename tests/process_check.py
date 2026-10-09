@@ -32,7 +32,8 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
     config['engine']['eventJournalMaxBytes'] = 131072
     config['engine']['providers']['opentofu']['args'] = ['--tool', str(tool)]
     terminal = {'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
-                'COMMAND_EXECUTION_STATUS_INTERRUPTED'}
+                'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED',
+                'COMMAND_EXECUTION_STATUS_CANCELLED'}
     with Engine(tmp / 'daemon', config, binary, env) as client:
         client.create_namespace('process')
         client.create_namespace('foreign')
@@ -111,7 +112,20 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
         assert completed_reader['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', completed_reader
         assert completed_reader['exitCode'] == 0
         rejected(first, 'process', 'already_exists')
-        saved = {eid: execution(eid) for eid in (first, second, writer, later)}
+        (control / 'validate-release').unlink()
+        active = submit('validate')
+        client.poll(lambda: running(active), 30)
+        queued = submit('init')
+        assert execution(queued)['status'] == 'COMMAND_EXECUTION_STATUS_QUEUED'
+        receipt = client.rpc('SubmitCommand', {
+            'instance_id': iid, 'command_name': 'builtin.cancel',
+            'arguments': {'json': '{}'},
+        }, namespace='process')['executionId']
+        assert execution(active)['status'] == 'COMMAND_EXECUTION_STATUS_KILLED'
+        assert execution(queued)['status'] == 'COMMAND_EXECUTION_STATUS_CANCELLED'
+        assert execution(receipt)['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED'
+        assert client.rpc('GetInstance', {'instance_id': iid}, namespace='process')['instance']['status'] == 'INSTANCE_STATUS_READY'
+        saved = {eid: execution(eid) for eid in (first, second, writer, later, active, queued, receipt)}
         page = client.rpc('ListCommandExecutions', {'instance_id': iid}, namespace='process')
         assert {r['request']['executionId']: r for r in page['executions']} == saved
         provider_events(client, 'process', iid)

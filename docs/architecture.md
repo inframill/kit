@@ -61,7 +61,7 @@ The current providers are OpenTofu and Ansible 0.4.0. Each binary embeds its ver
 `providers/releases.json`, independently of the image release. Synthetic test providers
 under `providers/tests` exercise version coexistence and distinct contracts.
 Blueprints are local directories under `blueprints/<repository>/<tag>/`, each
-containing a definition and provider templates. Kit uses the `latest` tag. Inframill fetches `build.in/pv-cloud` and `build.in/hello-world`
+containing a definition and provider templates. Kit uses the `latest` tag. Inframill fetches `built.in/pv-cloud` and `built.in/hello-world`
 from `engine.localBlueprintPaths`, creating namespace-scoped snapshots. Native
 configuration includes the repository source path; Docker mounts it read-only.
 Edits become new revisions on the next fetch of that tag; existing Instances retain
@@ -93,10 +93,14 @@ resolves relative YAML paths from the selected config directory; absolute defaul
 keep the storage destination stable. Persisted data survives container replacement,
 while namespace secrets and registry credentials remain in memory. Namespaces must
 be created explicitly and own `<dataDir>/<namespace>/blueprints/` and
-`<dataDir>/<namespace>/instances/<InstanceID>/`, alongside `namespace.json`.
-Blueprint caches are isolated by namespace. Namespace deletion persists a request;
-the cleanup worker removes local data after admitted operations finish, without
-invoking providers. Older shared-root storage is unsupported;
+`<dataDir>/<namespace>/instances/<InstanceID>/`, alongside `namespace.json` and
+the authoritative `instances.sqlite` catalog. Startup checks registered Instance
+paths shallowly; command/history resources open on first use. Individual Instance
+failures remain isolated, while shared catalog failures prevent startup.
+Blueprint caches are isolated by namespace. Namespace deletion hides its data and
+drains admitted operations. Instance deletion hides the row, kills running commands
+and cancels queued work. Both retain all stored files without invoking providers.
+Older shared-root and prior catalog schemas are unsupported;
 there is no automatic migration. See the [Docker guide](../README.md#run-with-docker).
 
 Every namespace-owned RPC requires an `X-Namespace-ID` header; the CLI requires

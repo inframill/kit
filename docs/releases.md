@@ -1,5 +1,31 @@
 # Releasing Kit
 
+## 0.1.10-dev
+
+Kit follows Inframill's version reset to 0.1.10-dev (`d0632d90a02b`), replacing
+the previous Kit 0.26.1-dev / engine 0.26.0-dev selection. OpenTofu and Ansible
+providers remain at 0.4.0, rebuilt against the new SDK; their API and tool pins
+are unchanged.
+
+Local Blueprint references now use `built.in`; the former `build.in` spelling has
+no local alias. Instance metadata moves to the namespace's authoritative
+`instances.sqlite`, with `ready`/`running`/`failed` status and lifecycle timestamps.
+Startup performs shallow checks and isolates Instance failures; command/history
+resources initialize on first use. The engine also separates backend service
+ownership and coordinates namespace admission and shutdown.
+
+Instance cancel kills running commands and cancels queued commands. Instance
+deletion adds a timestamp and hides the Instance while retaining its files; names
+can be reused with new IDs. Namespace deletion hides scoped data and drains
+admitted work, retaining files and reserving its ID. Rerender replaces Values and
+workspace from the retained Blueprint, including removal of Provider-created
+workspace files such as local OpenTofu state.
+
+Prior storage schemas are unsupported and preserved without migration. Use a
+fresh data directory for this release and retain existing state needed to manage
+live infrastructure. Kit's update does not restart the local daemon or modify its
+stored data.
+
 ## 0.26.1-dev
 
 This Kit patch keeps Inframill 0.26.0-dev and providers 0.4.0. Ansible defaults
@@ -167,7 +193,7 @@ Normal build/push commands do not infer versions from Git or modify release meta
 
 Provider versions change independently. See [provider versioning](../providers/README.md#add-a-version)
 when changing provider implementations. Local blueprints have no release manifest;
-edit sources and fetch `build.in/pv-cloud` or `build.in/hello-world` again.
+edit sources and fetch `built.in/pv-cloud` or `built.in/hello-world` again.
 
 [`runtime/Dockerfile`](../runtime/Dockerfile) owns tool, base image, Debian and Python
 dependency pins. Tool changes also need matching provider `release.json` requirements

@@ -109,7 +109,7 @@ def blueprint_check(name):
         raise RuntimeError('Unknown local blueprint')
     with tempfile.TemporaryDirectory(prefix='kit-blueprint-') as td:
         tmp = pathlib.Path(td)
-        reference = 'build.in/' + name
+        reference = 'built.in/' + name
         with engine(tmp / 'engine', debug_only=name == 'hello-world') as client:
             client.create_namespace('test')
             if name == 'hello-world':
@@ -188,7 +188,7 @@ def local_revision_check(tmp):
     shutil.copytree(BLUEPRINTS / 'hello-world', repository)
     latest = repository / 'latest'
     shutil.copytree(latest, repository / '0.1.0')
-    reference = 'build.in/hello-world'
+    reference = 'built.in/hello-world'
     tagged = reference + ':0.1.0'
     with engine(tmp / 'revisions', debug_only=True, paths=[str(source_root)]) as client:
         client.create_namespace('test')
@@ -221,6 +221,25 @@ def local_revision_check(tmp):
         rendered = lambda iid: (instances / iid / 'workspace/debug/message.txt').read_text()
         assert rendered(original) == rendered(pinned) == rendered(versioned) == 'Hello, world!\n'
         assert rendered(changed) == 'Hello, world!\nedited latest\n'
+        # Rerender uses the retained source, and deletion hides rather than purges it.
+        client.execute('test', original, 'builtin.rerender',
+                       {'values': {'greeting': 'Updated', 'name': 'world'}})
+        assert rendered(original) == 'Updated, world!\n'
+        receipt = client.rpc('SubmitCommand', {
+            'instance_id': original, 'command_name': 'builtin.delete',
+            'arguments': {'json': '{}'},
+        }, namespace='test')
+        assert receipt['executionId']
+        assert rendered(original) == 'Updated, world!\n'
+        assert (instances / original / 'commands.sqlite').is_file()
+        try:
+            client.rpc('GetInstance', {'instance_id': original}, namespace='test')
+        except urllib.error.HTTPError as error:
+            assert json.load(error)['code'] == 'not_found'
+        else:
+            raise AssertionError('Deleted Instance remained visible')
+        replacement = client.initialize('test', 'original', reference, values)
+        assert replacement != original and (instances / original).is_dir()
     print('Local tags, latest mapping, changed revisions and immutable Instance snapshots passed', flush=True)
 
 
@@ -233,12 +252,12 @@ def native_checks(tmp, env):
     local_revision_check(tmp)
     with engine(tmp / 'hello-world', env, debug_only=True) as client:
         client.create_namespace('test')
-        hello_world_flow(client, 'build.in/hello-world')
+        hello_world_flow(client, 'built.in/hello-world')
     with engine(tmp / 'workflows', env) as client:
         query_check(client, LOCAL_REFERENCE, native_platform().split('/')[1])
         client.create_namespace('test')
         local_flow(client)
-        pv_flow(client, 'build.in/pv-cloud', tools()[0])
+        pv_flow(client, 'built.in/pv-cloud', tools()[0])
     daemon_check(tmp, env)
     cache_check(tmp, env)
 

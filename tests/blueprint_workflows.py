@@ -15,7 +15,7 @@ from events_check import provider_events
 
 BLUEPRINTS = pathlib.Path(__file__).resolve().parents[1] / 'blueprints'
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures/blueprints'
-LOCAL_REFERENCE = 'build.in/local-resource'
+LOCAL_REFERENCE = 'built.in/local-resource'
 
 
 def run(args, **kwargs):
@@ -183,7 +183,7 @@ def runtime_flows(client, arch, tofu):
     ansible_failure_flow(client, 'smoke', iid)
     plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
     client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = 'build.in/pv-cloud'
+    reference = 'built.in/pv-cloud'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')
     iid = client.initialize('smoke', 'pv-cloud', reference, values)

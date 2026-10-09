@@ -39,9 +39,9 @@ For a native daemon, use the absolute path to `bin/inframill`. The image's defau
 
 ```sh
 inframill namespace create demo
-inframill blueprint fetch build.in/hello-world --namespace demo
+inframill blueprint fetch built.in/hello-world --namespace demo
 inframill instance init hello-world --namespace demo \
-  --blueprint build.in/hello-world \
+  --blueprint built.in/hello-world \
   --values-file blueprints/examples/hello-world.json
 printf '%s\n' '{"message":"Hello, world!"}' | \
   inframill instance exec hello-world debug.echo --namespace demo --arguments-file - --wait
@@ -52,15 +52,15 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 
 ## pv-cloud
 
-`build.in/pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.4.0`.
+`built.in/pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.4.0`.
 The repository and image configurations enable both providers. [Example Values](examples/pv-cloud.json) demonstrate
 mixed AMD64/ARM64 nodes. Single-architecture examples live in `../tests/fixtures/blueprints/examples/`.
 
 ```sh
 inframill namespace create production
-inframill blueprint fetch build.in/pv-cloud --namespace production
+inframill blueprint fetch built.in/pv-cloud --namespace production
 inframill instance init example --namespace production \
-  --blueprint build.in/pv-cloud --values-file blueprints/examples/pv-cloud.json
+  --blueprint built.in/pv-cloud --values-file blueprints/examples/pv-cloud.json
 ```
 
 See [usage](../docs/usage.md) for secrets and provider commands. OpenTofu state uses
@@ -69,7 +69,7 @@ keep and back up the daemon data volume.
 
 ## Tags and local editing
 
-The reserved `build.in` host selects local files; it never contacts a registry.
+The reserved `built.in` host selects local files; it never contacts a registry.
 The daemon resolves `<allowed-root>/<repository>/<tag>/`. Kit's sources are:
 
 ```text
@@ -80,9 +80,9 @@ blueprints/
   pv-cloud/latest/templates/...
 ```
 
-`build.in/pv-cloud` is shorthand for `build.in/pv-cloud:latest`. To maintain another
+`built.in/pv-cloud` is shorthand for `built.in/pv-cloud:latest`. To maintain another
 tag, add a complete source directory such as `pv-cloud/dev/` or `pv-cloud/0.3.0/`,
-then fetch `build.in/pv-cloud:dev` or `build.in/pv-cloud:0.3.0`. Repository paths can
+then fetch `built.in/pv-cloud:dev` or `built.in/pv-cloud:0.3.0`. Repository paths can
 be nested and use OCI lowercase naming rules. Tags support dotted versions.
 Tag directories are mandatory; the daemon never falls back to a different tag or
 files directly under the repository directory. Ambiguous matches and links reject.
@@ -92,7 +92,7 @@ validated snapshot: unchanged content keeps its digest; edits update only that
 tag. Fetching another tag does not change `latest`. Existing Instances retain their
 original snapshots, and multiple tags can share one digest.
 
-Use `build.in/NAME@sha256:<digest>` to initialize from a cached revision. A pinned
+Use `built.in/NAME@sha256:<digest>` to initialize from a cached revision. A pinned
 fetch checks the source in `latest/` against that digest without moving tags.
 Deleting a cached pin removes its tag mappings but preserves source files and Instances.
 

@@ -103,7 +103,7 @@ class Engine:
             }, namespace=namespace)['execution']
             return result if result['status'] in (
                 'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
-                'COMMAND_EXECUTION_STATUS_INTERRUPTED') else None
+                'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
         result = self.poll(completed)
         if result['status'] != 'COMMAND_EXECUTION_STATUS_SUCCEEDED':
             raise RuntimeError(result)

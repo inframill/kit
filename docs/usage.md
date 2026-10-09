@@ -65,17 +65,17 @@ Initialization validates Values and renders files without executing a provider:
 
 ```sh
 bin/inframill namespace create production
-bin/inframill blueprint fetch build.in/pv-cloud \
+bin/inframill blueprint fetch built.in/pv-cloud \
   --namespace production
 bin/inframill instance init example --namespace production \
-  --blueprint build.in/pv-cloud \
+  --blueprint built.in/pv-cloud \
   --values-file blueprints/examples/pv-cloud.json
 bin/inframill secret replace --namespace production --file /private/path/secrets.json
 bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
 The generated configuration allows the local `blueprints/` directory.
-`build.in/pv-cloud` selects `blueprints/pv-cloud/latest/`; append `:TAG` to use
+`built.in/pv-cloud` selects `blueprints/pv-cloud/latest/`; append `:TAG` to use
 `blueprints/pv-cloud/TAG/`. These references require no registry. Re-fetch after
 editing source files and initialize a new Instance to use the new snapshot. Commands such as init/plan/apply contact
 real services and require your chosen credentials and infrastructure inputs.
@@ -92,7 +92,7 @@ bin/inframill instance exec example --namespace production opentofu.init --strea
 ```
 
 `--stream` implies waiting and keeps stdout raw; status notices accompany stderr.
-It rejects JSON output and `builtin.delete`. Stopping the CLI leaves admitted work
+It rejects JSON output and `builtin.cancel`/`builtin.delete`. Stopping the CLI leaves admitted work
 running and prints continuation commands with independent log offsets.
 
 To check local sources, run
@@ -157,22 +157,33 @@ use `namespace create -- -Team-` and `--namespace=-Team-` in scoped CLI commands
 Instance names and Provider/command identifiers use the same character grammar;
 instance and execution IDs remain ULIDs. Blueprint inputs have separate schema rules.
 Namespace RPC create/get/delete bodies and metadata use `id`, for example
-`{"id":"production"}`. Stored namespace records and deletion journals also
+`{"id":"production"}`. Stored namespace records also
 use `id`; old `name` records reject without migration. Preserve old data and use a
 fresh data directory or volume when upgrading.
 
-Each namespace owns `<dataDir>/<namespace>/namespace.json`, `blueprints/` and
+Each namespace owns `<dataDir>/<namespace>/namespace.json`, `instances.sqlite`, `blueprints/` and
 `instances/<InstanceID>/`. Fetch a blueprint separately into every namespace that
 uses it; catalogues and cached content are isolated.
 
-`namespace delete ID` durably requests deletion and returns immediately. The
-namespace rejects new work while admitted operations finish. The cleanup worker
-then removes its local blueprints, Instances, history and credentials, checking
-every 10 seconds by default. `namespace list` and `namespace get ID` report `active`, `deleting` or
-`failed`; failed cleanup is retried automatically. Deletion cannot be undone.
-It does not destroy external infrastructure;
-run the appropriate provider destroy commands before deleting storage you still
-need to manage. Recreating a deleted namespace starts empty.
+`namespace delete ID` marks the namespace deleted and returns immediately.
+Admitted work drains, while new work rejects with a deleted-namespace error and
+normal namespace/scoped reads return not found. All stored files remain; there is
+no cleanup worker or undelete API.
+The namespace ID stays reserved and cannot be recreated.
+
+Instances report `ready`, `running` or `failed`, with creation/update timestamps.
+`instance cancel INSTANCE --namespace ID` kills running commands and cancels queued
+commands, retaining the Instance and history. `instance delete` also hides the
+Instance from normal reads immediately and retains its files. Both return after
+process termination and saved outcomes; `--wait` is redundant and `--stream` rejects.
+Deleted Instance names can be reused with a new ULID. Neither operation destroys
+external infrastructure; run the appropriate provider destroy commands first.
+
+`instance rerender INSTANCE --namespace ID --values-file FILE --wait` replaces all
+Values and regenerates the workspace from the saved Blueprint. It preserves
+identity, source, artifacts and history, but removes Provider-created workspace
+files, including local OpenTofu state. Back up state before using rerender on an
+Instance that manages infrastructure.
 
 The current `ulid-v1` storage layout rejects older UUID records and journals
 without modification or migration. Preserve old data and start with a fresh data
@@ -224,7 +235,7 @@ The `InitInstance` RPC requires the HTTP header `X-Namespace-ID: production`
 and accepts these top-level fields:
 
 ```json
-{"name":"example","blueprint_reference":"build.in/pv-cloud","values":{"json":"{}"}}
+{"name":"example","blueprint_reference":"built.in/pv-cloud","values":{"json":"{}"}}
 ```
 
 Set `values.json` to the serialized Values JSON. The CLI still accepts plain Values files. Fetch the blueprint before
@@ -347,7 +358,8 @@ pv-cloud uses local OpenTofu state at
 `<dataDir>/<namespace>/instances/<InstanceID>/workspace/opentofu/terraform.tfstate`.
 The daemon's persisted data volume holds the state; no S3 bucket or AWS credentials
 are required. Back up this storage and keep it until the managed infrastructure
-has been destroyed. Deleting an Instance or namespace also deletes its local state.
+has been destroyed. Deleting an Instance or namespace retains its local state on
+disk, but hides it from normal engine APIs.
 
 pv-cloud 0.3.0 removes `infra_state_bucket` from Values. Existing Instances retain
 their saved blueprint and backend; this release does not move existing S3 state.

@@ -108,6 +108,8 @@ def query_check(client, reference, arch):
         assert schema['properties']['architecture']['enum'] == ['amd64', 'arm64'], schema
         instance = request('instance', 'get', 'same', '--namespace', namespace)['instance']
         assert instance['id'] == instances[namespace][0] and instance['name'] == 'same', instance
+        assert instance['status'] == 'INSTANCE_STATUS_READY', instance
+        assert instance['createdAt'] and instance['updatedAt'] and 'deletedAt' not in instance, instance
         assert 'namespace' not in instance
         assert invoke('instance', 'get', namespace + '/same', '--namespace', namespace).returncode == 2
         paged = request('instance', 'list', '--namespace', namespace, '--all', '--limit', '1')['instances']
