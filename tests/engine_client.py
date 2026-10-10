@@ -8,6 +8,25 @@ import urllib.error
 import urllib.request
 
 
+def assert_namespace_ready(info):
+    assert info['status'] == 'NAMESPACE_STATUS_READY', info
+    assert info['createdAt'] and 'deletedAt' not in info, info
+    assert [b['backend'] for b in info['backends']] == [
+        'events', 'secrets', 'registries', 'blueprints', 'instances'], info
+    assert all(b['status'] == 'NAMESPACE_BACKEND_STATE_READY' for b in info['backends']), info
+
+
+def namespaces_ready(rpc):
+    rows = rpc('ListNamespaces').get('namespaces', [])
+    for row in rows:
+        assert row['status'] != 'NAMESPACE_STATUS_FAILED', row
+    if any(row['status'] == 'NAMESPACE_STATUS_LOADING' for row in rows):
+        return False
+    for row in rows:
+        assert_namespace_ready(row)
+    return True
+
+
 class Engine:
     def __init__(self, root, config, binary, env=None):
         self.root = pathlib.Path(root)
@@ -41,6 +60,7 @@ class Engine:
                 except (urllib.error.URLError, ConnectionError, TimeoutError):
                     return None
             self.poll(ready, 30)
+            self.poll(lambda: namespaces_ready(self.rpc), 30)
             return self
         except BaseException:
             self.__exit__(None, None, None)
@@ -81,7 +101,9 @@ class Engine:
             return json.load(response)
 
     def create_namespace(self, namespace_id):
-        return self.rpc('CreateNamespace', {'id': namespace_id})['namespace']
+        info = self.rpc('CreateNamespace', {'id': namespace_id})['namespace']
+        assert_namespace_ready(info)
+        return info
 
     def fetch(self, reference, namespace):
         return self.rpc('FetchBlueprint', {'reference': reference}, namespace=namespace)['blueprint']
@@ -103,7 +125,7 @@ class Engine:
             }, namespace=namespace)['execution']
             return result if result['status'] in (
                 'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
-                'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
+                'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
         result = self.poll(completed)
         if result['status'] != 'COMMAND_EXECUTION_STATUS_SUCCEEDED':
             raise RuntimeError(result)

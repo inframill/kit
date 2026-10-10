@@ -1,5 +1,32 @@
 # Releasing Kit
 
+## 0.1.11-dev
+
+Kit uses Inframill 0.1.11-dev (`7f60b1e8e527`). OpenTofu and Ansible providers
+remain at 0.4.0, rebuilt against this SDK revision; tool pins are unchanged.
+
+Namespace metadata, blueprint indexes, events and credentials now share
+`data.sqlite`; execution history remains in per-Instance `commands.sqlite`.
+Existing namespaces initialize in the background with `loading`/`ready`/`failed`
+status and backend diagnostics. History recovery and execution counts initialize
+before the namespace becomes ready. Namespace deletion waits for admitted work
+to drain and retains stored data.
+
+Secrets and registry credentials use individual `upsert`/`delete` commands and
+single-entry JSON files. They persist unencrypted across restarts and namespace
+deletion. Credential lists include creation timestamps; events contain entry
+identifiers without values. Event retention bounds logical event bytes, not the
+physical SQLite file size.
+
+Cancelled running and queued commands both report `cancelled`. Execution records
+and events expose reasons and cancellation timestamps; uncancelled signal death
+reports `interrupted/process_signalled`. Native HTTPS is available through
+`main.tls.certFile` and `main.tls.keyFile`; use absolute paths to mounted PEM files.
+The default Kit configuration continues to use HTTP on port 8080.
+
+Prior storage formats are unsupported. Preserve existing infrastructure state and
+use a fresh data directory for this release. Updating Kit does not migrate data.
+
 ## 0.1.10-dev
 
 Kit follows Inframill's version reset to 0.1.10-dev (`d0632d90a02b`), replacing

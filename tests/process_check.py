@@ -32,8 +32,7 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
     config['engine']['eventJournalMaxBytes'] = 131072
     config['engine']['providers']['opentofu']['args'] = ['--tool', str(tool)]
     terminal = {'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
-                'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED',
-                'COMMAND_EXECUTION_STATUS_CANCELLED'}
+                'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_CANCELLED'}
     with Engine(tmp / 'daemon', config, binary, env) as client:
         client.create_namespace('process')
         client.create_namespace('foreign')
@@ -94,6 +93,7 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
         signal(first, 'SIGKILL')
         killed = done(first)
         assert killed['status'] == 'COMMAND_EXECUTION_STATUS_INTERRUPTED', killed
+        assert killed['reason'] == 'COMMAND_EXECUTION_REASON_PROCESS_SIGNALLED', killed
         assert killed['exitCode'] == -1 and int(killed['revision']) > int(readers[0]['revision']), killed
         assert running(second) and execution(writer)['status'] == 'COMMAND_EXECUTION_STATUS_QUEUED'
         signal(second, 'SIGKILL')
@@ -121,13 +121,18 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
             'instance_id': iid, 'command_name': 'builtin.cancel',
             'arguments': {'json': '{}'},
         }, namespace='process')['executionId']
-        assert execution(active)['status'] == 'COMMAND_EXECUTION_STATUS_KILLED'
+        assert done(active)['status'] == 'COMMAND_EXECUTION_STATUS_CANCELLED'
+        assert execution(active)['reason'] == 'COMMAND_EXECUTION_REASON_USER_REQUESTED'
+        assert execution(active)['cancelRequestedAt']
         assert execution(queued)['status'] == 'COMMAND_EXECUTION_STATUS_CANCELLED'
         assert execution(receipt)['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED'
         assert client.rpc('GetInstance', {'instance_id': iid}, namespace='process')['instance']['status'] == 'INSTANCE_STATUS_READY'
         saved = {eid: execution(eid) for eid in (first, second, writer, later, active, queued, receipt)}
         page = client.rpc('ListCommandExecutions', {'instance_id': iid}, namespace='process')
         assert {r['request']['executionId']: r for r in page['executions']} == saved
+        counts = client.rpc('GetInstance', {'instance_id': iid}, namespace='process')['instance']['executionCounts']
+        assert {key: int(counts.get(key, 0)) for key in ('queued', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted')} == {
+            'queued': 0, 'running': 0, 'succeeded': 3, 'failed': 0, 'cancelled': 2, 'interrupted': 2}, counts
         provider_events(client, 'process', iid)
         stream_check(client, 'process')
         retention_check(client)
@@ -135,6 +140,7 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
 
     # Restart must preserve outcomes/revisions without adopting diagnostic PIDs.
     with Engine(tmp / 'restarted', config, binary, env) as client:
+        assert client.rpc('GetInstance', {'instance_id': iid}, namespace='process')['instance']['executionCounts'] == counts
         page = client.rpc('ReadNamespaceEvents', {'after_sequence': event_head}, namespace='process')
         assert page['resyncRequired'] and any(e['type'] == 'stream.reset' for e in page['events']), page
         for eid, previous in saved.items():

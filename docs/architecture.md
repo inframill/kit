@@ -91,12 +91,13 @@ the image has no merge, rewriting or automatic reload layer.
 directory. Users explicitly select a named volume or bind mount. Inframill
 resolves relative YAML paths from the selected config directory; absolute defaults
 keep the storage destination stable. Persisted data survives container replacement,
-while namespace secrets and registry credentials remain in memory. Namespaces must
-be created explicitly and own `<dataDir>/<namespace>/blueprints/` and
+including namespace secrets and registry credentials stored unencrypted in SQLite.
+Namespaces must be created explicitly and own `<dataDir>/<namespace>/blueprints/` and
 `<dataDir>/<namespace>/instances/<InstanceID>/`, alongside `namespace.json` and
-the authoritative `instances.sqlite` catalog. Startup checks registered Instance
-paths shallowly; command/history resources open on first use. Individual Instance
-failures remain isolated, while shared catalog failures prevent startup.
+the authoritative `data.sqlite` store for Instance/Blueprint metadata, events and
+credentials. Existing namespaces initialize in the background; history recovery
+and execution counts initialize eagerly. Individual Instance failures remain
+isolated, while shared catalog failures mark the namespace failed.
 Blueprint caches are isolated by namespace. Namespace deletion hides its data and
 drains admitted operations. Instance deletion hides the row, kills running commands
 and cancels queued work. Both retain all stored files without invoking providers.
@@ -110,7 +111,8 @@ Namespace administration and provider discovery remain global. Namespace adminis
 request/response fields and persisted ownership records use `id`. Namespace IDs,
 Instance names and Provider/command identifiers accept `[a-zA-Z0-9-]+`, retaining case.
 Old namespace `name` records are rejected without migration. `namespace get`
-returns one namespace's ID and lifecycle status. Pagination cursors are bound to scope.
+returns its ID, timestamps, initialization status and backend results. Pagination
+cursors are bound to scope.
 
 Instance and execution IDs use ULIDs. Kit validates these IDs before using saved
 plans or shared node artifacts. The `ulid-v1` storage layout rejects old UUID data

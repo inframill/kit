@@ -35,14 +35,15 @@ bin/inframill namespace events watch --namespace production --after-sequence 42 
 Watch without a position starts at the current tail; explicit zero replays retained
 history. Read pages expose `nextSequence` for pagination. Sequences and execution
 revisions are decimal strings; retain their full integer precision. On
-`resyncRequired` or `stream.reset`, refresh current resource queries. Events omit
-credentials, command arguments/results and log output. Positions belong to one
-namespace lifetime and must be discarded after its deletion.
+`resyncRequired` or `stream.reset`, refresh current resource queries. Events include
+credential identifiers but omit credential values, command arguments/results and
+log output. Positions belong to one namespace lifetime and must be discarded after its deletion.
 
-Each namespace persists its feed in `events.jsonl`. History is unlimited by default.
+Each namespace persists its feed in `data.sqlite`. History is unlimited by default.
 To enable retention, add `eventJournalMaxBytes: 67108864` under `engine` in your
 daemon configuration, then restart. Zero disables retention; nonzero limits must
-be at least 131072 bytes. Enabling or lowering the limit can prune existing history.
+be at least 131072 bytes. The limit measures encoded event bytes, not physical
+SQLite file size. Enabling or lowering the limit can prune existing history.
 Expired positions explicitly request a refresh. The normal total CLI timeout
 applies to watches; reconnect explicitly after the last event you processed.
 
@@ -70,7 +71,7 @@ bin/inframill blueprint fetch built.in/pv-cloud \
 bin/inframill instance init example --namespace production \
   --blueprint built.in/pv-cloud \
   --values-file blueprints/examples/pv-cloud.json
-bin/inframill secret replace --namespace production --file /private/path/secrets.json
+bin/inframill secret upsert --namespace production --file /private/path/secret.json
 bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
@@ -147,9 +148,10 @@ bin/inframill secret list --namespace production
 bin/inframill registry list --namespace production
 ```
 
-Scoped output omits namespace identifiers. Credential lists expose names and hosts
-only. Namespace create/get/delete take a positional namespace ID; namespace
-administration, server version and provider discovery reject `--namespace`.
+Scoped output omits namespace identifiers. Credential lists expose names or hosts
+and creation timestamps, never values. Namespace create/get/delete take a positional
+namespace ID; namespace administration, server version and provider discovery reject
+`--namespace`.
 Queries read the daemon's local inventory and do not fetch remote resources.
 
 Namespace IDs accept `[a-zA-Z0-9-]+` and preserve case. IDs beginning with a hyphen
@@ -161,20 +163,28 @@ Namespace RPC create/get/delete bodies and metadata use `id`, for example
 use `id`; old `name` records reject without migration. Preserve old data and use a
 fresh data directory or volume when upgrading.
 
-Each namespace owns `<dataDir>/<namespace>/namespace.json`, `instances.sqlite`, `blueprints/` and
+Each namespace owns `<dataDir>/<namespace>/namespace.json`, `data.sqlite`, `blueprints/` and
 `instances/<InstanceID>/`. Fetch a blueprint separately into every namespace that
 uses it; catalogues and cached content are isolated.
 
-`namespace delete ID` marks the namespace deleted and returns immediately.
-Admitted work drains, while new work rejects with a deleted-namespace error and
+Existing namespaces initialize in the background after daemon startup. Use
+`namespace get ID` to inspect `loading`, `ready` or `failed` status and results for
+Events, Secrets, Registries, Blueprints and Instances. Scoped operations require
+`ready`; namespace creation initializes synchronously. Instance history recovers
+during namespace initialization, and Instance responses include execution counts.
+
+`namespace delete ID` marks the namespace deleted and waits for admitted work to
+drain and resources to close. New work rejects with a deleted-namespace error and
 normal namespace/scoped reads return not found. All stored files remain; there is
 no cleanup worker or undelete API.
 The namespace ID stays reserved and cannot be recreated.
 
 Instances report `ready`, `running` or `failed`, with creation/update timestamps.
 `instance cancel INSTANCE --namespace ID` kills running commands and cancels queued
-commands, retaining the Instance and history. `instance delete` also hides the
-Instance from normal reads immediately and retains its files. Both return after
+commands, recording `cancelled` with a reason and cancellation timestamp while
+retaining the Instance and history. Uncancelled signal death records
+`interrupted/process_signalled`; restart recovery records `interrupted/daemon_restarted`.
+`instance delete` also hides the Instance from normal reads immediately and retains its files. Both return after
 process termination and saved outcomes; `--wait` is redundant and `--stream` rejects.
 Deleted Instance names can be reused with a new ULID. Neither operation destroys
 external infrastructure; run the appropriate provider destroy commands first.
@@ -185,9 +195,8 @@ identity, source, artifacts and history, but removes Provider-created workspace
 files, including local OpenTofu state. Back up state before using rerender on an
 Instance that manages infrastructure.
 
-The current `ulid-v1` storage layout rejects older UUID records and journals
-without modification or migration. Preserve old data and start with a fresh data
-directory or volume when upgrading from those formats.
+Prior namespace and command storage formats reject without modification or
+migration. Preserve old data and use a fresh data directory for this release.
 
 ## Namespace registry credentials
 
@@ -196,30 +205,29 @@ registry credentials. For other private OCI blueprints, supply registry credenti
 to an existing namespace before fetching:
 
 ```sh
-bin/inframill registry replace --namespace production --file /private/path/registries.json
+bin/inframill registry upsert --namespace production --file /private/path/registry.json
 bin/inframill registry list --namespace production
 bin/inframill blueprint fetch ghcr.io/example/blueprints/custom:1.0.0 \
   --namespace production
 ```
 
-The credential file is a JSON map of registry hosts to username/password objects;
-for example, with synthetic values:
+The credential file contains one complete registry entry, for example:
 
 ```json
-{"ghcr.io":{"username":"example-user","password":"synthetic-token"}}
+{"host":"ghcr.io","username":"example-user","password":"synthetic-token"}
 ```
 
-Credentials are held in memory and must be supplied again after daemon restart.
-`registry clear --namespace production` clears the namespace's set. An unmatched host
-uses anonymous access. The daemon does not load Docker login credentials, and
+Credentials persist unencrypted in namespace `data.sqlite`, including across restart
+and namespace deletion. `registry delete ghcr.io --namespace production` deletes one
+entry. An unmatched host uses anonymous access. The daemon does not load Docker login credentials, and
 registry credentials remain separate from provider secrets. Blueprint cache
 entries belong to the selected namespace. Fetch errors include structured
 diagnostics for authentication, access, missing references and network failures.
 
 ## Namespace secrets
 
-Secret files are JSON maps of local names to strings. The pv-cloud example uses
-`hetzner` for its cloud API token. Values select secret names, never credential
+Each secret file contains one entry: `{"name":"hetzner","value":"synthetic-token"}`.
+The pv-cloud example uses `hetzner` for its cloud API token. Values select secret names, never credential
 values. Inframill supplies a namespace snapshot only to provider Execute; Kit does not
 read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
 credentials must be nonempty and are checked before effects. Only selected values
@@ -227,9 +235,11 @@ reach the tool environment. Known injected values are filtered from tool diagnos
 Kit results and shared artifacts contain only verified projections. Arbitrary
 provider/playbook output must not intentionally emit transformed secrets.
 
-Manage the in-memory namespace set with `secret replace`, `secret list`
-and `secret clear`, using `--namespace production` to select the set. Restart discards sets. Running commands retain their
-snapshot; queued commands obtain the set current when they start.
+Manage entries with `secret upsert`, `secret list` and `secret delete NAME`, using
+`--namespace production`. Secrets persist unencrypted in namespace `data.sqlite`
+and its sidecars across restart and namespace deletion. Upsert preserves creation
+time; lists return oldest entries first. Running commands retain their snapshot;
+queued commands obtain current secrets when they start.
 
 The `InitInstance` RPC requires the HTTP header `X-Namespace-ID: production`
 and accepts these top-level fields:

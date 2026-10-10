@@ -153,16 +153,15 @@ To upgrade, stop and remove the container, then run the selected image version w
 the same config and data mounts. Back up data before upgrading and check the release's
 storage compatibility. Run one engine against a data directory at a time.
 
-The current storage contract uses ULID Instance/execution IDs and namespace `id`
-records. Older UUID layouts, namespace `name` records and `local:` blueprint catalogue
-identities reject without migration;
-preserve those volumes and start with fresh storage when upgrading from them.
+The current storage contract uses namespace `data.sqlite` and per-Instance
+`commands.sqlite`, with ULID Instance/execution IDs. Prior storage formats reject
+without migration; preserve existing volumes and use fresh storage for this release.
 Create namespaces with `inframill namespace create ID` before fetching blueprints
 or initializing Instances. See [namespace usage](docs/usage.md#namespaces).
 
 Without a data mount, data is lost when the container is removed. Namespace secrets
-and registry credentials are held in memory and must be supplied again after a
-restart, even with a volume.
+and registry credentials persist unencrypted in `data.sqlite` and its sidecars,
+including across restarts and namespace deletion.
 
 ## Build the subprojects and image
 

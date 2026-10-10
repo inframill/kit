@@ -10,6 +10,7 @@ import urllib.request
 import uuid
 
 from blueprint_workflows import provider_ids, FIXTURES, LOCAL_REFERENCE
+from engine_client import assert_namespace_ready, namespaces_ready
 from build import runtime_settings, ROOT, bundle_lock, configuration
 
 CONFIG = '/etc/inframill/inframill.yaml'
@@ -66,6 +67,7 @@ def image_check(tmp, image, arch, network):
             except (urllib.error.URLError, ConnectionError, TimeoutError):
                 return None
         providers = poll(ready)['providers']
+        poll(lambda: namespaces_ready(lambda method: rpc(endpoint, method)))
         assert {d['id'] for d in providers} == set(ids.values()), providers
         assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in providers), providers
         expected_version = {'version': lock['inframill']['version']}
@@ -84,7 +86,9 @@ def image_check(tmp, image, arch, network):
         name, endpoint = start(mounts, port, workdir)
         namespace_cli = ['docker', 'exec', name, 'inframill', 'namespace',
                          'create', 'image', '--endpoint', 'http://127.0.0.1:' + str(port), '-o', 'json']
-        assert json.loads(docker(namespace_cli).stdout)['namespace'] == {'id': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}
+        created = json.loads(docker(namespace_cli).stdout)['namespace']
+        assert created['id'] == 'image', created
+        assert_namespace_ready(created)
         rpc(endpoint, 'FetchBlueprint', {'reference': reference}, namespace='image')
         instance = rpc(endpoint, 'InitInstance', {'name': 'persistence',
             'blueprint_reference': reference, 'values': {'json': json.dumps({'architecture': arch})},
@@ -95,13 +99,13 @@ def image_check(tmp, image, arch, network):
 
         def completed():
             result = rpc(endpoint, 'GetCommandExecution', {'instance_id': instance, 'execution_id': command}, namespace='image')['execution']
-            return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_KILLED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
+            return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
         result = poll(completed)
         assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']
         stop(name)
         name, endpoint = start(mounts, port, workdir)
-        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [{'id': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}]
+        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [created]
         instances = rpc(endpoint, 'ListInstances', namespace='image')['instances']
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance}, namespace='image')['executions']
@@ -109,7 +113,7 @@ def image_check(tmp, image, arch, network):
         cli = ['docker', 'exec', name, 'inframill']
         namespaces = json.loads(docker(cli + ['namespace', 'list', '--endpoint',
                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
-        assert namespaces == [{'id': 'image', 'status': 'NAMESPACE_STATUS_ACTIVE'}], namespaces
+        assert namespaces == [created], namespaces
         history_cli = json.loads(docker(cli + ['execution', 'list',
                                  '--instance', instance, '--namespace', 'image', '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']
@@ -153,6 +157,7 @@ def image_check(tmp, image, arch, network):
                   '--mount', 'type=bind,src=' + str(data) + ',dst=/etc/inframill/data']
         instance, mounted = persist(mounts, 8081, '/tmp')
         assert (data / 'image/namespace.json').is_file()
+        assert (data / 'image/data.sqlite').is_file()
         assert (data / 'image/instances' / instance / 'commands.sqlite').is_file()
         assert any(m['Destination'] == CONFIG and not m['RW'] for m in mounted), mounted
         assert hashlib.sha256(custom.read_bytes()).hexdigest() == original

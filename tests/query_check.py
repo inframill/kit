@@ -5,6 +5,8 @@ import re
 import subprocess
 import urllib.error
 
+from engine_client import assert_namespace_ready
+
 
 def query_check(client, reference, arch):
     def invoke(*args):
@@ -58,7 +60,8 @@ def query_check(client, reference, arch):
     # Inframill 0.20 exposes namespace IDs end-to-end, preserving case and hyphens.
     for namespace_id in ['Query-Team', '-Team-']:
         created = client.create_namespace(namespace_id)
-        assert created == {'id': namespace_id, 'status': 'NAMESPACE_STATUS_ACTIVE'}, created
+        assert created['id'] == namespace_id, created
+        assert_namespace_ready(created)
         assert client.rpc('GetNamespace', {'id': namespace_id})['namespace'] == created
         metadata = client.config['engine']['dataDir']
         stored = json.loads((pathlib.Path(metadata) / namespace_id / 'namespace.json').read_text())
@@ -92,12 +95,12 @@ def query_check(client, reference, arch):
                                 for name in ['same', 'second']]
         assert all(re.fullmatch(r'[0-7][0-9A-HJKMNP-TV-Z]{25}', iid) for iid in instances[namespace])
         secrets = client.root / 'query-secrets.json'
-        secrets.write_text(json.dumps({'token': 'synthetic-query-secret'}))
-        request('secret', 'replace', '--namespace', namespace, '--file', str(secrets))
+        secrets.write_text(json.dumps({'name': 'token', 'value': 'synthetic-query-secret'}))
+        request('secret', 'upsert', '--namespace', namespace, '--file', str(secrets))
         registries = client.root / 'query-registries.json'
         registries.write_text(json.dumps({
-            'example.invalid': {'username': 'synthetic-query-user', 'password': 'synthetic-query-password'}}))
-        request('registry', 'replace', '--namespace', namespace, '--file', str(registries))
+            'host': 'example.invalid', 'username': 'synthetic-query-user', 'password': 'synthetic-query-password'}))
+        request('registry', 'upsert', '--namespace', namespace, '--file', str(registries))
         assert request('blueprint', 'get', reference, '--namespace', namespace) == blueprints[namespace]
         resolved = request('blueprint', 'resolve', reference, '--namespace', namespace)
         wire_blueprint = client.rpc('GetBlueprint', {'reference': reference}, namespace=namespace)
@@ -134,9 +137,9 @@ def query_check(client, reference, arch):
             elif field == 'blueprints':
                 assert rows == [blueprints[namespace]], rows
             elif field == 'names':
-                assert rows == [{'name': 'token'}], rows
+                assert len(rows) == 1 and rows[0]['name'] == 'token' and rows[0]['createdAt'], rows
             elif field == 'hosts':
-                assert rows == [{'host': 'example.invalid'}], rows
+                assert len(rows) == 1 and rows[0]['host'] == 'example.invalid' and rows[0]['createdAt'], rows
             else:
                 assert {i['id'] for i in rows} == set(instances[namespace]), rows
             assert all('namespace' not in row for row in rows), rows
@@ -154,8 +157,8 @@ def query_check(client, reference, arch):
         assert invoke(resource, 'list', '--namespace', 'query-alpha', '--columns', 'namespace').returncode == 2
 
     for namespace in ['query-alpha', 'query-beta', 'query-empty']:
-        request('secret', 'clear', '--namespace', namespace)
-        request('registry', 'clear', '--namespace', namespace)
+        request('secret', 'delete', 'token', '--namespace', namespace)
+        request('registry', 'delete', 'example.invalid', '--namespace', namespace)
         assert client.rpc('ListNamespaceSecretNames', namespace=namespace).get('names', []) == []
         assert client.rpc('ListNamespaceRegistryHosts', namespace=namespace).get('hosts', []) == []
         client.rpc('DeleteNamespace', {'id': namespace})

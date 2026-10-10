@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import select
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -38,13 +39,15 @@ def provider_events(client, namespace, instance):
                 if key in latest:
                     assert int(summary['revision']) > int(latest[key]['revision']), summary
                 latest[key] = summary
-                assert set(summary) <= {'instanceId', 'executionId', 'revision', 'status', 'pid', 'exitCode'}
+                assert set(summary) <= {'instanceId', 'executionId', 'revision', 'status', 'pid', 'exitCode', 'reason', 'cancelRequestedAt'}
         if any(latest.get(row['request']['executionId'], {}).get('revision') != row['revision']
                for row in history):
             return None
         for row in history:
             summary = latest[row['request']['executionId']]
             assert summary['status'] == row['status'], (summary, row)
+            for field in ('reason', 'cancelRequestedAt'):
+                assert summary.get(field) == row.get(field), (summary, row)
             for field in ('pid', 'exitCode'):
                 assert (field in summary) == (field in row), (summary, row)
                 if field in row:
@@ -103,10 +106,10 @@ def stream_check(client, namespace):
     with watch(client, namespace) as receive:
         ready = receive()['ready']
         head = ready['sequence']
-        client.rpc('ReplaceNamespaceSecrets', {'secrets': {'private-event-name': 'synthetic-event-secret'}},
+        client.rpc('UpsertNamespaceSecret', {'secret': {'name': 'private-event-name', 'value': 'synthetic-event-secret'}},
                    namespace=namespace)
         event = receive()['event']
-        assert event['type'] == 'secrets.replaced' and event['credentials'] == {'count': 1}, event
+        assert event['type'] == 'secret.upserted' and event['credentials'] == {'name': 'private-event-name'}, event
         assert int(event['sequence']) == int(head) + 1, event
     assert client.rpc('ReadNamespaceEvents', namespace='events-sibling') == sibling
     with watch(client, namespace, head) as receive:
@@ -118,10 +121,11 @@ def stream_check(client, namespace):
     page = json.loads(result.stdout)
     assert page['events'] == [event] and page['nextSequence'] == event['sequence'], page
     assert {'headSequence', 'firstSequence', 'resyncRequired'} <= set(page)
-    journal = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'events.jsonl'
-    content = journal.read_text()
-    assert 'private-event-name' not in content and 'synthetic-event-secret' not in content
-    client.rpc('ReplaceNamespaceSecrets', {'secrets': {}}, namespace=namespace)
+    journal = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'data.sqlite'
+    with sqlite3.connect(journal.as_uri() + '?mode=ro', uri=True) as db:
+        content = str(db.execute('SELECT record FROM events').fetchall())
+    assert 'private-event-name' in content and 'synthetic-event-secret' not in content
+    client.rpc('DeleteNamespaceSecret', {'name': 'private-event-name'}, namespace=namespace)
     client.rpc('DeleteNamespace', {'id': 'events-sibling'})
 
 
@@ -129,7 +133,7 @@ def retention_check(client):
     namespace = 'event-retention'
     client.create_namespace(namespace)
     for count in range(1500):
-        client.rpc('ReplaceNamespaceSecrets', {'secrets': {}}, namespace=namespace)
+        client.rpc('UpsertNamespaceSecret', {'secret': {'name': 'retention', 'value': str(count)}}, namespace=namespace)
         if count % 50 == 49:
             page = client.rpc('ReadNamespaceEvents', namespace=namespace)
             if int(page['firstSequence']) > 1:
@@ -137,8 +141,10 @@ def retention_check(client):
     else:
         raise AssertionError('Configured event retention did not compact')
     assert page['resyncRequired'], page
-    path = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'events.jsonl'
-    assert path.stat().st_size <= client.config['engine']['eventJournalMaxBytes']
+    path = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'data.sqlite'
+    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as db:
+        size = db.execute('SELECT bytes FROM event_state WHERE id=1').fetchone()[0]
+    assert size <= client.config['engine']['eventJournalMaxBytes'], size
     with watch(client, namespace, 0) as receive:
         ready = receive()['ready']
         assert ready['resyncRequired'] and int(ready['sequence']) == int(page['firstSequence']) - 1, ready
