@@ -113,7 +113,8 @@ def read_provider(dist, selection, target, lock):
         raise ValueError('Provider build identity mismatch')
     expected_engine = {k: lock['inframill'][k] for k in ('version', 'revision')}
     if record['inframill'] != expected_engine:
-        raise ValueError('Provider and image target different Inframill releases')
+        raise ValueError('Provider and image target different Inframill releases; '
+                         'run GOTOOLCHAIN=go1.27.0 task providers:build -- --refresh')
     settings = runtime_settings()
     tool_version = {'opentofu': settings['OPENTOFU_VERSION'], 'ansible': settings['ANSIBLE_VERSION']}.get(name)
     if release['tool_version'] != tool_version or release['protocol'] != 1 or set(release['platforms']) != set(lock['platforms']):
