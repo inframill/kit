@@ -55,6 +55,26 @@ tasks:
   config:
     desc: Print local engine JSON configuration using native providers/dist outputs
     cmds: ['python3 build.py config']
+  completion:zsh:
+    desc: Install Inframill zsh completion and enable it in ~/.zshrc
+    summary: |
+      Requires inframill on PATH. Regenerates ~/.zsh/completions/_inframill
+      and adds its source line to ~/.zshrc once. Open a new shell or run
+      source ~/.zshrc to activate completion. Run again after upgrading Inframill.
+    preconditions:
+      - sh: command -v inframill >/dev/null 2>&1
+        msg: Install inframill and add it to PATH first.
+    cmds:
+      - |
+        set -eu
+        completion=$(inframill completion zsh)
+        mkdir -p "$HOME/.zsh/completions"
+        printf '%s\n' "$completion" > "$HOME/.zsh/completions/_inframill"
+        touch "$HOME/.zshrc"
+        line='source "$HOME/.zsh/completions/_inframill"'
+        if ! grep -Fqx "$line" "$HOME/.zshrc"; then
+          printf '\n# Inframill zsh completion\nautoload -Uz compinit\n(( ${+_comps} )) || compinit\n%s\n' "$line" >> "$HOME/.zshrc"
+        fi
 
   docker:up:
     desc: Pull the current Kit version and recreate the local Inframill container

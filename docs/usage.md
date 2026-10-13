@@ -15,7 +15,9 @@ falling back to `INFRAMILL_ENDPOINT` and `INFRAMILL_TIMEOUT`, then
 `http://127.0.0.1:8080` and `2m`. Requests reject `--config` and never load YAML.
 Request flags belong to resource groups and `server version`, not the root,
 `server start`, `completion` or `debug` groups. Generate shell completion with
-`inframill completion zsh`; regenerate saved completion scripts after upgrading.
+`inframill completion zsh`, or run `task completion:zsh` to install and enable it
+in `~/.zshrc`. Open a new shell or run `source ~/.zshrc` to activate it; rerun the
+task after upgrading Inframill.
 
 `inframill provider list` reports the daemon's cached startup availability.
 Restart the daemon after changing its provider configuration.
