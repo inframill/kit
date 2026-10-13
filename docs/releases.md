@@ -1,5 +1,11 @@
 # Releasing Kit
 
+## 0.1.13-dev
+
+Kit uses Inframill 0.1.13-dev (`5c7e5f1a9053`). The release lock pins the
+prebuilt Linux and macOS binaries. OpenTofu and Ansible remain at 0.4.0 and
+must be rebuilt against the updated SDK revision; tool pins are unchanged.
+
 ## 0.1.11-dev
 
 Kit uses Inframill 0.1.11-dev (`7f60b1e8e527`). OpenTofu and Ansible providers
