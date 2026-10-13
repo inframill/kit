@@ -1,6 +1,5 @@
 {
   "cloud_secret_ref": "hetzner",
-  "instance_name": "zakros",
   "network_zone": "eu-central",
   "ssh_user": "mostak",
   "ssh_public_keys": [

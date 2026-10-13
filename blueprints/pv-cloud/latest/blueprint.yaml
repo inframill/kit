@@ -9,7 +9,6 @@ values_schema:
     - ssh_user
     - ssh_public_keys
     - nodes
-    - instance_name
     - cloud_secret_ref
     - ssh_source_ips
     - network_zone
@@ -55,9 +54,6 @@ values_schema:
         pattern: ^[a-z][a-z0-9_-]{0,63}$
       additionalProperties:
         $ref: '#/$defs/node'
-    instance_name:
-      type: string
-      pattern: ^[a-z0-9][a-z0-9-]*$
     cloud_secret_ref:
       type: string
       pattern: ^[a-z][a-z0-9_-]{0,127}$

@@ -39,7 +39,7 @@ run "valid_selective_attachments" {
   command = plan
 
   assert {
-    condition     = hcloud_network.this["frontend"].name == "frontend-{{ .instance_name }}"
+    condition     = hcloud_network.this["frontend"].name == {{ toJSON (printf "frontend-%s" (instance).Name) }}
     error_message = "Provider Network names must be <network-name>-<instance-name>."
   }
 

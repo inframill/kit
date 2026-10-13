@@ -1,5 +1,13 @@
 # Releasing Kit
 
+## 0.1.14-dev
+
+Kit uses Inframill 0.1.14-dev (`6d9e0857fded`), including the `instance`
+template function exposing the immutable Instance name and ID. pv-cloud uses
+the Instance name directly and no longer requires `instance_name` in Values.
+The release lock pins all four Linux and macOS binaries. OpenTofu and Ansible
+remain at 0.4.0, with the updated SDK revision; tool pins are unchanged.
+
 ## 0.1.13-dev
 
 Kit uses Inframill 0.1.13-dev (`5c7e5f1a9053`). The release lock pins the

@@ -53,6 +53,12 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 ## pv-cloud
 
 `built.in/pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.4.0`.
+Resource names use the immutable Instance name through `{{ (instance).Name }}`;
+Values do not contain `instance_name`. This requires an Inframill build with the
+`instance` template function (SPEC-0085).
+For existing deployments, keep the Instance name equal to the previous
+`instance_name` value to preserve generated resource names. Existing Instances
+retain their saved blueprint sources until explicitly replaced.
 The repository and image configurations enable both providers. [Example Values](examples/pv-cloud.json) demonstrate
 mixed AMD64/ARM64 nodes. Single-architecture examples live in `../tests/fixtures/blueprints/examples/`.
 

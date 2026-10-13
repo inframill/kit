@@ -1,5 +1,5 @@
 locals {
-  app    = {{ toJSON .instance_name }}
+  app    = {{ toJSON (instance).Name }}
   loc    = {{ toJSON .network_zone }}
   labels = { app = local.app, "managed-by" = "inframill" }
 

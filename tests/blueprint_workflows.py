@@ -145,6 +145,8 @@ def pv_flow(client, reference, tofu):
         values = json.loads(path.read_text())
         iid = client.initialize('test', 'pv-' + name, reference, values)
         instances.append(iid)
+        work = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace/opentofu'
+        assert f'app    = {json.dumps("pv-" + name)}' in (work / 'main.tf').read_text()
         client.execute('test', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     data = pathlib.Path(client.config['engine']['dataDir'])
     workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]

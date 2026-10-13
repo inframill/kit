@@ -1,6 +1,5 @@
 {
   "cloud_secret_ref": "hetzner",
-  "instance_name": "example",
   "network_zone": "eu-central",
   "ssh_user": "deploy",
   "ssh_public_keys": [
