@@ -2,7 +2,9 @@
 <module type="WEB_MODULE" version="4">
   <component name="Go" enabled="true" />
   <component name="NewModuleRootManager">
-    <content url="file://$MODULE_DIR$" />
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/.inframill/01M4VS05MH3E9GCZE2V9ZBKKZP/instances/01M4VS189508ENC1WEKDHA6WX7/workspace/opentofu/.terraform" />
+    </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
