@@ -77,10 +77,11 @@ tasks:
         fi
 
   docker:up:
-    desc: Pull the current Kit version and recreate the local Inframill container
+    desc: Run the current Kit image and recreate the local Inframill container
     dir: '{{.ROOT_DIR}}'
     summary: |
-      Pulls ghcr.io/inframill/kit using the root VERSION file before stopping Inframill.
+      Uses the local REGISTRY/NAMESPACE/kit image tagged with the root VERSION file.
+      Pulls only when the image is missing, before stopping Inframill.
       Binds .inframill, .inframill.yaml and local blueprints from the repository root; publishes
       port 8080 on loopback. Creates the data directory if needed.
       Mounts project ssh/ at /root/.ssh for provider SSH keys, config and known_hosts.
@@ -93,8 +94,10 @@ tasks:
     cmds:
       - |
         set -eu
-        image="ghcr.io/inframill/kit:$(cat VERSION)"
-        docker pull "$image"
+        image=$(python3 -c 'from build import image_reference, project_version; print(image_reference(project_version()))')
+        if ! docker image inspect "$image" >/dev/null 2>&1; then
+          docker pull "$image"
+        fi
         agent="${SSH_AUTH_SOCK:-}"
         if [ -n "$agent" ] && [ "$(uname -s)" = Darwin ]; then
           agent=/run/host-services/ssh-auth.sock
@@ -111,7 +114,7 @@ tasks:
           docker stop inframill
           docker rm inframill
         fi
-        docker run -d --name inframill --restart unless-stopped \
+        docker run -d --pull=never --name inframill --restart unless-stopped \
           -p 127.0.0.1:8080:8080 \
           -v "$PWD/.inframill:/var/lib/inframill" \
           -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
@@ -182,7 +185,8 @@ tasks:
       Requires Docker Buildx, prebuilt providers under PROVIDERS_DIST_DIR (providers/dist),
       and Linux engine binaries under INFRAMILL_DIST_DIR. Never compiles providers.
       Includes /etc/inframill/inframill.yaml; mount data at /var/lib/inframill.
-      Writes KIT_DIST_DIR/bundles/<VERSION>; never pushes or replaces an output.
+      Writes KIT_DIST_DIR/bundles/<VERSION> and loads REGISTRY/NAMESPACE/kit:<VERSION>
+      into Docker (default ghcr.io/inframill/kit). Never pushes or replaces an output.
     cmds: ['python3 build.py build']
   push:
     aliases: [bundle:push]

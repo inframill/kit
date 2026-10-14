@@ -384,7 +384,8 @@ def build_image():
         (completed / 'build.json').write_text(json.dumps(record, indent=2) + '\n')
         verify_image(completed, lock)
         completed.rename(output)
-    print('Built local image:', output, 'digest:', descriptor['digest'])
+    load_image(output, reference)
+    print('Built local image:', reference, 'digest:', descriptor['digest'], 'bundle:', output)
     return output
 
 

@@ -106,8 +106,10 @@ To use the repository's `.inframill.yaml` and persist data in `.inframill/`, run
 task docker:up
 ```
 
-This pulls `ghcr.io/inframill/kit:<VERSION>` before replacing any existing
-`inframill` container. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
+This uses the locally available `REGISTRY/NAMESPACE/kit:<VERSION>` image
+(default `ghcr.io/inframill/kit:<VERSION>`), including images loaded by `task build`.
+It pulls only if the image is missing, before replacing any existing `inframill`
+container. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
 the repository root. The checked-in configuration enables debug, OpenTofu and
 Ansible; the image default enables OpenTofu and Ansible.
 
@@ -183,13 +185,15 @@ checksums, platforms and engine/tool compatibility before copying them into the
 image. Task wraps these commands (`task bundle` remains an alias for `task build`):
 
 ```sh
-python3 build.py build     # both Linux architectures, local output only
+python3 build.py build     # both Linux architectures, load into local Docker
 python3 build.py verify    # verify the existing local image
 python3 build.py push      # push that image; run docker login yourself first
 python3 build.py test      # root builder tests
 ```
 
-`publish` runs build then push; `push` uses the existing image. The root script
+`build` saves the OCI bundle and loads it into Docker as
+`REGISTRY/NAMESPACE/kit:<VERSION>` (default `ghcr.io/inframill/kit:<VERSION>`),
+without pushing. `publish` runs build then push; `push` uses the existing image. The root script
 also provides `validate`, `setup`, `config` and `copy-engine` for release checks
 and local acceptance setup. Providers retain their own builder; blueprints need no build step.
 
