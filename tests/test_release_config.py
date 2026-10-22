@@ -14,11 +14,12 @@ import build as release_config
 
 
 class ReleaseConfigTests(unittest.TestCase):
-    def test_real_lock_has_both_runtime_platforms_and_one_production_version(self):
+    def test_real_lock_has_both_runtime_platforms_and_selected_provider_versions(self):
         lock = release_config.bundle_lock()
         self.assertEqual(set(lock), {'version', 'inframill', 'providers', 'platforms'})
         self.assertEqual(set(lock['platforms']), {'linux/arm64', 'linux/amd64'})
-        self.assertEqual({d['version'] for d in lock['providers']}, {'0.4.0'})
+        self.assertEqual({d['name']: d['version'] for d in lock['providers']},
+                         {'opentofu': '0.4.0', 'ansible': '0.4.0', 'dispatch': '0.1.0'})
         self.assertEqual(set(lock['inframill']['binaries']),
                          {'linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64'})
 

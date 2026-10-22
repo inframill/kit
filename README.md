@@ -1,6 +1,6 @@
 # Inframill Kit
 
-Kit provides versioned OpenTofu and Ansible providers, reusable blueprints, and a
+Kit provides versioned OpenTofu, Ansible and Dispatch providers, reusable blueprints, and a
 ready-to-run image for Inframill.
 
 - **[`providers/`](providers/README.md)** builds one executable per provider version and architecture.
@@ -33,7 +33,7 @@ edits. See [releasing Kit](docs/releases.md) for prerequisites and independent K
 ## Run with Docker
 
 The image includes [`runtime/inframill.yaml`](runtime/inframill.yaml) unchanged at
-`/etc/inframill/inframill.yaml` and starts the server with both Kit providers configured. Docker
+`/etc/inframill/inframill.yaml` and starts the server with all Kit providers configured. Docker
 selects the AMD64 or ARM64 variant for your machine. No local Go or Python setup is
 needed to use the image. Run the examples from this checkout; `cat VERSION` selects
 its release tag. Without a checkout, substitute the desired published tag.
@@ -110,8 +110,8 @@ This uses the locally available `REGISTRY/NAMESPACE/kit:<VERSION>` image
 (default `ghcr.io/inframill/kit:<VERSION>`), including images loaded by `task build`.
 It pulls only if the image is missing, before replacing any existing `inframill`
 container. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
-the repository root. The checked-in configuration enables debug, OpenTofu and
-Ansible; the image default enables OpenTofu and Ansible.
+the repository root. The checked-in configuration enables debug, OpenTofu,
+Ansible and Dispatch; the image default enables OpenTofu, Ansible and Dispatch.
 
 The project `ssh/` directory is mounted at `/root/.ssh`, so providers such as
 Ansible use its SSH keys and configuration automatically. Put your private key at
@@ -171,6 +171,9 @@ Provider sources, release metadata, the Python builder and tests live in the
 [provider subproject](providers/README.md). Each version has a root such as
 `providers/roots/opentofu/0.4.0/`. The [local blueprints](blueprints/README.md)
 are fetched directly from their source directories.
+
+[Dispatch](docs/dispatch.md) pushes directories from `workspace/dispatch/` to
+nodes selected from shared artifacts and runs Make targets through Ansible.
 
 ```sh
 task providers:test

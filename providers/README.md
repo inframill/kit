@@ -11,6 +11,7 @@ providers/
   go.mod, go.sum           # independent Go module
   roots/opentofu/0.4.0/           # implementation, release.json, tests and cmd/main.go
   roots/ansible/0.4.0/            # implementation, callback, tests and cmd/main.go
+  roots/dispatch/0.1.0/           # Ansible-backed directory transfer and Make execution
   roots/internal/          # shared execution/artifact code and protocol runner
   tests/                   # builder tests and protocol integration tests
   dist/<name>/<version>/<os>/<arch>/
@@ -89,6 +90,9 @@ Version 0.4.0 adopts Inframill 0.24's required command access modes. OpenTofu
 `read_write`: inventory writes a shared file and even syntax/check/ping commands
 create temporary files in the workspace. Inframill serializes writers across the
 whole Instance and allows consecutive readers to overlap without bypassing a writer.
+Dispatch `push` and `make` also declare `read_write`; they use the same Ansible
+runtime as the Ansible provider. See [Dispatch usage](../docs/dispatch.md) for its
+workspace mappings, selectors and command arguments.
 The SDK owns process observation and group signalling; child tools remain in the
 provider's process group.
 
@@ -135,6 +139,14 @@ input directory for image assembly.
 
 Inframill passes each provider its `workspace/<configured-id>/` directory.
 Providers use that supplied directory directly for settings, tools, playbooks and
-roles. Kit configures IDs `opentofu` and `ansible`, so Blueprint sources belong
-under `templates/opentofu/` and `templates/ansible/`. Configured aliases work when
+roles. Kit configures IDs `opentofu`, `ansible` and `dispatch`, so Blueprint sources belong
+under `templates/opentofu/`, `templates/ansible/` and `templates/dispatch/`. Configured aliases work when
 Blueprint directory names match those IDs. Shared artifacts remain separate.
+
+The OpenTofu local backend stores state at `artifacts/<configured-id>-terraform.tfstate`
+and named workspace states beneath that path with a `.d` suffix. Blueprints must
+declare `backend "local" {}`. Init migrates existing workspace state when the artifact
+state is absent. Run init with the updated provider before rerendering older
+Instances, then run init again after rerender to restore backend/plugin metadata.
+OpenTofu writes state and backups directly into artifacts, so partial applies and
+rerenders preserve the latest state.

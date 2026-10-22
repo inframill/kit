@@ -97,9 +97,6 @@ func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any,
 	if p.command == "check" {
 		args = append(args, "--check")
 	}
-	if len(p.args.Hosts) > 0 {
-		args = append(args, "--limit", strings.Join(p.args.Hosts, ","))
-	}
 	if len(p.args.Tags) > 0 {
 		args = append(args, "--tags", strings.Join(p.args.Tags, ","))
 	}

@@ -66,6 +66,51 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 		}
 	}
 }
+
+func TestCloudflareSecretScopeAndAdmission(t *testing.T) {
+	d, scope := fixture(t)
+	settings := Settings{Schema: 1, Environment: map[string]string{"CLOUDFLARE_API_TOKEN": "cloudflare"}}
+	if err := artifacts.Write(scope.WorkspaceDir, "kit-provider.json", settings); err != nil {
+		t.Fatal(err)
+	}
+	command, err := d.Prepare(t.Context(), scope, "plan", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := command.Execute(t.Context(), nil); err == nil {
+		t.Fatal("missing Cloudflare secret was accepted")
+	} else {
+		var detail *runmill.ProviderError
+		if !errors.As(err, &detail) || detail.Code != "MISSING_SECRET" {
+			t.Fatal(err)
+		}
+	}
+	entries, err := os.ReadDir(scope.ArtifactDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("effects before credentials", entries, err)
+	}
+	prepared := command.(*prepared)
+	for _, name := range []string{"init", "validate", "output", "plan", "apply", "destroy"} {
+		prepared.command = name
+		credentials := prepared.credentials()
+		needed := name == "plan" || name == "apply" || name == "destroy"
+		if (credentials["CLOUDFLARE_API_TOKEN"] == "cloudflare") != needed {
+			t.Fatalf("Cloudflare credential scope for %s: %v", name, credentials)
+		}
+		env, err := toolrun.Credentials(credentials, map[string]string{"cloudflare": "synthetic-cloudflare-token"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, entry := range env {
+			found = found || entry == "CLOUDFLARE_API_TOKEN=synthetic-cloudflare-token"
+		}
+		if found != needed {
+			t.Fatalf("Cloudflare token not scoped to %s", name)
+		}
+	}
+}
+
 func TestPlanIsolationConsumptionAndFailedApplyInvalidatesNodes(t *testing.T) {
 	d, s := fixture(t)
 	tool := filepath.Join(t.TempDir(), "tofu")
@@ -184,9 +229,12 @@ func TestS3RequiresExplicitStateKey(t *testing.T) {
 	script := `#!/bin/sh
 if [ "$1" = version ]; then printf '{"terraform_version":"1.11.5"}'; exit 0; fi
 for arg in "$@"; do
-    if [ "$arg" = "-backend-config=key=instances/example/terraform.tfstate" ]; then exit 0; fi
+    case "$arg" in
+        -backend-config=key=instances/example/terraform.tfstate) found=true;;
+        -backend-config=path=*|-backend-config=workspace_dir=*|-force-copy) exit 1;;
+    esac
 done
-exit 1
+[ "$found" = true ]
 `
 	if err := os.WriteFile(tool, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -198,6 +246,50 @@ exit 1
 	}
 	if _, err := prepared.Execute(t.Context(), nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLocalBackendUsesProviderScopedArtifacts(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "migrate", true: "preserve"}[existing], func(t *testing.T) {
+			d, scope := fixture(t)
+			scope.Settings["id"] = "custom"
+			scope.Settings["artifact"] = "custom-nodes-v1.json"
+			state := filepath.Join(scope.ArtifactDir, "custom-terraform.tfstate")
+			if existing {
+				if err := os.WriteFile(state, []byte("existing state"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tool := filepath.Join(t.TempDir(), "tofu")
+			script := `#!/bin/sh
+if [ "$1" = version ]; then printf '{"terraform_version":"1.11.5"}'; exit 0; fi
+printf '%s\n' "$@" > args.txt
+`
+			if err := os.WriteFile(tool, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			d.Tool = tool
+			command, err := d.Prepare(t.Context(), scope, "init", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := command.Execute(t.Context(), nil); err != nil {
+				t.Fatal(err)
+			}
+			args, err := os.ReadFile(filepath.Join(scope.WorkspaceDir, "args.txt"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, arg := range []string{"-backend-config=path=" + state, "-backend-config=workspace_dir=" + state + ".d"} {
+				if !bytes.Contains(args, []byte(arg+"\n")) {
+					t.Fatalf("missing %s in %s", arg, args)
+				}
+			}
+			if bytes.Contains(args, []byte("-force-copy\n")) == existing {
+				t.Fatalf("unexpected migration option: %s", args)
+			}
+		})
 	}
 }
 

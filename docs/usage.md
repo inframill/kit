@@ -52,7 +52,7 @@ applies to watches; reconnect explicitly after the last event you processed.
 ## Running a deployment
 
 Run these commands from the repository root. `blueprints/examples/pv-cloud.json`
-contains plain Values JSON with both AMD64 and ARM64 nodes. The same Blueprint
+contains plain Values JSON for the AMD64 Docker nodes `data` and `worker`. The same Blueprint
 supports either architecture or a mix, selected per node. Generate configuration using
 the installed local tools and `task providers:build -- --native` outputs, then start the daemon:
 
@@ -68,16 +68,17 @@ Initialization validates Values and renders files without executing a provider:
 
 ```sh
 bin/inframill namespace create production
-bin/inframill blueprint fetch built.in/pv-cloud \
+bin/inframill blueprint fetch built.in/pv-cloud:0.5.0 \
   --namespace production
 bin/inframill instance init example --namespace production \
-  --blueprint built.in/pv-cloud \
+  --blueprint built.in/pv-cloud:0.5.0 \
   --values-file blueprints/examples/pv-cloud.json
 bin/inframill secret upsert --namespace production --file /private/path/secret.json
 bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
 The generated configuration allows the local `blueprints/` directory.
+`built.in/pv-cloud:0.5.0` selects the current blueprint release.
 `built.in/pv-cloud` selects `blueprints/pv-cloud/latest/`; append `:TAG` to use
 `blueprints/pv-cloud/TAG/`. These references require no registry. Re-fetch after
 editing source files and initialize a new Instance to use the new snapshot. Commands such as init/plan/apply contact
@@ -194,8 +195,10 @@ external infrastructure; run the appropriate provider destroy commands first.
 `instance rerender INSTANCE --namespace ID --values-file FILE --wait` replaces all
 Values and regenerates the workspace from the saved Blueprint. It preserves
 identity, source, artifacts and history, but removes Provider-created workspace
-files, including local OpenTofu state. Back up state before using rerender on an
-Instance that manages infrastructure.
+files. Local OpenTofu state lives in artifacts and survives rerender. Run
+`opentofu.init` after rerender to reinitialize the backend and provider plugins.
+For existing Instances whose state is still in the workspace, run `opentofu.init`
+with the updated provider before rerender to migrate it into artifacts.
 
 Prior namespace and command storage formats reject without modification or
 migration. Preserve old data and use a fresh data directory for this release.
@@ -229,7 +232,12 @@ diagnostics for authentication, access, missing references and network failures.
 ## Namespace secrets
 
 Each secret file contains one entry: `{"name":"hetzner","value":"synthetic-token"}`.
-The pv-cloud example uses `hetzner` for its cloud API token. Values select secret names, never credential
+The pv-cloud example uses `hetzner` for its cloud API token and `cloudflare` for
+its Cloudflare API token. Store the latter with a separate secret entry such as
+`{"name":"cloudflare","value":"synthetic-cloudflare-token"}`. Values set
+`cloudflare_zone_id` and `cloudflare_secret_ref`; each node gets a DNS-only A record
+named `<node>-<lowercase-instance-id>.<zone>` pointing to its public IPv4. The token
+needs permission to edit DNS records and read the selected zone. Values select secret names, never credential
 values. Inframill supplies a namespace snapshot only to provider Execute; Kit does not
 read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
 credentials must be nonempty and are checked before effects. Only selected values
@@ -305,8 +313,17 @@ to `strict`, which requires hosts to be trusted in `known_hosts` before connecti
 The pv-cloud blueprint explicitly sets `host_key_policy: accept-new` to
 automatically record unknown SSH hosts while still rejecting changed keys.
 
+Dispatch is a separate provider using the same Ansible runtime. Its `push` and
+`make` commands read host records from shared artifacts, transfer directories
+from `workspace/dispatch/` and run Make targets on selected nodes. Configure
+payload mappings in `templates/dispatch/`; see [Dispatch usage](dispatch.md).
+
 Use ping after OpenTofu apply/output to check SSH authentication and remote Python
 without applying a playbook. It accepts optional `hosts`, but no playbook or tags:
+
+`hosts` selects exact node names by filtering inventory before Ansible runs. Names
+are never interpreted as group patterns. Service roles come from each node's
+explicit `roles` list, independently of its name.
 
 ```sh
 bin/inframill instance exec example ansible.ping --namespace production --stream
@@ -367,11 +384,19 @@ the supplied artifact directory. Regenerate plans and node output after moving
 data to a different path. Execution IDs used for plan filenames must be canonical uppercase ULIDs (26 characters).
 
 pv-cloud uses local OpenTofu state at
-`<dataDir>/<namespace>/instances/<InstanceID>/workspace/opentofu/terraform.tfstate`.
+`<dataDir>/<namespace>/instances/<InstanceID>/artifacts/opentofu-terraform.tfstate`.
+The filename uses the configured provider ID, so aliases have separate state.
+State backups and named workspace states also live in artifacts. State is written
+directly by OpenTofu, including during partially failed applies, and survives
+Instance rerender. Blueprints using this backend must declare `backend "local" {}`.
 The daemon's persisted data volume holds the state; no S3 bucket or AWS credentials
 are required. Back up this storage and keep it until the managed infrastructure
 has been destroyed. Deleting an Instance or namespace retains its local state on
 disk, but hides it from normal engine APIs.
+
+On existing local Instances, run `opentofu.init` with the updated provider before
+rerender. Init migrates workspace state when the artifact state does not yet exist;
+it does not force a migration over existing artifact state.
 
 pv-cloud 0.3.0 removes `infra_state_bucket` from Values. Existing Instances retain
 their saved blueprint and backend; this release does not move existing S3 state.

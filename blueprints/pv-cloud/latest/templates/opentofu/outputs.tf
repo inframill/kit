@@ -18,12 +18,17 @@ output "private_network_ids" {
   value       = { for name, network in hcloud_network.this : name => network.id }
 }
 
+output "server_fqdns" {
+  description = "Cloudflare A record name for each server."
+  value       = { for name, record in cloudflare_dns_record.node : name => record.name }
+}
+
 output "inframill_nodes" {
   description = "Provider-independent Node contract consumed by Inframill."
   value = {
     for name, server in hcloud_server.this : name => {
       name         = name
-      fqdn         = ""
+      fqdn         = cloudflare_dns_record.node[name].name
       architecture = var.nodes[name].architecture
       public_ipv4  = server.ipv4_address
       private_ipv4 = length(var.nodes[name].private_networks) > 0 ? hcloud_server_network.this["${name}/${var.nodes[name].private_networks[0]}"].ip : ""

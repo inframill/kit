@@ -1,0 +1,191 @@
+api_version: inframill.dev/blueprint/v1
+description: pv-cloud
+
+values_schema:
+  title: pv-cloud Instance
+  type: object
+  required:
+    - private_networks
+    - ssh_user
+    - ssh_public_keys
+    - nodes
+    - cloud_secret_ref
+    - ssh_source_ips
+    - network_zone
+    - ansible
+  properties:
+    private_networks:
+      title: Private networks
+      type: array
+      x-inframill-validations:
+        - function: unique
+          select: name
+        - function: cidr
+          select: cidr
+          version: 4
+          scope: private
+          canonical: true
+        - function: cidr_disjoint
+          select: cidr
+      items:
+        $ref: '#/$defs/private_network'
+    ssh_user:
+      title: SSH user
+      type: string
+      pattern: ^[a-z_][a-z0-9_-]{0,31}$
+    ssh_public_keys:
+      title: SSH public keys
+      type: array
+      minItems: 1
+      items:
+        type: string
+        pattern: ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/]+={0,3}( [A-Za-z0-9@._-]+)?$
+    ansible:
+      title: Ansible
+      type: object
+      required:
+        - address_mode
+      additionalProperties: false
+      properties:
+        address_mode:
+          title: Address mode
+          enum:
+            - public_ipv4
+            - private_ipv4
+    nodes:
+      title: Nodes
+      type: object
+      minProperties: 1
+      propertyNames:
+        pattern: ^[a-z][a-z0-9_-]{0,63}$
+        not:
+          enum: [all, ungrouped]
+      additionalProperties:
+        $ref: '#/$defs/node'
+    cloud_secret_ref:
+      title: Cloud secret reference
+      type: string
+      pattern: ^[a-z][a-z0-9_-]{0,127}$
+    ssh_source_ips:
+      title: SSH source IPs
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        minLength: 1
+    network_zone:
+      title: Network zone
+      type: string
+      pattern: ^[a-z][a-z0-9-]+$
+  additionalProperties: false
+  $schema: https://json-schema.org/draft/2020-12/schema
+  $defs:
+    private_network:
+      title: Private network
+      type: object
+      required:
+        - name
+        - cidr
+      properties:
+        name:
+          title: Name
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+        cidr:
+          title: CIDR
+          type: string
+      additionalProperties: false
+    node:
+      title: Node
+      type: object
+      required:
+        - location
+        - server_type
+        - roles
+        - private_networks
+        - architecture
+        - image
+      properties:
+        location:
+          title: Location
+          type: string
+          minLength: 1
+        server_type:
+          title: Server type
+          type: string
+          minLength: 1
+        roles:
+          title: Roles
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: ^(common|docker|web|data)$
+          uniqueItems: true
+        private_networks:
+          title: Private networks
+          type: array
+          x-inframill-validations:
+            - function: unique
+            - function: references
+              target: private_networks
+              target_select: name
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9_-]{0,63}$
+        architecture:
+          title: Architecture
+          enum:
+            - arm64
+            - amd64
+        image:
+          title: Image
+          enum:
+            - ubuntu-24.04
+      additionalProperties: false
+      allOf:
+        - if:
+            properties:
+              architecture:
+                const: arm64
+          then:
+            properties:
+              server_type:
+                pattern: ^cax[0-9]+$
+          else:
+            properties:
+              server_type:
+                pattern: ^(cx|cpx|ccx)[0-9]+$
+
+provider_settings:
+  opentofu:
+    version: '0.4'
+    settings:
+      id: opentofu
+      backend: local
+      node_output: inframill_nodes
+      artifact: opentofu-nodes-v1.json
+      settings_file: kit-provider.json
+  ansible:
+    version: '0.4'
+    settings:
+      id: ansible
+      producer_id: opentofu
+      producer_version: 0.4.0
+      artifact: opentofu-nodes-v1.json
+      connection: ssh
+      host_key_policy: accept-new
+      roles:
+        - common
+        - docker
+        - web
+        - data
+      playbooks:
+        site: site.yml
+      settings_file: kit-provider.json
+
+features:
+  - network_firewall
+  - network_load_balancer
+  - workload_server

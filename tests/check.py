@@ -22,6 +22,7 @@ from engine_client import Engine
 from query_check import query_check
 from process_check import process_check
 from image_check import image_check
+from dispatch_check import dispatch_check
 from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
 
 
@@ -259,6 +260,7 @@ def native_checks(tmp, env):
         local_flow(client)
         pv_flow(client, 'built.in/pv-cloud', tools()[0])
     daemon_check(tmp, env)
+    dispatch_check(tmp / 'dispatch', env)
     cache_check(tmp, env)
 
 

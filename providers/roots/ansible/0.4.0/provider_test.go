@@ -2,6 +2,7 @@ package ansible
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +85,72 @@ func TestPingPreparation(t *testing.T) {
 		if _, err := d.Prepare(t.Context(), s, "ping", args); err == nil {
 			t.Fatalf("accepted invalid ping arguments: %v", args)
 		}
+	}
+}
+
+func TestHostNamesCannotExpandToGroups(t *testing.T) {
+	for _, name := range []string{"common", "docker", "web", "data"} {
+		t.Run(name, func(t *testing.T) {
+			d, scope, nodes := fixture(t)
+			scope.Settings["roles"] = []string{"common", "docker", "web", "data"}
+			role := "common"
+			if name == role {
+				role = "docker"
+			}
+			workerRole := name
+			if name == "all" || name == "ungrouped" {
+				workerRole = "web"
+			}
+			nodes.Nodes = []artifacts.Node{
+				{Name: name, Roles: []string{role}, Architecture: "arm64", PublicIPv4: "127.0.0.1"},
+				{Name: "worker", Roles: []string{workerRole}, Architecture: "arm64", PublicIPv4: "127.0.0.2"},
+			}
+			if err := artifacts.Write(scope.ArtifactDir, "tofu-nodes-v1.json", nodes); err != nil {
+				t.Fatal(err)
+			}
+			recap, err := json.Marshal(Recap{Schema: 1, Hosts: map[string]Stats{name: {OK: 1}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.Tool = filepath.Join(t.TempDir(), "ansible")
+			script := `#!/bin/sh
+if [ "$1" = --version ]; then printf '[core 2.20.1]'; exit 0; fi
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -i) cp "$2" used-inventory.json; shift;;
+    --limit) exit 1;;
+  esac
+  shift
+done
+printf '%s' '` + string(recap) + "'\n"
+			if err := os.WriteFile(d.Tool, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			command, err := d.Prepare(t.Context(), scope, "ping", runmill.Arguments{"hosts": []string{name}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := command.Execute(t.Context(), nil); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(scope.WorkspaceDir, "used-inventory.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var inventory inventoryDocument
+			if err := json.Unmarshal(data, &inventory); err != nil {
+				t.Fatal(err)
+			}
+			if len(inventory.All.Hosts) != 1 || inventory.All.Hosts[name].Address != "127.0.0.1" {
+				t.Fatalf("host selection expanded: %s", data)
+			}
+			if len(inventory.All.Children) != 1 || len(inventory.All.Children[role].Hosts) != 1 {
+				t.Fatalf("unselected role membership remains: %s", data)
+			}
+			if _, ok := inventory.All.Children[role].Hosts[name]; !ok {
+				t.Fatalf("selected role membership lost: %s", data)
+			}
+		})
 	}
 }
 

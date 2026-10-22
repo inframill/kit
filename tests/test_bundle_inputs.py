@@ -84,6 +84,20 @@ class ProviderInputTests(BinaryFixture, unittest.TestCase):
             folder, record, selection, target, lock = self.provider(arch)
             self.assertEqual(read_provider(self.dist, selection, target, lock)[1], record)
 
+    def test_dispatch_bundle_requires_the_bundled_ansible_version(self):
+        folder, record, selection, target, lock = self.provider()
+        selection = {'name': 'dispatch', 'version': '0.1.0'}
+        destination = self.dist / 'dispatch/0.1.0' / target
+        destination.parent.mkdir(parents=True)
+        folder.rename(destination)
+        record['release'].update(selection, tool_version='2.20.1')
+        (destination / 'build.json').write_text(json.dumps(record))
+        self.assertEqual(read_provider(self.dist, selection, target, lock)[1], record)
+        record['release']['tool_version'] = '9.9.9'
+        (destination / 'build.json').write_text(json.dumps(record))
+        with self.assertRaisesRegex(ValueError, 'tool'):
+            read_provider(self.dist, selection, target, lock)
+
     def test_missing_platform_requires_an_explicit_provider_build(self):
         _, _, selection, _, lock = self.provider()
         with self.assertRaisesRegex(ValueError, 'Missing prebuilt provider'):

@@ -13,25 +13,29 @@
     "address_mode": "public_ipv4"
   },
   "nodes": {
-    "srv-01": {
+    "data": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
       "server_type": "cpx22",
       "location": "fsn1",
       "roles": [
-        "common"
+        "common",
+        "docker"
       ],
       "private_networks": []
     },
-    "srv-02": {
+    "worker": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
       "server_type": "cpx22",
       "location": "fsn1",
       "roles": [
-        "common"
+        "common",
+        "docker"
       ],
       "private_networks": []
     }
-  }
+  },
+  "cloudflare_zone_id": "2ece89727911d11992decfb720af5c5a",
+  "cloudflare_secret_ref": "cloudflare"
 }

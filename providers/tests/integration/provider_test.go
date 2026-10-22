@@ -30,17 +30,17 @@ func TestVersionedProviderEntrypoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"opentofu", "ansible"} {
+	for name, version := range map[string]string{"opentofu": "0.4.0", "ansible": "0.4.0", "dispatch": "0.1.0"} {
 		t.Run(name, func(t *testing.T) {
 			binary := filepath.Join(t.TempDir(), "provider")
-			cmd := exec.Command("go", "build", "-o", binary, "./roots/"+name+"/0.4.0/cmd")
+			cmd := exec.Command("go", "build", "-o", binary, "./roots/"+name+"/"+version+"/cmd")
 			cmd.Dir = root
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("build: %s: %v", output, err)
 			}
 			output, err := exec.Command(binary, "version").Output()
 			var metadata struct{ Name, Version string }
-			if err != nil || json.Unmarshal(output, &metadata) != nil || metadata.Name != name || metadata.Version != "0.4.0" {
+			if err != nil || json.Unmarshal(output, &metadata) != nil || metadata.Name != name || metadata.Version != version {
 				t.Fatalf("version metadata: %s: %v", output, err)
 			}
 			cmd = exec.Command(binary)

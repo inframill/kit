@@ -1,5 +1,6 @@
 terraform {
   required_version = "= 1.11.5"
+  backend "local" {}
 }
 resource "terraform_data" "local" {
   input = "Inframill Kit local acceptance fixture"

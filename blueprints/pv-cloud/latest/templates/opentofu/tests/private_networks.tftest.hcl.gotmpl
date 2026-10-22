@@ -5,7 +5,14 @@ mock_provider "hcloud" {
   mock_data "hcloud_image" { defaults = { architecture = "x86" } }
 }
 
+mock_provider "cloudflare" {
+  mock_data "cloudflare_zone" {
+    defaults = { name = "example.test" }
+  }
+}
+
 variables {
+  cloudflare_zone_id = "0123456789abcdef0123456789abcdef"
   private_networks = [{ name = "frontend", cidr = "10.40.1.0/24" }, { name = "database", cidr = "10.40.2.0/24" }]
   nodes = {
     web-1 = {
@@ -130,4 +137,110 @@ run "reject_provider_architecture_mismatch" {
     }
   }
   expect_failures = [hcloud_server.this]
+}
+
+run "node_name_does_not_assign_roles" {
+  command = plan
+  variables {
+    private_networks = []
+    nodes = {
+      data = {
+        location = "hel1"
+        server_type = "cpx22"
+        architecture = "amd64"
+        image = "ubuntu-24.04"
+        roles = ["docker"]
+        private_networks = []
+      }
+    }
+  }
+  assert {
+    condition = join(",", output.inframill_nodes["data"].roles) == "docker"
+    error_message = "Node names must not assign roles."
+  }
+  assert {
+    condition = hcloud_server.this["data"].labels.node == "data" && !can(hcloud_server.this["data"].labels.role)
+    error_message = "Node names must only appear in the node identity label."
+  }
+}
+
+run "reject_reserved_inventory_names" {
+  command = plan
+  variables {
+    private_networks = []
+    nodes = {
+      all = {
+        location = "hel1"
+        server_type = "cpx22"
+        architecture = "amd64"
+        image = "ubuntu-24.04"
+        roles = ["docker"]
+        private_networks = []
+      }
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "node_dns_records" {
+  command = apply
+  variables {
+    private_networks = []
+    nodes = {
+      data = {
+        location = "hel1"
+        server_type = "cpx22"
+        architecture = "amd64"
+        image = "ubuntu-24.04"
+        roles = ["docker"]
+        private_networks = []
+      }
+      worker = {
+        location = "hel1"
+        server_type = "cpx22"
+        architecture = "amd64"
+        image = "ubuntu-24.04"
+        roles = ["docker"]
+        private_networks = []
+      }
+    }
+  }
+  assert {
+    condition = length(cloudflare_dns_record.node) == 2
+    error_message = "Every node must have exactly one DNS record."
+  }
+  assert {
+    condition = cloudflare_dns_record.node["data"].name == lower({{ toJSON (printf "data-%s.example.test" (instance).ID) }}) && cloudflare_dns_record.node["worker"].name == lower({{ toJSON (printf "worker-%s.example.test" (instance).ID) }})
+    error_message = "DNS names must contain the node name and immutable Instance ID."
+  }
+  assert {
+    condition = alltrue([for name, record in cloudflare_dns_record.node : record.content == hcloud_server.this[name].ipv4_address])
+    error_message = "A records must point to the matching node's public IPv4."
+  }
+  assert {
+    condition = alltrue([for record in cloudflare_dns_record.node : record.type == "A" && record.zone_id == var.cloudflare_zone_id && record.ttl == 300 && record.proxied == false])
+    error_message = "Node records must be DNS-only A records in the configured zone."
+  }
+  assert {
+    condition = output.server_fqdns["data"] == cloudflare_dns_record.node["data"].name && output.inframill_nodes["worker"].fqdn == cloudflare_dns_record.node["worker"].name
+    error_message = "DNS names must be published in server outputs and shared node records."
+  }
+}
+
+run "reject_invalid_dns_label" {
+  command = plan
+  variables {
+    private_networks = []
+    nodes = {
+      bad_name = {
+        location = "hel1"
+        server_type = "cpx22"
+        architecture = "amd64"
+        image = "ubuntu-24.04"
+        roles = ["docker"]
+        private_networks = []
+      }
+    }
+  }
+  expect_failures = [var.nodes]
 }

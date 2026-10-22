@@ -10,6 +10,8 @@ values_schema:
     - ssh_public_keys
     - nodes
     - cloud_secret_ref
+    - cloudflare_zone_id
+    - cloudflare_secret_ref
     - ssh_source_ips
     - network_zone
     - ansible
@@ -57,11 +59,21 @@ values_schema:
       type: object
       minProperties: 1
       propertyNames:
-        pattern: ^[a-z][a-z0-9_-]{0,63}$
+        pattern: ^[a-z]([a-z0-9-]{0,34}[a-z0-9])?$
+        not:
+          enum: [all, ungrouped]
       additionalProperties:
         $ref: '#/$defs/node'
     cloud_secret_ref:
       title: Cloud secret reference
+      type: string
+      pattern: ^[a-z][a-z0-9_-]{0,127}$
+    cloudflare_zone_id:
+      title: Cloudflare zone ID
+      type: string
+      pattern: ^[a-f0-9]{32}$
+    cloudflare_secret_ref:
+      title: Cloudflare API token secret reference
       type: string
       pattern: ^[a-z][a-z0-9_-]{0,127}$
     ssh_source_ips:
@@ -119,7 +131,7 @@ values_schema:
           minItems: 1
           items:
             type: string
-            pattern: ^(common|web|data)$
+            pattern: ^(common|docker|web|data)$
           uniqueItems: true
         private_networks:
           title: Private networks
@@ -176,6 +188,7 @@ provider_settings:
       host_key_policy: accept-new
       roles:
         - common
+        - docker
         - web
         - data
       playbooks:

@@ -77,7 +77,7 @@ resource "hcloud_server" "this" {
   location    = each.value.location
   ssh_keys    = []
   user_data   = file("${path.module}/cloud-init.yaml")
-  labels      = merge(local.labels, { role = each.key })
+  labels      = merge(local.labels, { node = each.key })
 
   lifecycle {
     precondition {

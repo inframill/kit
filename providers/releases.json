@@ -2,8 +2,8 @@
   "schema": 1,
   "go_version": "go1.27.2",
   "inframill": {
-    "version": "0.1.17-dev",
-    "revision": "6cbe660768305362621af67f9dfea87c49d00581"
+    "version": "0.1.19-dev",
+    "revision": "8bbbd54c64a224523b1616176c0cc7214453eeac"
   },
   "providers": [
     {
@@ -13,6 +13,10 @@
     {
       "name": "ansible",
       "version": "0.4.0"
+    },
+    {
+      "name": "dispatch",
+      "version": "0.1.0"
     }
   ]
 }

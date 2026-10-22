@@ -23,7 +23,7 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
 
 `ValidateSettings` examines only the provider's static settings object. Engine
 renders `templates/<configured-id>/` into the matching provider workspace, each
-with its own `kit-provider.json`. Kit configures IDs `opentofu` and `ansible`. `Prepare` validates arguments/settings and reads required files
+with its own `kit-provider.json`. Kit configures IDs `opentofu`, `ansible` and `dispatch`. `Prepare` validates arguments/settings and reads required files
 without effects or credentials. For run, the fresh provider process prepares again,
 then Execute receives the namespace's secret snapshot.
 
@@ -47,6 +47,13 @@ selection. Its private configuration and callback prevent user environment overr
 A successful process exit needs a complete successful host recap. Syntax-check does
 not require node artifacts; check mode reports prediction.
 
+Dispatch independently consumes the verified node artifact, intersects mapping
+and execution selectors, snapshots a directory under its supplied workspace and
+generates a private inventory/playbook. It invokes Ansible directly for SSH,
+archive transfer/extraction and ordered Make targets. Success requires complete
+host/task counters and successful target exit codes. Shared artifacts remain
+input; Ansible workspace files are not a dependency. See [Dispatch](dispatch.md).
+
 ## Versions and publication
 
 The root `VERSION` selects one self-contained `releases/<version>.lock.json`,
@@ -56,7 +63,7 @@ can differ. The image shares Kit's exact version and its lock must pin the decla
 engine target. Normal builds use only these explicit selections. `task release:prepare` generates
 them from the chosen upstream release before building.
 
-The current providers are OpenTofu and Ansible 0.4.0. Each binary embeds its version's
+The current providers are OpenTofu and Ansible 0.4.0 and Dispatch 0.1.0. Each binary embeds its version's
 `release.json`; its executable path selects the implementation. Provider builds use
 `providers/releases.json`, independently of the image release. Synthetic test providers
 under `providers/tests` exercise version coexistence and distinct contracts.

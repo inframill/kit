@@ -19,19 +19,33 @@
       check_mode: false
 
 - name: Configure common services
-  hosts: common
+  hosts: all
+  gather_facts: false
   become: true
   roles:
-    - common
+    - role: common
+      when: "'common' in group_names"
+
+- name: Configure Docker
+  hosts: all
+  gather_facts: false
+  become: true
+  roles:
+    - role: docker
+      when: "'docker' in group_names"
 
 - name: Configure web services
-  hosts: web
+  hosts: all
+  gather_facts: false
   become: true
   roles:
-    - web
+    - role: web
+      when: "'web' in group_names"
 
 - name: Configure data services
-  hosts: data
+  hosts: all
+  gather_facts: false
   become: true
   roles:
-    - data
+    - role: data
+      when: "'data' in group_names"

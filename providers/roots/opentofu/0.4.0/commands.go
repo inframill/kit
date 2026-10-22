@@ -79,6 +79,20 @@ func (p *prepared) execute(ctx context.Context, run toolrun.Runner) (any, error)
 	switch p.command {
 	case "init":
 		args := []string{"init", "-input=false", "-no-color", "-lockfile=readonly"}
+		if p.static.Backend == "local" {
+			state, err := filepath.Abs(filepath.Join(p.scope.ArtifactDir, p.static.ID+"-terraform.tfstate"))
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, "-backend-config=path="+state, "-backend-config=workspace_dir="+state+".d")
+			// Let OpenTofu migrate legacy workspace state, but never force a
+			// migration over an existing artifact state.
+			if _, err = os.Stat(state); os.IsNotExist(err) {
+				args = append(args, "-force-copy")
+			} else if err != nil {
+				return nil, err
+			}
+		}
 		keys := []string{}
 		for key := range p.settings.Backend {
 			keys = append(keys, key)

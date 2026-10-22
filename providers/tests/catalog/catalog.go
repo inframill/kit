@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/inframill/kit/providers/roots/ansible/0.4.0"
+	"github.com/inframill/kit/providers/roots/dispatch/0.1.0"
 	"github.com/inframill/kit/providers/roots/opentofu/0.4.0"
 	"github.com/sir-hassan/inframill/pkg/runmill"
 )
@@ -98,9 +99,12 @@ func init() {
 		"ansible@0.4.0": func(r Release, tool string) runmill.Provider {
 			return ansible.Provider{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
+		"dispatch@0.1.0": func(r Release, tool string) runmill.Provider {
+			return dispatch.Provider{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
+		},
 	}
 	var selected struct{ Providers []Release }
-	for _, data := range [][]byte{opentofu.ReleaseJSON, ansible.ReleaseJSON} {
+	for _, data := range [][]byte{opentofu.ReleaseJSON, ansible.ReleaseJSON, dispatch.ReleaseJSON} {
 		var release Release
 		if err := json.Unmarshal(data, &release); err != nil {
 			panic(err)

@@ -24,5 +24,7 @@
       ],
       "private_networks": []
     }
-  }
+  },
+  "cloudflare_zone_id": "0123456789abcdef0123456789abcdef",
+  "cloudflare_secret_ref": "cloudflare"
 }

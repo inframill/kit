@@ -2,8 +2,13 @@
 
 preserve_hostname: false
 
+# pv-cloud owns guest setup. Hetzner vendor-data contains deprecated password settings.
+vendor_data:
+  enabled: false
+
 package_update: true
 package_upgrade: true
+disable_root: true
 ssh_pwauth: false
 
 users:

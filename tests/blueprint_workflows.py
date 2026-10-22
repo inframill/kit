@@ -9,6 +9,7 @@ import platform
 import re
 import subprocess
 import sys
+import urllib.error
 import uuid
 
 from events_check import provider_events
@@ -62,6 +63,7 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     do(ansible + '.check', {'playbook': 'site'})
     do(ansible + '.apply', {'playbook': 'site'})
     ansible_failure_flow(client, namespace, iid)
+    local_rerender_check(client, namespace, iid, data)
     destroy = do(prefix + '.plan', {'destroy': True})
     do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
     provider_events(client, namespace, iid)
@@ -133,13 +135,16 @@ def hello_world_flow(client, reference, namespace='test'):
 
 
 def pv_flow(client, reference, tofu):
-    client.fetch(reference, 'test')
+    latest = client.fetch(reference, 'test')
+    reference = 'built.in/pv-cloud:0.5.0'
+    release = client.fetch(reference, 'test')
+    assert release['digest'] == latest['digest'], (release, latest)
     ids = provider_ids('pv-cloud')
     instances = []
     cases = [
         ('arm64', FIXTURES / 'examples/pv-cloud-arm64.json'),
         ('amd64', FIXTURES / 'examples/pv-cloud-amd64.json'),
-        ('mixed', BLUEPRINTS / 'examples/pv-cloud.json'),
+        ('docker', BLUEPRINTS / 'examples/pv-cloud.json'),
     ]
     for name, path in cases:
         values = json.loads(path.read_text())
@@ -147,10 +152,24 @@ def pv_flow(client, reference, tofu):
         instances.append(iid)
         work = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace/opentofu'
         assert f'app    = {json.dumps("pv-" + name)}' in (work / 'main.tf').read_text()
+        assert f'instance_id = {json.dumps(iid)}' in (work / 'dns.tf').read_text()
+        settings = json.loads((work / 'kit-provider.json').read_text())
+        assert settings['environment']['CLOUDFLARE_API_TOKEN'] == values['cloudflare_secret_ref']
         client.execute('test', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     data = pathlib.Path(client.config['engine']['dataDir'])
     workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
+    for reserved in ['all', 'ungrouped', 'bad_name', 'trailing-', 'a' * 37]:
+        invalid = {**values, 'nodes': {reserved: next(iter(values['nodes'].values()))}}
+        try:
+            client.initialize('test', 'pv-reject-' + reserved, reference, invalid)
+        except urllib.error.HTTPError as error:
+            assert error.code == 400, error
+        else:
+            raise AssertionError('Invalid node name was accepted: ' + reserved)
+    ansible = pathlib.Path(client.config['engine']['providers']['ansible']['args'][1])
+    run([ansible.with_name('python3'), pathlib.Path(__file__).with_name('pv_roles_check.py'),
+         ansible, workspaces[0].parent / 'ansible/site.yml'])
     # Init must work without any namespace credentials and initialize the real backend.
     client.execute('test', instances[0], ids['opentofu'] + '.init')
     local_state_check(workspaces[0], tofu)
@@ -158,13 +177,31 @@ def pv_flow(client, reference, tofu):
         run([tofu, *args], cwd=workspaces[0], env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'})
 
 
+def local_rerender_check(client, namespace, iid, values):
+    instance = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid
+    state = instance / 'artifacts/opentofu-terraform.tfstate'
+    before = json.loads(state.read_text())
+    assert before['resources'], before
+    client.execute(namespace, iid, 'builtin.rerender', {'values': values})
+    assert not (instance / 'workspace/opentofu/.terraform').exists()
+    assert json.loads(state.read_text()) == before
+    client.execute(namespace, iid, 'opentofu.init')
+    plan = client.execute(namespace, iid, 'opentofu.plan')
+    assert not plan['changes'], plan
+    assert json.loads(state.read_text())['lineage'] == before['lineage']
+    client.execute(namespace, iid, 'opentofu.output')
+
+
 def local_state_check(work, tofu):
     backend = json.loads((work / '.terraform/terraform.tfstate').read_text())['backend']
     assert backend['type'] == 'local', backend
+    state_path = work.parent.parent / 'artifacts/opentofu-terraform.tfstate'
+    assert pathlib.Path(backend['config']['path']) == state_path, backend
     # Write an empty synthetic state; these commands never provision cloud resources.
     state = {'version': 4, 'serial': 1, 'lineage': str(uuid.uuid4()), 'outputs': {}, 'resources': []}
     run([tofu, 'state', 'push', '-'], cwd=work, input=json.dumps(state))
-    stored = json.loads((work / 'terraform.tfstate').read_text())
+    stored = json.loads(state_path.read_text())
+    assert not (work / 'terraform.tfstate').exists()
     pulled = json.loads(run([tofu, 'state', 'pull'], cwd=work, capture_output=True).stdout)
     assert stored['lineage'] == pulled['lineage'] == state['lineage']
     assert stored['resources'] == pulled['resources'] == []
@@ -183,9 +220,10 @@ def runtime_flows(client, arch, tofu):
     client.execute('smoke', iid, ansible + '.ping')
     client.execute('smoke', iid, ansible + '.apply', {'playbook': 'site'})
     ansible_failure_flow(client, 'smoke', iid)
+    local_rerender_check(client, 'smoke', iid, {'architecture': arch})
     plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
     client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = 'built.in/pv-cloud'
+    reference = 'built.in/pv-cloud:0.5.0'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')
     iid = client.initialize('smoke', 'pv-cloud', reference, values)

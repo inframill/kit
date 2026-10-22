@@ -52,26 +52,54 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 
 ## pv-cloud
 
-`built.in/pv-cloud` uses the Kit OpenTofu and Ansible providers, both version `0.4.0`.
+The current blueprint release is `built.in/pv-cloud:0.5.0`; `latest` has the same
+content. It uses the Kit OpenTofu and Ansible providers, both version `0.4.0`.
 Resource names use the immutable Instance name through `{{ (instance).Name }}`;
 Values do not contain `instance_name`. This requires an Inframill build with the
 `instance` template function (SPEC-0085).
 For existing deployments, keep the Instance name equal to the previous
 `instance_name` value to preserve generated resource names. Existing Instances
 retain their saved blueprint sources until explicitly replaced.
-The repository and image configurations enable both providers. [Example Values](examples/pv-cloud.json) demonstrate
-mixed AMD64/ARM64 nodes. Single-architecture examples live in `../tests/fixtures/blueprints/examples/`.
+The repository and image configurations enable both providers. [Example Values](examples/pv-cloud.json)
+define two AMD64 Docker nodes named `data` and `worker`, both assigned `common` and
+`docker`. Docker installation and service checks belong to the dedicated `docker`
+role; `common` is available for shared guest setup. ARM64 and AMD64 examples live
+in `../tests/fixtures/blueprints/examples/`.
+The guest cloud-config disables optional vendor-data and owns SSH user/key setup,
+avoiding deprecated password settings injected by Hetzner. Ansible requires
+cloud-init to complete successfully. Role plays select inventory group members,
+so node names never assign services. A node named `data` only gets PostgreSQL when
+assigned the `data` role. Cloud labels identify nodes with `node=<name>`.
+The reserved inventory names `all` and `ungrouped` are rejected as node names.
+
+Each node gets one DNS-only Cloudflare A record pointing to its public IPv4:
+`<node>-<lowercase-instance-id>.<zone>`. DNS names are published in `server_fqdns`
+and the shared node artifact. Names use the immutable Instance ID, so separate
+Instances do not collide. Node names must be DNS labels of at most 36 characters;
+underscores and trailing hyphens are rejected.
+
+Set `cloudflare_zone_id` to the zone's 32-character ID and
+`cloudflare_secret_ref` to a namespace secret name, such as `cloudflare`. The
+example zone ID is a placeholder. Store the API token separately with
+`inframill secret upsert --namespace production --file /private/path/cloudflare.json`,
+where the file contains `{"name":"cloudflare","value":"REPLACE_WITH_API_TOKEN"}`.
+Scope the token to the selected zone with permission to edit DNS records and read
+the zone. Kit injects it as `CLOUDFLARE_API_TOKEN` for plan/apply/destroy; the token
+is never rendered into Values, tfvars or provider configuration. The Cloudflare
+OpenTofu provider is pinned to `5.27.0`.
 
 ```sh
 inframill namespace create production
-inframill blueprint fetch built.in/pv-cloud --namespace production
+inframill blueprint fetch built.in/pv-cloud:0.5.0 --namespace production
 inframill instance init example --namespace production \
-  --blueprint built.in/pv-cloud --values-file blueprints/examples/pv-cloud.json
+  --blueprint built.in/pv-cloud:0.5.0 --values-file blueprints/examples/pv-cloud.json
 ```
 
 See [usage](../docs/usage.md) for secrets and provider commands. OpenTofu state uses
-the local backend in the Instance's persisted `workspace/opentofu/terraform.tfstate`;
-keep and back up the daemon data volume.
+the local backend in the Instance's persisted `artifacts/opentofu-terraform.tfstate`,
+which survives rerender. Run `opentofu.init` after rerender and keep and back up the
+daemon data volume. Existing Instances must run init with the updated provider
+before rerender to migrate workspace state into artifacts.
 
 ## Tags and local editing
 
@@ -84,11 +112,15 @@ blueprints/
   hello-world/latest/templates/...
   pv-cloud/latest/blueprint.yaml
   pv-cloud/latest/templates/...
+  pv-cloud/0.4.0/blueprint.yaml
+  pv-cloud/0.4.0/templates/...
+  pv-cloud/0.5.0/blueprint.yaml
+  pv-cloud/0.5.0/templates/...
 ```
 
 `built.in/pv-cloud` is shorthand for `built.in/pv-cloud:latest`. To maintain another
-tag, add a complete source directory such as `pv-cloud/dev/` or `pv-cloud/0.3.0/`,
-then fetch `built.in/pv-cloud:dev` or `built.in/pv-cloud:0.3.0`. Repository paths can
+tag, add a complete source directory such as `pv-cloud/dev/`,
+then fetch `built.in/pv-cloud:dev`. Repository paths can
 be nested and use OCI lowercase naming rules. Tags support dotted versions.
 Tag directories are mandatory; the daemon never falls back to a different tag or
 files directly under the repository directory. Ambiguous matches and links reject.

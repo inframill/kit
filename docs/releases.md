@@ -1,5 +1,18 @@
 # Releasing Kit
 
+## 0.1.17-dev
+
+Kit now includes Dispatch 0.1.0, an independent provider backed by the existing
+Ansible Core runtime. `dispatch.push` transfers directories from its provider
+workspace to nodes selected by name, role or architecture; `dispatch.make` runs
+ordered Make targets in their configured remote destinations. Push may also run
+targets after transfer. Shared OpenTofu node artifacts supply host records.
+See [Dispatch usage](dispatch.md) for Blueprint configuration and examples.
+
+The provider selection and default runtime configurations include Dispatch.
+Rebuild provider artifacts and the Kit image to include its executable. Existing
+Blueprints opt in by adding a Dispatch binding and `templates/dispatch/` payloads.
+
 ## 0.1.14-dev
 
 Kit uses Inframill 0.1.14-dev (`6d9e0857fded`), including the `instance`

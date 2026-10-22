@@ -54,7 +54,10 @@ def configuration(provider_root, workspace, tools=None, providers=None, target=N
         path = pathlib.Path(provider_root) / name / version
         if target:
             path = path / target
-        args = ['--tool', str(tools[name])] if tools and name in tools else []
+        tool = (tools or {}).get(name)
+        if tool is None and name == 'dispatch':
+            tool = (tools or {}).get('ansible')
+        args = ['--tool', str(tool)] if tool is not None else []
         selected[identity] = {'path': str(path / 'provider'), 'args': args}
     return {'main': {'port': 8080}, 'logger': {'type': 'slog', 'settings': {'level': 'info', 'format': 'json'}},
             'engine': {'dataDir': str(workspace), 'providers': selected}, 'handlers': [{'type': 'connect-engine'}]}
@@ -116,7 +119,8 @@ def read_provider(dist, selection, target, lock):
         raise ValueError('Provider and image target different Inframill releases; '
                          'run GOTOOLCHAIN=go1.27.0 task providers:build -- --refresh')
     settings = runtime_settings()
-    tool_version = {'opentofu': settings['OPENTOFU_VERSION'], 'ansible': settings['ANSIBLE_VERSION']}.get(name)
+    tool_version = {'opentofu': settings['OPENTOFU_VERSION'], 'ansible': settings['ANSIBLE_VERSION'],
+                    'dispatch': settings['ANSIBLE_VERSION']}.get(name)
     if release['tool_version'] != tool_version or release['protocol'] != 1 or set(release['platforms']) != set(lock['platforms']):
         raise ValueError('Provider tool/platform/protocol differs from the image release')
     actual = set()

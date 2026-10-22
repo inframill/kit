@@ -3,6 +3,7 @@ package ansible
 import (
 	"errors"
 	"net"
+	"slices"
 	"sort"
 
 	"github.com/inframill/kit/providers/roots/internal/artifacts"
@@ -66,6 +67,25 @@ func (p *prepared) inventory() (inventoryDocument, artifacts.Nodes, error) {
 	for _, name := range p.args.Hosts {
 		if _, ok := result.All.Hosts[name]; !ok {
 			return result, nodes, errors.New("unknown selected host")
+		}
+	}
+	// Select exact host identities before invoking Ansible. Passing names as
+	// --limit patterns can instead expand a same-named inventory group.
+	if len(p.args.Hosts) > 0 {
+		for name := range result.All.Hosts {
+			if !slices.Contains(p.args.Hosts, name) {
+				delete(result.All.Hosts, name)
+			}
+		}
+		for role, group := range result.All.Children {
+			for name := range group.Hosts {
+				if !slices.Contains(p.args.Hosts, name) {
+					delete(group.Hosts, name)
+				}
+			}
+			if len(group.Hosts) == 0 {
+				delete(result.All.Children, role)
+			}
 		}
 	}
 	return result, nodes, nil

@@ -68,7 +68,7 @@ def image_check(tmp, image, arch, network):
                 return None
         providers = poll(ready)['providers']
         poll(lambda: namespaces_ready(lambda method: rpc(endpoint, method)))
-        assert {d['id'] for d in providers} == set(ids.values()), providers
+        assert {d['id'] for d in providers} == {d['name'] for d in lock['providers']}, providers
         assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in providers), providers
         expected_version = {'version': lock['inframill']['version']}
         assert rpc(endpoint, 'GetServerVersion') == expected_version
@@ -123,7 +123,7 @@ def image_check(tmp, image, arch, network):
         assert any(i['id'] == instance for i in remote), remote
         remote_providers = json.loads(docker(cli + ['provider', 'list', '--endpoint',
                                     'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['providers']
-        assert {d['id'] for d in remote_providers} == set(ids.values()), remote_providers
+        assert {d['id'] for d in remote_providers} == {d['name'] for d in lock['providers']}, remote_providers
         assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in remote_providers), remote_providers
         stop(name)
         return instance, mounts_state

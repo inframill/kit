@@ -7,7 +7,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
-from build import ROOT, local_tools, runtime_settings
+from build import ROOT, bundle_lock, configuration, local_tools, runtime_settings
 from runtime.tools import ansible_requirements, fetch_sources, install_opentofu
 
 
@@ -20,6 +20,15 @@ class RuntimeToolTests(unittest.TestCase):
             self.assertEqual(settings[key], release['tool_version'])
             self.assertIn(settings[key], str(path))
         self.assertIn('ansible-core==' + settings['ANSIBLE_VERSION'], ansible_requirements(settings))
+
+    def test_dispatch_uses_the_same_ansible_runtime_in_native_and_image_config(self):
+        settings = runtime_settings()
+        release = json.loads((ROOT / 'providers/roots/dispatch/0.1.0/release.json').read_text())
+        self.assertEqual(release['tool_version'], settings['ANSIBLE_VERSION'])
+        config = configuration('/providers', '/data', tools={'ansible': '/tools/ansible-playbook'})
+        self.assertEqual(config['engine']['providers']['dispatch'], {
+            'path': '/providers/dispatch/0.1.0/provider', 'args': ['--tool', '/tools/ansible-playbook']})
+        self.assertIn({'name': 'dispatch', 'version': release['version']}, bundle_lock()['providers'])
 
     def test_opentofu_checks_the_selected_platform_before_installing(self):
         archive = io.BytesIO()

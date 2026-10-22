@@ -31,6 +31,9 @@ func CheckNode(n Node) error {
 	if !Identifier.MatchString(n.Name) || n.Architecture != "arm64" && n.Architecture != "amd64" || len(n.Roles) == 0 {
 		return errors.New("invalid node identity or architecture")
 	}
+	if n.Name == "all" || n.Name == "ungrouped" {
+		return errors.New("reserved node name")
+	}
 	seen := map[string]bool{}
 	for _, role := range n.Roles {
 		if !Identifier.MatchString(role) || role == "all" || role == "ungrouped" || seen[role] {

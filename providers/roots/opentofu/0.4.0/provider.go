@@ -125,7 +125,7 @@ func readSettings(scope runmill.ExecutionContext, m StaticSettings) (Settings, e
 	}
 	for key, ref := range s.Environment {
 		switch key {
-		case "HCLOUD_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "TF_ENCRYPTION":
+		case "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "TF_ENCRYPTION":
 		default:
 			return s, errors.New("unsupported credential environment")
 		}
@@ -193,7 +193,7 @@ func (p *prepared) credentials() map[string]string {
 	for key, ref := range p.settings.Environment {
 		needed := false
 		switch key {
-		case "HCLOUD_TOKEN":
+		case "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN":
 			needed = p.command == "plan" || p.command == "apply" || p.command == "destroy"
 		case "TF_ENCRYPTION":
 			needed = p.command != "validate"
