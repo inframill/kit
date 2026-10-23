@@ -41,11 +41,3 @@
   roles:
     - role: web
       when: "'web' in group_names"
-
-- name: Configure data services
-  hosts: all
-  gather_facts: false
-  become: true
-  roles:
-    - role: data
-      when: "'data' in group_names"

@@ -1,41 +1,55 @@
 {
-  "cloud_secret_ref": "hetzner",
-  "network_zone": "eu-central",
-  "ssh_user": "mostak",
-  "ssh_public_keys": [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMhVcDIPQYlXbbdIlzZtXL7GYO2ZFikaS+kLAqF0il0s hassan@Yassirs-MacBook-Pro.local"
-  ],
-  "ssh_source_ips": [
-    "31.172.107.160/32"
-  ],
-  "private_networks": [],
   "ansible": {
     "address_mode": "public_ipv4"
   },
+  "cloudflare": {
+    "zone_id": "2ece89727911d11992decfb720af5c5a"
+  },
+  "inframill": {
+    "image": "ghcr.io/inframill/kit:0.1.20-dev",
+    "tls_cert": "-----BEGIN CERTIFICATE-----\nMIIDkDCCAxagAwIBAgISBXWA0UUzmrA7afai3K7hKizgMAoGCCqGSM49BAMDMDMx\nCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MQwwCgYDVQQDEwNZ\nRTIwHhcNMjYxMDIyMDg0NzE5WhcNMjcwMTIwMDg0NzE4WjAVMRMwEQYDVQQDEwpr\ndW1tdXMuYXBwMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPBXULc9IZkgyy6yQ\nsOjL2cWLGfrkCQ79PlNbCwcP93v9Ecw0r4JjhvVdMU0pKy17KWcHqiru1RyVDTox\nuNTwmqOCAiYwggIiMA4GA1UdDwEB/wQEAwIHgDATBgNVHSUEDDAKBggrBgEFBQcD\nATAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBQGzhYvgG3lq0/J81sL/ZvskukwoTAf\nBgNVHSMEGDAWgBS5WfKOzyLwhtM3SP92FBi6gthVhzAzBggrBgEFBQcBAQQnMCUw\nIwYIKwYBBQUHMAKGF2h0dHA6Ly95ZTIuaS5sZW5jci5vcmcvMCMGA1UdEQQcMBqC\nDCoua3VtbXVzLmFwcIIKa3VtbXVzLmFwcDATBgNVHSAEDDAKMAgGBmeBDAECATAu\nBgNVHR8EJzAlMCOgIaAfhh1odHRwOi8veWUyLmMubGVuY3Iub3JnLzk3LmNybDCC\nAQwGCisGAQQB1nkCBAIEgf0EgfoA+AB2ANbVjanQF1Pzakqgx1dJAq/rx9ws04zZ\n92TIDIkZHp8CAAABoWMApaoAAAQDAEcwRQIgPT35ljq+vi51KF9bvG5+xbJUppbN\n+dSkWL0qqfN8n7MCIQDEi6NuEFdYvi1cZswcz6RCMi0ruzgIKdfRt0fCNJ2fGAB+\nAEToIvwrqw6S7tDp+taWZGAndtAXYOCJBQnJI6GwP8N/AAABoWMAmZAACAAABQAO\nHmj9BAMARzBFAiEA9Cm9oVnlWiiGeA5TLR0Uy7thl781O9evcJm2AJoiv64CIFkt\njRxT4FqMq3eIdOpkjcOCVGax74Duds/67B9UjIK0MAoGCCqGSM49BAMDA2gAMGUC\nMBmVmp8d2NWxGgU5z09tniMFw5CQVNvSRgKtgGd0mwfJU3bGt0/AMy1UCJyP/mpa\nlgIxAPG+ekC2i22nKOl/H50pmfKS3gapDpBvxa332u4b7m8itZXbWjsB05NcD2IQ\nhArRVA==\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nMIICjDCCAhGgAwIBAgIQTfOxXdbAeExQfNN7WObxFTAKBggqhkjOPQQDAzAuMQsw\nCQYDVQQGEwJVUzENMAsGA1UEChMESVNSRzEQMA4GA1UEAxMHUm9vdCBZRTAeFw0y\nNTA5MDMwMDAwMDBaFw0yODA5MDIyMzU5NTlaMDMxCzAJBgNVBAYTAlVTMRYwFAYD\nVQQKEw1MZXQncyBFbmNyeXB0MQwwCgYDVQQDEwNZRTIwdjAQBgcqhkjOPQIBBgUr\ngQQAIgNiAARxmrQzkdbEEL3MqXt3dJQttYc47axkdDTHud5TPqM2z5uSD5cmk0Wr\nHlWXvnlvqBLqiB34kluxIbmMyAiq3/YD6e80/vV259K8XQIdjFXloYOa0mIU71f7\nHQ09PvYDlw+jge4wgeswDgYDVR0PAQH/BAQDAgGGMBMGA1UdJQQMMAoGCCsGAQUF\nBwMBMBIGA1UdEwEB/wQIMAYBAf8CAQAwHQYDVR0OBBYEFLlZ8o7PIvCG0zdI/3YU\nGLqC2FWHMB8GA1UdIwQYMBaAFKPIJlqOoUzQNWP8myPIOq5W809WMDIGCCsGAQUF\nBwEBBCYwJDAiBggrBgEFBQcwAoYWaHR0cDovL3llLmkubGVuY3Iub3JnLzATBgNV\nHSAEDDAKMAgGBmeBDAECATAnBgNVHR8EIDAeMBygGqAYhhZodHRwOi8veWUuYy5s\nZW5jci5vcmcvMAoGCCqGSM49BAMDA2kAMGYCMQDIcnw5dcZLN9ffynXnnkLD/itS\nJEycJPb3sRkzeqBowup7vOsAwaqoCnNn/jh9wycCMQCJM6CPlaOC4pQYYbJtVPYb\nDKrIb2EKk5NpOpE6/XttQYZV/3gilB9l+Cc/DOVwmyg=\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nMIICpjCCAiugAwIBAgIRAIchZfw0tuX7qK3Vs3BftTowCgYIKoZIzj0EAwMwTzEL\nMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2VhcmNo\nIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDIwHhcNMjYwNTEzMDAwMDAwWhcN\nMzIwOTAyMjM1OTU5WjAuMQswCQYDVQQGEwJVUzENMAsGA1UEChMESVNSRzEQMA4G\nA1UEAxMHUm9vdCBZRTB2MBAGByqGSM49AgEGBSuBBAAiA2IABDwS/6vhrcVqcbBo\n+wgdI3fwn9x7DNJJOY/lTOti0vkwuRN87RhEhTH17E7XyFjWsPYhIPt/wzOqxTd2\nb+4ZJNy9ID04YywF9U5zasDVyGSNErVNtz8uSGh5izW87j77GaOB6zCB6DAOBgNV\nHQ8BAf8EBAMCAQYwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDwYDVR0TAQH/BAUwAwEB\n/zAdBgNVHQ4EFgQUo8gmWo6hTNA1Y/ybI8g6rlbzT1YwHwYDVR0jBBgwFoAUfEKW\nrt5LSDv6kviejM9ti6lyN5UwMgYIKwYBBQUHAQEEJjAkMCIGCCsGAQUFBzAChhZo\ndHRwOi8veDIuaS5sZW5jci5vcmcvMBMGA1UdIAQMMAowCAYGZ4EMAQIBMCcGA1Ud\nHwQgMB4wHKAaoBiGFmh0dHA6Ly94Mi5jLmxlbmNyLm9yZy8wCgYIKoZIzj0EAwMD\naQAwZgIxAMU19WCtmxVND8UHBZRoma49Z7jPs64Dma0eTu1OChVbB/2J7GV3nvYK\nAx54uk1G9QIxAO0miLVJu8PLNiXXXkiE/gsK3CTRTF/aeo4bMX42Zw40csRU6AC2\n6hSW1/IWaas6dg==\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nMIIEcDCCAligAwIBAgIQbI8dxyfHEX97r4U6yYD5zTANBgkqhkiG9w0BAQsFADBP\nMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFy\nY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBYMTAeFw0yNjA1MTMwMDAwMDBa\nFw0zMjA5MDIyMzU5NTlaME8xCzAJBgNVBAYTAlVTMSkwJwYDVQQKEyBJbnRlcm5l\ndCBTZWN1cml0eSBSZXNlYXJjaCBHcm91cDEVMBMGA1UEAxMMSVNSRyBSb290IFgy\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEzZvVn4CDCuwJSvMWSj5cz3es3mcFDR0H\nttwW+1qLFNvicWDEukWVEYmO6gbf9yoWHKS5xcUy4APgHoIYOIvXRdgKam7mAHf7\nAlF9ItgKbppbd9/w+kHsOdx1ymgHDB/qo4H1MIHyMA4GA1UdDwEB/wQEAwIBBjAd\nBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDwYDVR0TAQH/BAUwAwEB/zAd\nBgNVHQ4EFgQUfEKWrt5LSDv6kviejM9ti6lyN5UwHwYDVR0jBBgwFoAUebRZ5nu2\n5eQBc4AIiMgaWPbpm24wMgYIKwYBBQUHAQEEJjAkMCIGCCsGAQUFBzAChhZodHRw\nOi8veDEuaS5sZW5jci5vcmcvMBMGA1UdIAQMMAowCAYGZ4EMAQIBMCcGA1UdHwQg\nMB4wHKAaoBiGFmh0dHA6Ly94MS5jLmxlbmNyLm9yZy8wDQYJKoZIhvcNAQELBQAD\nggIBAD2/e9frmMxNpCV03qUHegg+MV2wz9644YoXdqtH8RyWYcBO7xfjjGEXdU1e\n/o0OkEFiynUCOSIk/vLLo7ttz6CPAeNlWfC0XNkoGeWgK6jjXvozBaGuGH5n0Ufo\nshMeWTuURqNN5G00sSXDTBrpp2+mgvdZQjb8K11TYMA25QA+YHNfbIEL0BniAhKS\n2gsnJjSzrdZLI+EZ7SEyqdR2rkjd1KutLDU+n3TFyxjniZVGur4YlhMP3mY/dV95\nIruAkkjOZier6hGBdEgZXXvaCz9u9iVEadsIE75pAGL8oHV5vxdARDiotRpul1IN\n/UZwzAbrfUFcw1HkAcYD/mlZfnQ2ieCF2MS7j3Vhv7JPDKp45fmykmzYNSrumRW0\nupFFKDBOoF7hsOb7oLyHS+Uft6jOUfOrogj8YUx38hKb2K20r42OgsSdDdxdeYWc\nMS3Sb6mwJeSZEYxJ2gaXnDSPaKhhrNkYwljyVQyr4Nq+MEJytXNTnHqaAcrNwZlV\npcJL1KBnMrMjP7eanvUwL3FYj3cF17jtboLt7gLoi4+2rWZFvn+w54jmd/FIuhhZ\ncEaU/wvU6BUNMtcVquVGHp7itQeDth5j+XL3j4WJ2SABwzUl6OeYdgpIt/ITZa+p\nTT0mQ/r5XyA4MEAiabn7XJjvCERlF2dcn2wqJw+CreTkkQ2R\n-----END CERTIFICATE-----\n"
+  },
+  "network": {
+    "private_networks": [],
+    "zone": "eu-central"
+  },
   "nodes": {
-    "data": {
+    "data-1": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
-      "server_type": "cpx22",
       "location": "fsn1",
+      "private_networks": [],
       "roles": [
         "common",
-        "docker"
+        "docker",
+        "data"
       ],
-      "private_networks": []
+      "server_type": "cpx22"
     },
-    "worker": {
+    "worker-1": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
-      "server_type": "cpx22",
       "location": "fsn1",
+      "private_networks": [],
       "roles": [
         "common",
-        "docker"
+        "docker",
+        "worker"
       ],
-      "private_networks": []
+      "server_type": "cpx22"
     }
   },
-  "cloudflare_zone_id": "2ece89727911d11992decfb720af5c5a",
-  "cloudflare_secret_ref": "cloudflare"
+  "registry": {
+    "host": "ghcr.io",
+    "username": "sir-hassan"
+  },
+  "ssh": {
+    "public_keys": [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMhVcDIPQYlXbbdIlzZtXL7GYO2ZFikaS+kLAqF0il0s hassan@Yassirs-MacBook-Pro.local"
+    ],
+    "source_ips": [
+      "31.172.107.160/32"
+    ],
+    "user": "mostak"
+  }
 }

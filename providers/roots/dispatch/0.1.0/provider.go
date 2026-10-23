@@ -33,11 +33,12 @@ type Settings struct {
 }
 
 type Directory struct {
-	Source      string   `json:"source"`
-	Destination string   `json:"destination"`
-	Select      Selector `json:"select"`
-	Exclude     []string `json:"exclude,omitempty"`
-	Become      bool     `json:"become,omitempty"`
+	Source      string            `json:"source"`
+	Destination string            `json:"destination"`
+	Select      Selector          `json:"select"`
+	Exclude     []string          `json:"exclude,omitempty"`
+	Become      bool              `json:"become,omitempty"`
+	SecretFiles map[string]string `json:"secret_files,omitempty"`
 }
 
 // Lists match any entry; fields intersect. An empty selector matches all nodes.
@@ -48,10 +49,8 @@ type Selector struct {
 }
 
 type Arguments struct {
-	Directory string            `json:"directory"`
-	Select    Selector          `json:"select,omitempty"`
-	Targets   []string          `json:"targets,omitempty"`
-	Variables map[string]string `json:"variables,omitempty"`
+	Directory string `json:"directory"`
+	Target    string `json:"target,omitempty"`
 }
 
 type prepared struct {
@@ -66,28 +65,21 @@ type prepared struct {
 var _ runmill.Provider = Provider{}
 var userName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 var targetName = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_./-]{0,127}$`)
-var variableName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
+var secretName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,127}$`)
 
 func (d Provider) Definition() (runmill.ProviderDefinition, error) {
-	list := map[string]any{"type": "array", "maxItems": 100, "uniqueItems": true, "items": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
-	selector := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-		"names": list, "roles": list, "architecture": map[string]any{"enum": []string{"arm64", "amd64"}},
-	}}
 	commands := map[string]runmill.CommandDefinition{}
 	for _, name := range []string{"push", "make"} {
-		targets := map[string]any{"type": "array", "maxItems": 100, "uniqueItems": true, "items": map[string]any{"type": "string", "pattern": targetName.String()}}
 		required := []string{"directory"}
+		properties := map[string]any{"directory": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
 		if name == "make" {
-			required = append(required, "targets")
-			targets["minItems"] = 1
+			required = append(required, "target")
+			properties["target"] = map[string]any{"type": "string", "pattern": targetName.String()}
 		}
 		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: map[string]string{
-			"push": "Push a workspace directory through Ansible, optionally followed by Make targets",
-			"make": "Run ordered Make targets in a configured remote directory through Ansible",
-		}[name], ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": map[string]any{
-			"directory": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}, "select": selector, "targets": targets,
-			"variables": map[string]any{"type": "object", "maxProperties": 100, "propertyNames": map[string]any{"pattern": variableName.String()}, "additionalProperties": map[string]any{"type": "string", "maxLength": 4096}},
-		}}}
+			"push": "Push a workspace directory through Ansible",
+			"make": "Run a Make target in a configured remote directory through Ansible",
+		}[name], ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}}
 	}
 	return runmill.ProviderDefinition{Name: "dispatch", Commands: commands}, nil
 }
@@ -178,6 +170,19 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 		if err = validateExcludes(directory.Exclude); err != nil {
 			return nil, err
 		}
+		if len(directory.SecretFiles) > 100 {
+			return nil, errors.New("too many secret files")
+		}
+		for file, reference := range directory.SecretFiles {
+			if !artifacts.Relative(file) || strings.ContainsAny(file, "\r\n") || !secretName.MatchString(reference) {
+				return nil, errors.New("invalid secret file mapping")
+			}
+			for parent := path.Dir(file); parent != "."; parent = path.Dir(parent) {
+				if _, exists := directory.SecretFiles[parent]; exists {
+					return nil, errors.New("secret file is also a parent directory")
+				}
+			}
+		}
 	}
 	var args Arguments
 	if err = decode(arguments, &args); err != nil {
@@ -187,16 +192,13 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 	if !ok {
 		return nil, errors.New("select a declared directory")
 	}
-	if err = args.Select.validate(); err != nil {
-		return nil, err
-	}
-	if !validList(args.Targets, targetName) || command == "make" && len(args.Targets) == 0 || len(args.Variables) > 100 || len(args.Variables) > 0 && len(args.Targets) == 0 {
-		return nil, errors.New("invalid Make targets or variables")
-	}
-	for key, value := range args.Variables {
-		if !variableName.MatchString(key) || len(value) > 4096 || strings.ContainsRune(value, '\x00') {
-			return nil, errors.New("invalid Make variable")
+	for key := range arguments {
+		if key != "directory" && (command != "make" || key != "target") {
+			return nil, errors.New("unexpected Dispatch argument")
 		}
+	}
+	if command == "make" && !targetName.MatchString(args.Target) {
+		return nil, errors.New("select a valid Make target")
 	}
 	p := &prepared{d, scope, static, settings, args, command}
 	if _, _, err = p.inventory(); err != nil {

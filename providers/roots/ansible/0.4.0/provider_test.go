@@ -38,7 +38,7 @@ printf '%s' '{"schema":1,"hosts":{"local":{"ok":1}}}'
 					t.Fatal(err)
 				}
 				args := runmill.Arguments{}
-				if command != "ping" {
+				if command == "syntax-check" || command == "check" {
 					args["playbook"] = "site"
 				}
 				p, err := d.Prepare(t.Context(), s, command, args)
@@ -66,6 +66,45 @@ printf '%s' '{"schema":1,"hosts":{"local":{"ok":1}}}'
 	s.Settings["host_key_policy"] = "invalid"
 	if err := d.ValidateSettings(t.Context(), s.Settings); err == nil {
 		t.Fatal("accepted invalid host-key policy")
+	}
+}
+
+func TestApplyDefaultsToSite(t *testing.T) {
+	d, scope, nodes := fixture(t)
+	if err := artifacts.Write(scope.ArtifactDir, "tofu-nodes-v1.json", nodes); err != nil {
+		t.Fatal(err)
+	}
+	scope.Settings["playbooks"] = map[string]string{"site": "site.yml", "other": "site.yml"}
+	for _, tc := range []struct {
+		args runmill.Arguments
+		want string
+	}{
+		{nil, "site"},
+		{runmill.Arguments{}, "site"},
+		{runmill.Arguments{"hosts": []string{"local"}, "tags": []string{"setup"}}, "site"},
+		{runmill.Arguments{"playbook": "other"}, "other"},
+	} {
+		p, err := d.Prepare(t.Context(), scope, "apply", tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := p.(*prepared).args.Playbook; got != tc.want {
+			t.Fatalf("playbook = %q, want %q", got, tc.want)
+		}
+	}
+	for _, args := range []runmill.Arguments{{"playbook": ""}, {"playbook": nil}, {"playbook": "missing"}} {
+		if _, err := d.Prepare(t.Context(), scope, "apply", args); err == nil {
+			t.Fatalf("accepted invalid playbook %v", args)
+		}
+	}
+	for _, command := range []string{"syntax-check", "check"} {
+		if _, err := d.Prepare(t.Context(), scope, command, nil); err == nil {
+			t.Fatalf("%s accepted a missing playbook", command)
+		}
+	}
+	scope.Settings["playbooks"] = map[string]string{"other": "site.yml"}
+	if _, err := d.Prepare(t.Context(), scope, "apply", nil); err == nil {
+		t.Fatal("accepted an undeclared default site playbook")
 	}
 }
 

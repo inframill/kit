@@ -30,17 +30,20 @@ def dispatch_check(tmp, env=None):
     payload = source / 'templates/delivery/app'
     payload.mkdir(parents=True)
     destination = tmp / 'remote destination'
+    architecture = native_platform().split('/')[1]
     settings = {
         'schema': 1, 'address_mode': 'public_ipv4', 'ssh_user': 'root',
         'directories': {'app': {
-            'source': 'app', 'destination': str(destination), 'select': {'roles': ['local']},
+            'source': 'app', 'destination': str(destination),
+            'select': {'roles': ['local'], 'architecture': architecture},
             'exclude': ['**/*.env'],
+            'secret_files': {'secrets/root_token': 'token'},
         }},
     }
     (source / 'templates/delivery/kit-provider.json').write_text(json.dumps(settings))
     (payload / 'Makefile').write_text(
         '.PHONY: verify deploy fail\n'
-        'verify:\n\t@test -x run.sh\n\t@printf "%s" "$(ARCH)" > architecture.txt\n'
+        f'verify:\n\t@test -x run.sh\n\t@printf "%s" "{architecture}" > architecture.txt\n'
         'result.txt: input.txt\n\t@cp input.txt result.txt\n'
         'deploy:\n\t@test -f architecture.txt\n\t@echo synthetic-dispatch-token\n'
         'fail:\n\t@echo expected-make-failure >&2\n\t@exit 7\n')
@@ -56,7 +59,6 @@ def dispatch_check(tmp, env=None):
         'delivery': config['engine']['providers']['dispatch'],
     }
     config['engine']['localBlueprintPaths'] = [str(tmp / 'blueprints')]
-    architecture = native_platform().split('/')[1]
     with Engine(tmp / 'daemon', config, ROOT / 'bin/inframill', env) as client:
         client.create_namespace('dispatch')
         client.fetch('built.in/local-dispatch', 'dispatch')
@@ -69,23 +71,37 @@ def dispatch_check(tmp, env=None):
         client.execute('dispatch', iid, 'opentofu.init')
         plan = client.execute('dispatch', iid, 'opentofu.plan')
         client.execute('dispatch', iid, 'opentofu.apply', {'plan_id': plan['plan_id']})
-        pushed = client.execute('dispatch', iid, 'delivery.push', {
-            'directory': 'app', 'select': {'architecture': architecture},
-            'targets': ['verify', 'result.txt', 'deploy'], 'variables': {'ARCH': architecture},
-        })
+        pushed = client.execute('dispatch', iid, 'delivery.push', {'directory': 'app'})
         assert pushed['pushed'] and len(pushed['archive_sha256']) == 64, pushed
-        assert [item['target'] for item in pushed['targets']['localhost']] == ['verify', 'result.txt', 'deploy'], pushed
+        assert not pushed['targets'], pushed
+        for target in ['verify', 'result.txt', 'deploy']:
+            made = client.execute('dispatch', iid, 'delivery.make', {'directory': 'app', 'target': target})
+            assert [item['target'] for item in made['targets']['localhost']] == [target], made
         assert (destination / 'architecture.txt').read_text() == architecture
         assert not (destination / 'private.env').exists()
         assert (destination / 'result.txt').read_text() == 'first\n'
+        secret_file = destination / 'secrets/root_token'
+        assert secret_file.read_text() == 'synthetic-dispatch-token'
+        assert secret_file.stat().st_mode & 0o777 == 0o600
+        client.rpc('UpsertNamespaceSecret', {'secret': {'name': 'token', 'value': 'rotated-dispatch-token'}},
+                   namespace='dispatch')
         (workspace / 'delivery/app/input.txt').write_text('second\n')
-        client.execute('dispatch', iid, 'delivery.push', {'directory': 'app', 'targets': ['result.txt']})
+        # Tar stores whole seconds; ensure the changed input is newer than the
+        # remote Make output even when both writes occur within one second.
+        changed_at = (destination / 'result.txt').stat().st_mtime + 2
+        os.utime(workspace / 'delivery/app/input.txt', (changed_at, changed_at))
+        client.execute('dispatch', iid, 'delivery.push', {'directory': 'app'})
+        client.execute('dispatch', iid, 'delivery.make', {'directory': 'app', 'target': 'result.txt'})
         assert (destination / 'result.txt').read_text() == 'second\n', 'Make did not detect the changed input'
-        executed = client.execute('dispatch', iid, 'delivery.make', {'directory': 'app', 'targets': ['deploy']})
+        assert secret_file.read_text() == 'rotated-dispatch-token'
+        # Keep both credential versions available for the log-redaction assertion.
+        client.rpc('UpsertNamespaceSecret', {'secret': {'name': 'previous-token', 'value': 'synthetic-dispatch-token'}},
+                   namespace='dispatch')
+        executed = client.execute('dispatch', iid, 'delivery.make', {'directory': 'app', 'target': 'deploy'})
         assert executed['pushed'] is False and executed['targets']['localhost'][0]['exit_code'] == 0, executed
         failed_id = client.rpc('SubmitCommand', {
             'instance_id': iid, 'command_name': 'delivery.make',
-            'arguments': {'json': json.dumps({'directory': 'app', 'targets': ['fail', 'deploy']})},
+            'arguments': {'json': json.dumps({'directory': 'app', 'target': 'fail'})},
         }, namespace='dispatch')['executionId']
 
         def completed():

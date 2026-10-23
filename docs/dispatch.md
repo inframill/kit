@@ -57,7 +57,7 @@ The engine renders `.gotmpl` files and copies ordinary files into
 {
   "schema": 1,
   "address_mode": {{ toJSON .ansible.address_mode }},
-  "ssh_user": {{ toJSON .ssh_user }},
+  "ssh_user": {{ toJSON .ssh.user }},
   "directories": {
     "api": {
       "source": "api",
@@ -76,9 +76,22 @@ The engine renders `.gotmpl` files and copies ordinary files into
 ```
 
 This example uses the pv-cloud Values fields `ansible.address_mode` and
-`ssh_user`; adapt the template to your Blueprint's schema. Add the binding and
-payloads to your own Blueprint; the built-in pv-cloud Blueprint does not enable
-Dispatch automatically.
+`ssh.user`; adapt the template to your Blueprint's schema. Built-in pv-cloud
+`0.6.0` and later include a `postgres` mapping for `data` nodes; `0.7.0` and
+`latest` also include an `inframill` mapping for `worker` nodes.
+After OpenTofu apply and Ansible guest preparation, install it with:
+
+```sh
+bin/inframill instance exec example dispatch.push --namespace production \
+  --arguments '{"directory":"postgres"}' --stream --timeout 15m
+bin/inframill instance exec example dispatch.make --namespace production \
+  --arguments '{"directory":"postgres","target":"install"}' --stream --timeout 15m
+```
+
+The payload runs PostgreSQL through Compose in `/opt/pv-cloud/postgres`, with
+persistent storage and a password generated on the host. See the
+[pv-cloud instructions](../blueprints/README.md#pv-cloud) for credentials,
+role requirements and lifecycle targets. Tags before `0.6.0` do not bind Dispatch.
 
 Sources are clean relative directories beneath the provider-supplied root;
 `.` and paths escaping that root are rejected. Destinations are clean absolute
@@ -91,9 +104,42 @@ laptop directory to a remote daemon. Blueprint refreshes also do not change an
 existing Instance's source snapshot. Instance rerender replaces provider-created
 workspace files, as described in [Instance lifecycle](usage.md).
 
+## Secret files
+
+A mapping can inject namespace secrets into files beneath its destination:
+
+```json
+"secret_files": {
+  "secrets/root_token": "inframill-root-token",
+  "secrets/tls_private_key": "inframill-tls-key"
+}
+```
+
+Keys are clean relative file paths; values are namespace secret names. Only the
+selected mapping's secrets are resolved, during `push` execution and before any
+remote effects. Missing, empty or whitespace-only secrets reject, as do values
+larger than 1 MiB. A mapping accepts at most 100 secret files. Secret files cannot
+also be parents of other secret files.
+
+Dispatch stages credentials in an execution-owned directory with mode `0700` and
+files with mode `0600`, then uses Ansible copy with `no_log` and disabled diffs.
+Secret bytes do not enter the source archive, generated playbook, command
+arguments or structured results. Local staging is removed when execution returns;
+an abrupt process kill can leave files until the workspace is cleaned.
+Remote parent directories use mode `0700` and files use `0600`, owned by the
+connecting user or the mapping's become user. Injection occurs after extraction
+and before Make, and preserves the exact secret bytes. Repeat pushes refresh the
+files from the current namespace secrets. Make-only commands use existing remote
+files and do not resolve or replace credentials.
+
+Use source excludes such as `secrets/**` to keep credentials accidentally placed
+in a payload directory out of the archive. Public certificates can be ordinary
+rendered configuration, as in pv-cloud's `inframill.tls_cert`. Rebuild the Dispatch
+executable and controlling Kit image after adding this support.
+
 ## Selectors
 
-Both mappings and command arguments accept `select`:
+Directory mappings accept `select`:
 
 ```json
 {"names": ["web-1", "web-2"], "roles": ["web"], "architecture": "arm64"}
@@ -101,9 +147,8 @@ Both mappings and command arguments accept `select`:
 
 Names are exact node names. Roles match any listed role. Architecture is `arm64`
 or `amd64`. Values within a list match any entry; fields intersect. An empty
-selector matches all artifact nodes. A command selector further narrows the
-mapping selector and cannot broaden it. Unknown names/roles, duplicates and an
-empty final match reject before connecting to nodes.
+selector matches all artifact nodes. Unknown names/roles, duplicates and an
+empty match reject before connecting to nodes.
 
 `address_mode` is `public_ipv4`, `private_ipv4` or `fqdn`. Every selected node
 must have a nonempty, unique address in that field; there is no fallback.
@@ -118,33 +163,24 @@ bin/inframill instance exec example dispatch.push --namespace production \
   --arguments '{"directory":"api"}' --stream --timeout 15m
 ```
 
-Push, then run targets in the destination:
-
-```sh
-bin/inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"api","targets":["build","deploy"],"variables":{"ENV":"production"}}' \
-  --stream --timeout 15m
-```
-
-Run targets against the existing remote directory without pushing again:
+Run a target against the existing remote directory after pushing:
 
 ```sh
 bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"api","select":{"names":["web-1"]},"targets":["deploy"]}' \
-  --stream --timeout 15m
+  --arguments '{"directory":"api","target":"deploy"}' --stream --timeout 15m
 ```
 
-`make` requires at least one target. Targets are distinct and run sequentially as
-separate Make invocations on each host, in the order supplied. Variables are
-passed to every invocation as `NAME=value` arguments. Variable values retain
-normal Make semantics. The command module uses `argv`, a fixed working directory
-and disabled argument-variable expansion. Values containing Jinja expressions
-remain literal data. Targets cannot be command-line switches or shell fragments.
+`push` accepts only the required `directory` string. `make` accepts exactly two
+required strings: `directory` and `target`. Node selection comes from the directory
+mapping. Run `make` once for each desired target after a successful push.
 
-Ansible schedules nodes in parallel using its default forks. On a node, Make
-starts only after a successful transfer and stops at the first failed target.
-Other nodes may have completed their work when a node fails. Operations do not
-roll back completed transfers or target effects.
+The command module uses `argv`, a fixed working directory and disabled
+argument-variable expansion. Targets cannot be command-line switches or shell
+fragments. Put Make variables and dependencies in the payload's Makefile.
+
+Ansible schedules nodes in parallel using its default forks. Other nodes may have
+completed their work when a node fails. Operations do not roll back completed
+transfers or target effects.
 
 ## Transfer and results
 
@@ -174,8 +210,8 @@ not install these tools. A mapping's optional `become` applies to its transfer
 and Make tasks; the default is false.
 
 Successful results contain the mapping name, destination, whether files were
-pushed, the SHA-256 of the transferred archive, per-host task counters and ordered
-target exit codes. Success requires the complete expected task count for every
+pushed, the SHA-256 of the transferred archive, per-host task counters and
+the requested target's exit code. Success requires the complete expected task count for every
 selected node and exit code zero for every requested target. Failed, unreachable,
 skipped, ignored or rescued tasks reject the execution.
 
@@ -202,11 +238,11 @@ python3 tests/dispatch_check.py
 
 The opt-in real-tool test uses only temporary local source/destination directories
 through Ansible's local connection. It checks archive transfer, exclusions,
-permissions, literal paths and values, ordered targets, failure diagnostics and
-secret redaction. The standard suite uses stubs and requires no remote nodes.
+permissions, literal paths and file contents, individual targets, failure
+diagnostics and secret redaction. The standard suite uses stubs and requires no remote nodes.
 
 The daemon check additionally requires the native provider outputs, local tools
 and `bin/inframill`. It renders a temporary Blueprint, publishes real OpenTofu
 node output and exercises Dispatch under a configured provider alias. It checks
-Make rebuilds after source changes and stops subsequent targets after a failure.
+Make rebuilds after source changes and reports failed targets.
 This check also runs as part of the native/full acceptance suite.

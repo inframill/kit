@@ -12,14 +12,14 @@ disable_root: true
 ssh_pwauth: false
 
 users:
-  - name: {{ toJSON .ssh_user }}
-    gecos: {{ toJSON .ssh_user }}
+  - name: {{ toJSON .ssh.user }}
+    gecos: {{ toJSON .ssh.user }}
     groups:
       - sudo
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: true
-    ssh_authorized_keys: {{ toJSON .ssh_public_keys }}
+    ssh_authorized_keys: {{ toJSON .ssh.public_keys }}
 
 write_files:
   - path: /etc/ssh/sshd_config.d/99-hardening.conf

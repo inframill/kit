@@ -52,7 +52,12 @@ applies to watches; reconnect explicitly after the last event you processed.
 ## Running a deployment
 
 Run these commands from the repository root. `blueprints/examples/pv-cloud.json`
-contains plain Values JSON for the AMD64 Docker nodes `data` and `worker`. The same Blueprint
+contains plain Values JSON for the AMD64 Docker nodes `data-1` and `worker-1`.
+Their roles select the PostgreSQL and Inframill Dispatch payloads, respectively.
+Replace the example's `inframill.tls_cert` placeholder with your public certificate
+chain and store its private key and root token as the namespace secrets
+`inframill-tls-key` and `inframill-root-token`.
+The same Blueprint
 supports either architecture or a mix, selected per node. Generate configuration using
 the installed local tools and `task providers:build -- --native` outputs, then start the daemon:
 
@@ -64,21 +69,26 @@ bin/inframill server start --config /tmp/kit-config.json
 ```
 
 In another terminal, create a namespace, fetch a local blueprint and initialize an Instance.
-Initialization validates Values and renders files without executing a provider:
+Initialization validates Values, checks required namespace secret names and renders
+files without executing a provider:
 
 ```sh
 bin/inframill namespace create production
-bin/inframill blueprint fetch built.in/pv-cloud:0.5.0 \
+bin/inframill blueprint fetch built.in/pv-cloud:0.8.0 \
   --namespace production
+bin/inframill secret upsert --namespace production --file /private/path/hetzner.json
+bin/inframill secret upsert --namespace production --file /private/path/cloudflare.json
+bin/inframill secret upsert --namespace production --file /private/path/inframill-tls-key.json
+bin/inframill secret upsert --namespace production --file /private/path/inframill-root-token.json
+bin/inframill secret upsert --namespace production --file /private/path/pv-cloud-registry-token.json
 bin/inframill instance init example --namespace production \
-  --blueprint built.in/pv-cloud:0.5.0 \
+  --blueprint built.in/pv-cloud:0.8.0 \
   --values-file blueprints/examples/pv-cloud.json
-bin/inframill secret upsert --namespace production --file /private/path/secret.json
 bin/inframill instance exec example --namespace production opentofu.init --wait
 ```
 
 The generated configuration allows the local `blueprints/` directory.
-`built.in/pv-cloud:0.5.0` selects the current blueprint release.
+`built.in/pv-cloud:0.8.0` selects the current blueprint release.
 `built.in/pv-cloud` selects `blueprints/pv-cloud/latest/`; append `:TAG` to use
 `blueprints/pv-cloud/TAG/`. These references require no registry. Re-fetch after
 editing source files and initialize a new Instance to use the new snapshot. Commands such as init/plan/apply contact
@@ -235,10 +245,18 @@ Each secret file contains one entry: `{"name":"hetzner","value":"synthetic-token
 The pv-cloud example uses `hetzner` for its cloud API token and `cloudflare` for
 its Cloudflare API token. Store the latter with a separate secret entry such as
 `{"name":"cloudflare","value":"synthetic-cloudflare-token"}`. Values set
-`cloudflare_zone_id` and `cloudflare_secret_ref`; each node gets a DNS-only A record
+`cloudflare.zone_id`; each node gets a DNS-only A record
 named `<node>-<lowercase-instance-id>.<zone>` pointing to its public IPv4. The token
-needs permission to edit DNS records and read the selected zone. Values select secret names, never credential
-values. Inframill supplies a namespace snapshot only to provider Execute; Kit does not
+needs permission to edit DNS records and read the selected zone. pv-cloud `0.8.0`
+and `latest` also require `inframill-tls-key`, `inframill-root-token`, and
+`pv-cloud-registry-token`. All five
+names are fixed in the Blueprint's `required_secrets` and Provider settings;
+Values contain no credential values or secret references. Initialization requires
+their presence in the selected namespace, even without worker nodes or registry
+login settings, and reports
+all missing names with `MISSING_SECRET`. Add the missing entries and retry with
+the same Instance name. Presence does not validate credential contents.
+Inframill supplies a namespace snapshot only to provider Execute; Kit does not
 read `INFRAMILL_SECRET_*` or arbitrary inherited tool credential variables. Required
 credentials must be nonempty and are checked before effects. Only selected values
 reach the tool environment. Known injected values are filtered from tool diagnostics;
@@ -299,10 +317,26 @@ Settings validation uses no files; Prepare reads and validates rendered inputs w
 no tool execution, writes, network or secrets. Execute performs and verifies effects.
 
 OpenTofu supplies init, validate, plan, apply, destroy and output. Plan returns a
-`plan_id`; apply/destroy require it. Plans bind the shared artifact directory, provider/tool/configuration and source bytes. Kit retires a plan before apply effects,
-so failures and partial effects require a fresh plan. It invalidates shared nodes
-before mutation and only publishes verified output. Destroy verifies empty managed
-state. Refresh-only and destroy plans are distinct modes.
+`plan_id`; apply/destroy accept it optionally. With an ID, Kit validates and consumes
+that exact saved plan. Plans bind the shared artifact directory,
+provider/tool/configuration and source bytes. Kit retires a saved plan before apply
+effects, so failures and partial effects require a fresh plan.
+
+Without `plan_id`, apply/destroy plan and execute the current configuration in one
+noninteractive operation using OpenTofu's `-auto-approve`. They do not select a
+previously saved plan. An explicitly supplied ID must be valid and available;
+invalid, stale or missing saved plans fail without falling back to direct execution.
+Both paths invalidate shared nodes before mutation and only publish verified
+output. Destroy verifies empty managed state. Refresh-only and destroy saved plans
+remain distinct modes.
+
+```sh
+bin/inframill instance exec example opentofu.apply --namespace production --stream
+bin/inframill instance exec example opentofu.destroy --namespace production --stream
+# To execute a specific saved plan:
+bin/inframill instance exec example opentofu.apply --namespace production \
+  --arguments '{"plan_id":"PLAN_ULID"}' --stream
+```
 
 Ansible supplies inventory, ping, syntax-check, check and apply. It consumes a bound node
 artifact, selects the requested address without fallback, and checks the complete
@@ -337,12 +371,44 @@ counters to stderr; arbitrary task results and arguments stay private. The pv-cl
 playbook waits up to 300 seconds for SSH while guests boot. A running execution
 at that step is waiting for connectivity; restarting the daemon interrupts it.
 The CLI's default two-minute timeout only stops waiting, so allow more time for
-an apply after checking connectivity:
+an apply after checking connectivity. `apply` defaults to the declared `site`
+playbook; use `playbook` to select another declared playbook:
 
 ```sh
 bin/inframill instance exec example ansible.apply --namespace production \
-  --arguments '{"playbook":"site"}' --stream --timeout 15m
+  --stream --timeout 15m
 ```
+
+For pv-cloud `0.7.0` and later, follow guest preparation with the Dispatch
+payloads. Both `data` and `worker` roles require `docker`; the example selects
+`data-1` for PostgreSQL and `worker-1` for Inframill:
+
+```sh
+bin/inframill instance exec example dispatch.push --namespace production \
+  --arguments '{"directory":"postgres"}' --stream --timeout 15m
+bin/inframill instance exec example dispatch.make --namespace production \
+  --arguments '{"directory":"postgres","target":"install"}' --stream --timeout 15m
+bin/inframill instance exec example dispatch.push --namespace production \
+  --arguments '{"directory":"inframill"}' --stream --timeout 15m
+bin/inframill instance exec example dispatch.make --namespace production \
+  --arguments '{"directory":"inframill","target":"install"}' --stream --timeout 15m
+```
+
+The target waits for PostgreSQL readiness. Repeat pushes preserve its named volume
+and generated host password. It listens on host loopback port 5432; see
+[pv-cloud](../blueprints/README.md#pv-cloud) for credentials and lifecycle commands.
+Inframill uses native HTTPS directly on port 443 with Docker host networking, a
+required root token and an independent persistent data volume on each selected
+Linux worker. Port 443 must be available; Docker port publishing is not used.
+Its private key and token are resolved from namespace secrets at push execution;
+its public certificate is
+rendered from Values. Install waits for the authenticated HTTPS API to respond.
+Rebuild the Dispatch provider (or controlling Kit image) to use `secret_files`.
+For authenticated container pulls, set the optional pv-cloud `registry.host` and
+`registry.username` Values and store `pv-cloud-registry-token` as a namespace
+secret. Both payloads log in with the injected token before Compose starts and
+stop installation if login fails. Omit `registry` to skip login. See the
+[pv-cloud instructions](../blueprints/README.md#pv-cloud) for configuration.
 
 For Docker, `task docker:up` mounts the project's `ssh/` directory at `/root/.ssh`.
 Ansible and other providers invoking SSH use the standard identities there, such
@@ -359,7 +425,7 @@ agent socket on macOS and the host socket on Linux. `KIT_SSH_AUTH_SOCK` override
 the Docker-host socket path; set it to an empty string to disable forwarding.
 The container can authenticate with keys loaded in that agent. Public keys in
 blueprint values only authorize guest access; they do not supply client credentials.
-Also check `ssh_user`, guest readiness, and that `ssh_source_ips` allows your client
+Also check `ssh.user`, guest readiness, and that `ssh.source_ips` allows your client
 address. Native daemons inherit the agent from the shell that starts them.
 
 The executable's configured prefix is:

@@ -171,30 +171,41 @@ func (p *prepared) plan(ctx context.Context, run toolrun.Runner) (any, error) {
 	return PlanResult{p.scope.ExecutionID, code == 2, p.arguments.Destroy, p.arguments.RefreshOnly}, nil
 }
 func (p *prepared) apply(ctx context.Context, run toolrun.Runner) (any, error) {
-	_, data, err := p.savedPlan()
-	if err != nil {
+	var data []byte
+	if p.arguments.PlanID != "" {
+		var err error
+		_, data, err = p.savedPlan()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := p.invalidate(); err != nil {
 		return nil, err
 	}
-	if err = p.invalidate(); err != nil {
-		return nil, err
+	args := []string{"apply", "-input=false", "-no-color", "-lock-timeout=60s"}
+	if p.arguments.PlanID == "" {
+		args[0] = p.command
+		args = append(args, "-auto-approve")
+	} else {
+		tmp, err := os.MkdirTemp(p.scope.WorkspaceDir, ".kit-apply-")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmp)
+		if err = artifacts.WriteBytes(tmp, "plan.bin", data); err != nil {
+			return nil, err
+		}
+		// Retire the admission record before effects: failed/partial application requires a fresh plan.
+		name := p.planName(p.arguments.PlanID)
+		if err = artifacts.Remove(p.scope.ArtifactDir, name+".json"); err != nil {
+			return nil, err
+		}
+		if err = artifacts.Remove(p.scope.ArtifactDir, name+".bin"); err != nil {
+			return nil, err
+		}
+		args = append(args, filepath.Join(tmp, "plan.bin"))
 	}
-	tmp, err := os.MkdirTemp(p.scope.WorkspaceDir, ".kit-apply-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tmp)
-	if err = artifacts.WriteBytes(tmp, "plan.bin", data); err != nil {
-		return nil, err
-	}
-	// Retire the admission record before effects: failed/partial application requires a fresh plan.
-	name := p.planName(p.arguments.PlanID)
-	if err = artifacts.Remove(p.scope.ArtifactDir, name+".json"); err != nil {
-		return nil, err
-	}
-	if err = artifacts.Remove(p.scope.ArtifactDir, name+".bin"); err != nil {
-		return nil, err
-	}
-	_, code, err := run.Call(ctx, false, "apply", "-input=false", "-no-color", "-lock-timeout=60s", filepath.Join(tmp, "plan.bin"))
+	_, code, err := run.Call(ctx, false, args...)
 	if err = toolrun.Success(code, err); err != nil {
 		return nil, err
 	}

@@ -102,10 +102,15 @@ def image_check(tmp, image, arch, network):
             return result if result['status'] in ('COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED', 'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_CANCELLED') else None
         result = poll(completed)
         assert result['status'] == 'COMMAND_EXECUTION_STATUS_SUCCEEDED', result
+        # Fetch and initialization update resource counts after namespace creation.
+        # Restart must preserve the populated namespace, including those counts.
+        persisted = rpc(endpoint, 'GetNamespace', {'id': 'image'})['namespace']
+        assert persisted['id'] == created['id'] and persisted['createdAt'] == created['createdAt'], persisted
         mounts_state = json.loads(docker(['docker', 'inspect', name]).stdout)[0]['Mounts']
         stop(name)
         name, endpoint = start(mounts, port, workdir)
-        assert rpc(endpoint, 'ListNamespaces')['namespaces'] == [created]
+        namespaces = rpc(endpoint, 'ListNamespaces')['namespaces']
+        assert namespaces == [persisted], (namespaces, persisted)
         instances = rpc(endpoint, 'ListInstances', namespace='image')['instances']
         assert any(i['id'] == instance for i in instances), instances
         history = rpc(endpoint, 'ListCommandExecutions', {'instance_id': instance}, namespace='image')['executions']
@@ -113,7 +118,7 @@ def image_check(tmp, image, arch, network):
         cli = ['docker', 'exec', name, 'inframill']
         namespaces = json.loads(docker(cli + ['namespace', 'list', '--endpoint',
                                 'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['namespaces']
-        assert namespaces == [created], namespaces
+        assert namespaces == [persisted], (namespaces, persisted)
         history_cli = json.loads(docker(cli + ['execution', 'list',
                                  '--instance', instance, '--namespace', 'image', '--endpoint',
                                  'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['executions']

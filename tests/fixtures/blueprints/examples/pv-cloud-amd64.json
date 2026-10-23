@@ -1,30 +1,39 @@
 {
-  "cloud_secret_ref": "hetzner",
-  "network_zone": "eu-central",
-  "ssh_user": "deploy",
-  "ssh_public_keys": [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMOCKexampleKeyReplaceBeforeDeployment"
-  ],
-  "ssh_source_ips": [
-    "192.0.2.10/32"
-  ],
-  "private_networks": [],
-  "ansible": {
-    "address_mode": "public_ipv4"
+  "network": {
+    "zone": "eu-central",
+    "private_networks": []
+  },
+  "ssh": {
+    "user": "deploy",
+    "public_keys": [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMOCKexampleKeyReplaceBeforeDeployment"
+    ],
+    "source_ips": [
+      "192.0.2.10/32"
+    ]
   },
   "nodes": {
-    "data-amd": {
+    "data-1": {
       "architecture": "amd64",
       "image": "ubuntu-24.04",
       "server_type": "cpx22",
       "location": "fsn1",
       "roles": [
         "common",
+        "docker",
         "data"
       ],
       "private_networks": []
     }
   },
-  "cloudflare_zone_id": "0123456789abcdef0123456789abcdef",
-  "cloudflare_secret_ref": "cloudflare"
+  "cloudflare": {
+    "zone_id": "0123456789abcdef0123456789abcdef"
+  },
+  "ansible": {
+    "address_mode": "public_ipv4"
+  },
+  "inframill": {
+    "image": "ghcr.io/inframill/kit:0.1.20-dev",
+    "tls_cert": "-----BEGIN CERTIFICATE-----\nREPLACE_WITH_YOUR_PEM_CERTIFICATE_CHAIN\n-----END CERTIFICATE-----\n"
+  }
 }

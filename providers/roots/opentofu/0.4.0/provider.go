@@ -58,7 +58,7 @@ func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	}
 	commands["plan"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Save an integrity-bound plan", ArgumentsSchema: object(map[string]any{"destroy": map[string]any{"type": "boolean"}, "refresh_only": map[string]any{"type": "boolean"}})}
 	for _, name := range []string{"apply", "destroy"} {
-		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " using a saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$", "not": map[string]any{"const": "00000000000000000000000000"}}}, "plan_id")}
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the current configuration or an optional saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$", "not": map[string]any{"const": "00000000000000000000000000"}}})}
 	}
 	// Validation only reads the initialized workspace. Output publishes a shared
 	// node artifact; plans and every other command also require exclusive access.
@@ -165,8 +165,8 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 		}
 	case "apply", "destroy":
 		allowed["plan_id"] = true
-		if !artifacts.ValidExecutionID(a.PlanID) {
-			return nil, errors.New("saved plan_id required")
+		if _, supplied := args["plan_id"]; supplied && !artifacts.ValidExecutionID(a.PlanID) {
+			return nil, errors.New("invalid saved plan_id")
 		}
 	default:
 		return nil, errors.New("unknown OpenTofu command")
@@ -181,7 +181,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 		return nil, err
 	}
 	p := &prepared{d, scope, m, s, a, command}
-	if command == "apply" || command == "destroy" {
+	if a.PlanID != "" {
 		if _, _, err = p.savedPlan(); err != nil {
 			return nil, err
 		}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/inframill/kit/providers/roots/internal/artifacts"
@@ -27,14 +28,16 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 	if e := d.ValidateSettings(t.Context(), s.Settings); e != nil {
 		t.Fatal(e)
 	}
-	p, e := d.Prepare(t.Context(), s, "plan", nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	_, e = p.Execute(t.Context(), map[string]string{})
-	var detail *runmill.ProviderError
-	if !errors.As(e, &detail) || detail.Code != "MISSING_SECRET" {
-		t.Fatal(e)
+	for _, name := range []string{"plan", "apply", "destroy"} {
+		p, e := d.Prepare(t.Context(), s, name, nil)
+		if e != nil {
+			t.Fatal(e)
+		}
+		_, e = p.Execute(t.Context(), map[string]string{})
+		var detail *runmill.ProviderError
+		if !errors.As(e, &detail) || detail.Code != "MISSING_SECRET" {
+			t.Fatal(name, e)
+		}
 	}
 	entries, _ := os.ReadDir(s.ArtifactDir)
 	if len(entries) != 0 {
@@ -45,7 +48,7 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 		t.Fatal("preparation wrote files")
 	}
 	for _, args := range []map[string]any{{"destroy": true, "refresh_only": true}, {"plan_id": "x"}, {"unknown": false}} {
-		if _, e = d.Prepare(t.Context(), s, "plan", args); e == nil {
+		if _, e := d.Prepare(t.Context(), s, "plan", args); e == nil {
 			t.Fatal("invalid arguments accepted")
 		}
 	}
@@ -64,6 +67,108 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 		if runmill.Serve(t.Context(), d, runmill.ServeOptions{Version: d.Version, Stdin: bytes.NewReader(data), Stdout: &out}) != 0 {
 			t.Fatal(out.String())
 		}
+	}
+}
+
+func TestOptionalPlanIDRejectsInvalidSuppliedValues(t *testing.T) {
+	for _, name := range []string{"apply", "destroy"} {
+		t.Run(name, func(t *testing.T) {
+			d, scope := fixture(t)
+			for _, id := range []any{"", nil, 42, "bad", "../../outside", "00000000000000000000000000"} {
+				if _, err := d.Prepare(t.Context(), scope, name, runmill.Arguments{"plan_id": id}); err == nil {
+					t.Fatalf("accepted invalid plan_id %v", id)
+				}
+			}
+			if _, err := d.Prepare(t.Context(), scope, name, runmill.Arguments{"plan_id": scope.ExecutionID}); err == nil {
+				t.Fatal("missing saved plan fell back to direct execution")
+			}
+		})
+	}
+}
+
+func TestApplyAndDestroyWithoutSavedPlan(t *testing.T) {
+	for _, tc := range []struct {
+		name, command, outcome string
+		wantError              bool
+	}{
+		{"apply", "apply", "success", false},
+		{"failed-apply", "apply", "tool-failure", true},
+		{"invalid-output", "apply", "invalid-output", true},
+		{"destroy", "destroy", "success", false},
+		{"failed-destroy", "destroy", "tool-failure", true},
+		{"remaining-resources", "destroy", "remaining", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, scope := fixture(t)
+			write := func(directory, name, data string, mode os.FileMode) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(directory, name), []byte(data), mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(scope.WorkspaceDir, "outcome", tc.outcome, 0600)
+			write(scope.WorkspaceDir, "inventory-path", filepath.Join(scope.ArtifactDir, "tofu-nodes-v1.json"), 0600)
+			write(scope.ArtifactDir, "tofu-nodes-v1.json", `{"valid":true}`, 0600)
+			// Omission must use the current configuration, without selecting or
+			// consuming any previously saved plan.
+			plan := "tofu-plan-" + scope.ExecutionID + ".json"
+			write(scope.ArtifactDir, plan, "unrelated saved plan", 0600)
+			d.Tool = filepath.Join(t.TempDir(), "tofu")
+			script := `#!/bin/sh
+set -eu
+if [ "$1" = version ]; then printf '{"terraform_version":"1.11.5"}'; exit 0; fi
+printf '%s\n' "$@" >> calls.txt
+case "$1" in
+apply|destroy)
+    grep -q '"valid":false' "$(cat inventory-path)"
+    if [ "$(cat outcome)" = tool-failure ]; then exit 1; fi;;
+output)
+    if [ "$(cat outcome)" = invalid-output ]; then printf '{}'; else
+        printf '{"local":{"name":"local","roles":["local"],"architecture":"amd64","public_ipv4":"127.0.0.1","private_ipv4":""}}'
+    fi;;
+show)
+    if [ "$(cat outcome)" = remaining ]; then
+        printf '{"values":{"root_module":{"child_modules":[{"resources":[{"mode":"managed"}]}]}}}'
+    else printf '{"values":{"root_module":{}}}'; fi;;
+*) exit 2;;
+esac
+`
+			write(filepath.Dir(d.Tool), "tofu", script, 0700)
+			p, err := d.Prepare(t.Context(), scope, tc.command, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = os.Stat(filepath.Join(scope.WorkspaceDir, "calls.txt")); !os.IsNotExist(err) {
+				t.Fatal("preparation invoked the tool", err)
+			}
+			result, err := p.Execute(t.Context(), nil)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("result %v, error %v", result, err)
+			}
+			calls, err := os.ReadFile(filepath.Join(scope.WorkspaceDir, "calls.txt"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := tc.command + "\n-input=false\n-no-color\n-lock-timeout=60s\n-auto-approve\n"
+			if !strings.HasPrefix(string(calls), args) {
+				t.Fatalf("expected noninteractive direct execution: %s", calls)
+			}
+			var nodes artifacts.Nodes
+			data, err := artifacts.Read(scope.ArtifactDir, "tofu-nodes-v1.json", artifacts.Limit)
+			if err != nil || artifacts.Decode(data, &nodes) != nil {
+				t.Fatal("missing node inventory", err)
+			}
+			if nodes.Valid != (tc.command == "apply" && !tc.wantError) {
+				t.Fatalf("unexpected inventory validity after %s: %s", tc.name, data)
+			}
+			if tc.command == "apply" && !tc.wantError && result != (OutputResult{"tofu-nodes-v1.json", 1, true}) {
+				t.Fatal("apply did not publish verified nodes", result)
+			}
+			data, err = artifacts.Read(scope.ArtifactDir, plan, artifacts.SettingsLimit)
+			if err != nil || string(data) != "unrelated saved plan" {
+				t.Fatal("direct execution consumed a saved plan", err)
+			}
+		})
 	}
 }
 

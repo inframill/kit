@@ -10,9 +10,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/inframill/kit/providers/roots/internal/artifacts"
 	"github.com/inframill/kit/providers/roots/internal/toolrun"
@@ -89,23 +92,46 @@ func (p *prepared) playbook(archive string) []map[string]any {
 			}},
 		)
 	}
-	keys := make([]string, 0, len(p.args.Variables))
-	for key := range p.args.Variables {
-		keys = append(keys, key)
+	if p.command == "push" {
+		tasks = append(tasks, p.secretTasks(filepath.Dir(archive))...)
 	}
-	sort.Strings(keys)
-	for _, target := range p.args.Targets {
-		argv := []string{"make"}
-		for _, key := range keys {
-			argv = append(argv, key+"="+p.args.Variables[key])
-		}
-		argv = append(argv, "--", target)
+	if p.command == "make" {
+		argv := []string{"make", "--", p.args.Target}
 		tasks = append(tasks, map[string]any{
-			"name": "Run Make target", "vars": map[string]any{"dispatch_target": target},
+			"name": "Run Make target", "vars": map[string]any{"dispatch_target": p.args.Target},
 			"ansible.builtin.command": map[string]any{"argv": literal(argv), "chdir": literal(directory.Destination), "expand_argument_vars": false},
 		})
 	}
 	return []map[string]any{{"name": "Dispatch workspace", "hosts": "all", "gather_facts": false, "become": directory.Become, "tasks": tasks}}
+}
+
+// Only references and temporary paths enter the playbook. Copy suppresses both
+// result details and diffs; secret bytes never enter the source archive or argv.
+func (p *prepared) secretTasks(tmp string) []map[string]any {
+	directory := p.settings.Directories[p.args.Directory]
+	keys := make([]string, 0, len(directory.SecretFiles))
+	for name := range directory.SecretFiles {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	parents := map[string]bool{}
+	tasks := []map[string]any{}
+	for index, name := range keys {
+		parent := path.Dir(name)
+		if parent != "." && !parents[parent] {
+			tasks = append(tasks, map[string]any{"name": "Create secret directory", "ansible.builtin.file": map[string]any{
+				"path": literal(path.Join(directory.Destination, parent)), "state": "directory", "mode": "0700",
+			}})
+			parents[parent] = true
+		}
+		tasks = append(tasks, map[string]any{"name": "Inject secret file", "no_log": true, "diff": false,
+			"ansible.builtin.copy": map[string]any{
+				"src":  literal(filepath.Join(tmp, "secret-"+strconv.Itoa(index))),
+				"dest": literal(path.Join(directory.Destination, name)), "mode": "0600", "decrypt": false,
+			},
+		})
+	}
+	return tasks
 }
 
 func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any, error) {
@@ -119,12 +145,28 @@ func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any,
 	if err = toolrun.Public(inventory, secrets); err != nil {
 		return nil, err
 	}
+	directory := p.settings.Directories[p.args.Directory]
+	keys := make([]string, 0, len(directory.SecretFiles))
+	if p.command == "push" {
+		for name, reference := range directory.SecretFiles {
+			value, exists := secrets[reference]
+			if !exists || strings.TrimSpace(value) == "" || len(value) > artifacts.SettingsLimit {
+				return nil, errors.New("missing, empty or oversized namespace secret for Dispatch file")
+			}
+			keys = append(keys, name)
+		}
+		sort.Strings(keys)
+	}
 	tmp, err := os.MkdirTemp(p.scope.WorkspaceDir, ".kit-dispatch-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
-	directory := p.settings.Directories[p.args.Directory]
+	for index, name := range keys {
+		if err = artifacts.WriteBytes(tmp, "secret-"+strconv.Itoa(index), []byte(secrets[directory.SecretFiles[name]])); err != nil {
+			return nil, errors.New("could not stage Dispatch secret file")
+		}
+	}
 	archive := filepath.Join(tmp, "source.tar.gz")
 	digest := ""
 	if p.command == "push" {
@@ -181,9 +223,14 @@ func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any,
 	if recap.Schema != 1 || len(recap.Hosts) != len(selected) {
 		return nil, errors.New("incomplete Dispatch host recap")
 	}
-	expectedOK := len(p.args.Targets)
+	expectedTargets := 0
+	if p.command == "make" {
+		expectedTargets = 1
+	}
+	expectedOK := expectedTargets
 	if p.command == "push" {
 		expectedOK += 5 // Destination, staging, transfer, extraction and cleanup.
+		expectedOK += len(p.secretTasks(tmp))
 	}
 	for name := range recap.Targets {
 		if !slices.Contains(selected, name) {
@@ -195,12 +242,12 @@ func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any,
 		if !ok || stats.OK != expectedOK || stats.Changed < 0 || stats.Changed > stats.OK || stats.Skipped != 0 || stats.Failures != 0 || stats.Unreachable != 0 || stats.Rescued != 0 || stats.Ignored != 0 {
 			return nil, errors.New("Dispatch did not verify every selected host")
 		}
-		if len(recap.Targets[name]) != len(p.args.Targets) {
+		if len(recap.Targets[name]) != expectedTargets {
 			return nil, errors.New("incomplete Make results")
 		}
-		for index, result := range recap.Targets[name] {
-			if result.Target != p.args.Targets[index] || result.ExitCode != 0 {
-				return nil, errors.New("Make target did not succeed in the requested order")
+		for _, result := range recap.Targets[name] {
+			if result.Target != p.args.Target || result.ExitCode != 0 {
+				return nil, errors.New("Make target did not succeed")
 			}
 		}
 	}

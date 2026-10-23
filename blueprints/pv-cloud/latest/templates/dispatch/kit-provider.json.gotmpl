@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "address_mode": {{ toJSON .ansible.address_mode }},
+  "ssh_user": {{ toJSON .ssh.user }},
+  "directories": {
+    "postgres": {
+      "source": "postgres",
+      "destination": "/opt/pv-cloud/postgres",
+      "select": {"roles": ["data"]},
+      "exclude": ["secrets/**"],
+      {{ with index . "registry" }}
+      "secret_files": {"secrets/registry_token": "pv-cloud-registry-token"},
+      {{ end }}
+      "become": true
+    },
+    "inframill": {
+      "source": "inframill",
+      "destination": "/opt/pv-cloud/inframill",
+      "select": {"roles": ["worker"]},
+      "exclude": ["secrets/**", "ssh/**", "blueprints/**"],
+      "secret_files": {
+        "secrets/root_token": "inframill-root-token",
+        "secrets/tls_private_key": "inframill-tls-key"{{ with index . "registry" }},
+        "secrets/registry_token": "pv-cloud-registry-token"{{ end }}
+      },
+      "become": true
+    }
+  }
+}

@@ -50,6 +50,52 @@ func TestVersionedProviderEntrypoints(t *testing.T) {
 			if err != nil || json.Unmarshal(output, &reply) != nil || reply.Type != "success" {
 				t.Fatalf("standalone discovery: %s: %v", output, err)
 			}
+			if name == "opentofu" {
+				return
+			}
+			host := runmill.NewHost(os.Environ())
+			if err := host.Load(t.Context(), map[string]runmill.Executable{name: {Path: binary}}); err != nil {
+				t.Fatal(err)
+			}
+			cases := []struct {
+				command string
+				args    runmill.Arguments
+				valid   bool
+			}{
+				{"apply", nil, true},
+				{"apply", runmill.Arguments{"playbook": "other"}, true},
+				{"apply", runmill.Arguments{"playbook": ""}, false},
+				{"apply", runmill.Arguments{"playbook": nil}, false},
+				{"syntax-check", nil, false},
+				{"check", nil, false},
+			}
+			if name == "dispatch" {
+				cases = []struct {
+					command string
+					args    runmill.Arguments
+					valid   bool
+				}{
+					{"push", runmill.Arguments{"directory": "api"}, true},
+					{"push", nil, false},
+					{"push", runmill.Arguments{"directory": 42}, false},
+					{"push", runmill.Arguments{"directory": "api", "target": "deploy"}, false},
+					{"push", runmill.Arguments{"directory": "api", "select": map[string]any{}}, false},
+					{"make", runmill.Arguments{"directory": "api", "target": "deploy"}, true},
+					{"make", runmill.Arguments{"directory": "api"}, false},
+					{"make", runmill.Arguments{"target": "deploy"}, false},
+					{"make", runmill.Arguments{"directory": "api", "target": ""}, false},
+					{"make", runmill.Arguments{"directory": "api", "target": nil}, false},
+					{"make", runmill.Arguments{"directory": "api", "target": []string{"deploy"}}, false},
+					{"make", runmill.Arguments{"directory": "api", "targets": []string{"deploy"}}, false},
+					{"make", runmill.Arguments{"directory": "api", "target": "deploy", "variables": map[string]string{"ENV": "prod"}}, false},
+				}
+			}
+			for _, tc := range cases {
+				err := host.ValidateArguments(t.Context(), name, tc.command, tc.args)
+				if (err == nil) != tc.valid {
+					t.Fatalf("%s arguments %v: %v", tc.command, tc.args, err)
+				}
+			}
 		})
 	}
 }
@@ -75,6 +121,18 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 	for _, entry := range list {
 		if entry.Availability != runmill.Available {
 			t.Fatal(entry)
+		}
+	}
+	for _, command := range []string{"apply", "destroy"} {
+		for _, args := range []map[string]any{nil, {}, {"plan_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}} {
+			if err := m.ValidateArguments(t.Context(), "opentofu", command, args); err != nil {
+				t.Fatal(command, args, err)
+			}
+		}
+		for _, value := range []any{"", nil, 42, "bad", "00000000000000000000000000"} {
+			if err := m.ValidateArguments(t.Context(), "opentofu", command, map[string]any{"plan_id": value}); err == nil {
+				t.Fatalf("%s schema accepted invalid plan_id %v", command, value)
+			}
 		}
 	}
 	if m.ValidateArguments(t.Context(), "second", "probe", map[string]any{"text": "wrong"}) == nil {

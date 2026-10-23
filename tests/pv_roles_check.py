@@ -12,8 +12,8 @@ import yaml
 
 def check(tool, source):
     plays = yaml.safe_load(pathlib.Path(source).read_text())[1:]
-    roles = ['common', 'docker', 'web', 'data']
-    names = roles + ['worker']
+    roles = ['common', 'docker', 'web', 'data', 'worker']
+    names = roles + ['worker-1', 'worker-2']
     with tempfile.TemporaryDirectory(prefix='kit-pv-roles-') as td:
         root = pathlib.Path(td)
         config = root / 'ansible.cfg'
@@ -46,7 +46,7 @@ def check(tool, source):
             assert result.returncode == 0, result.stdout + result.stderr
             actual = set(re.findall(r'selected-(?:common|docker|web|data)-[a-z][a-z0-9_-]*', result.stdout))
             expected = {'selected-' + role + '-' + host
-                        for role, hosts in groups.items() for host in hosts}
+                        for role, hosts in groups.items() if role not in ('data', 'worker') for host in hosts}
             assert actual == expected, (name, actual, expected, result.stdout)
             print(name + ': role membership verified', flush=True)
 

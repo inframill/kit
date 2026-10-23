@@ -218,7 +218,7 @@ run "node_dns_records" {
     error_message = "A records must point to the matching node's public IPv4."
   }
   assert {
-    condition = alltrue([for record in cloudflare_dns_record.node : record.type == "A" && record.zone_id == var.cloudflare_zone_id && record.ttl == 300 && record.proxied == false])
+    condition = alltrue([for record in cloudflare_dns_record.node : record.type == "A" && record.zone_id == var.cloudflare_zone_id && record.ttl == 60 && record.proxied == false])
     error_message = "Node records must be DNS-only A records in the configured zone."
   }
   assert {

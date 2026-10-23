@@ -54,6 +54,9 @@ func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	for _, name := range []string{"syntax-check", "check", "apply"} {
 		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the selected playbook and verify the outcome", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"playbook"}, "properties": map[string]any{"playbook": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}, "hosts": list, "tags": list}}}
 	}
+	apply := commands["apply"]
+	delete(apply.ArgumentsSchema, "required")
+	apply.ArgumentsSchema["properties"].(map[string]any)["playbook"].(map[string]any)["default"] = "site"
 	syntax := commands["syntax-check"]
 	syntax.ArgumentsSchema["properties"] = map[string]any{"playbook": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
 	commands["syntax-check"] = syntax
@@ -134,6 +137,9 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 			}
 		}
 	case "syntax-check", "check", "apply":
+		if _, provided := args["playbook"]; command == "apply" && !provided {
+			a.Playbook = "site"
+		}
 		path, ok := m.Playbooks[a.Playbook]
 		if !ok {
 			return nil, errors.New("select a declared playbook")

@@ -1,12 +1,26 @@
 # Releasing Kit
 
+## 0.1.20-dev
+
+Kit uses Inframill `0.1.20-dev` (`8ac633923bfa`), including required namespace
+secrets at Instance creation. The release lock pins all four engine binaries and
+the provider SDK selection follows the same revision. Provider and tool versions
+are unchanged.
+
+pv-cloud `0.8.0` and `latest` declare `hetzner`, `cloudflare`,
+`inframill-root-token`, and `inframill-tls-key` as required secrets. Store all four
+before initialization. Secret names are now fixed; remove the old secret-reference
+Values fields as described in the [blueprint guide](../blueprints/README.md#pv-cloud).
+Older tags and existing Instance snapshots retain their sources.
+
 ## 0.1.17-dev
 
 Kit now includes Dispatch 0.1.0, an independent provider backed by the existing
 Ansible Core runtime. `dispatch.push` transfers directories from its provider
 workspace to nodes selected by name, role or architecture; `dispatch.make` runs
-ordered Make targets in their configured remote destinations. Push may also run
-targets after transfer. Shared OpenTofu node artifacts supply host records.
+one Make target per command in a configured remote destination. Run Make after
+a successful push to execute payload targets. Shared OpenTofu node artifacts
+supply host records.
 See [Dispatch usage](dispatch.md) for Blueprint configuration and examples.
 
 The provider selection and default runtime configurations include Dispatch.

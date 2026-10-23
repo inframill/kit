@@ -1,47 +1,93 @@
 api_version: inframill.dev/blueprint/v1
 description: pv-cloud
 
+required_secrets:
+  - cloudflare
+  - hetzner
+  - inframill-root-token
+  - inframill-tls-key
+  - pv-cloud-registry-token
+
 values_schema:
   title: pv-cloud Instance
   type: object
   required:
-    - private_networks
-    - ssh_user
-    - ssh_public_keys
+    - network
+    - ssh
     - nodes
-    - cloud_secret_ref
-    - cloudflare_zone_id
-    - cloudflare_secret_ref
-    - ssh_source_ips
-    - network_zone
+    - cloudflare
     - ansible
+    - inframill
   properties:
-    private_networks:
-      title: Private networks
-      type: array
-      x-inframill-validations:
-        - function: unique
-          select: name
-        - function: cidr
-          select: cidr
-          version: 4
-          scope: private
-          canonical: true
-        - function: cidr_disjoint
-          select: cidr
-      items:
-        $ref: '#/$defs/private_network'
-    ssh_user:
-      title: SSH user
-      type: string
-      pattern: ^[a-z_][a-z0-9_-]{0,31}$
-    ssh_public_keys:
-      title: SSH public keys
-      type: array
-      minItems: 1
-      items:
-        type: string
-        pattern: ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/]+={0,3}( [A-Za-z0-9@._-]+)?$
+    registry:
+      title: Container registry login
+      description: Optional Docker login on data and worker nodes before installing Compose services.
+      type: object
+      additionalProperties: false
+      required: [host, username]
+      properties:
+        host:
+          title: Registry host
+          description: Registry hostname with an optional port, without a URL scheme or repository path.
+          type: string
+          maxLength: 253
+          pattern: '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$'
+        username:
+          title: Registry username
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: '^\S+$'
+    network:
+      title: Network
+      type: object
+      required: [zone, private_networks]
+      additionalProperties: false
+      properties:
+        zone:
+          title: Network zone
+          type: string
+          pattern: ^[a-z][a-z0-9-]+$
+        private_networks:
+          title: Private networks
+          type: array
+          x-inframill-validations:
+            - function: unique
+              select: name
+            - function: cidr
+              select: cidr
+              version: 4
+              scope: private
+              canonical: true
+            - function: cidr_disjoint
+              select: cidr
+          items:
+            $ref: '#/$defs/private_network'
+    ssh:
+      title: SSH
+      type: object
+      required: [user, public_keys, source_ips]
+      additionalProperties: false
+      properties:
+        user:
+          title: SSH user
+          type: string
+          pattern: ^[a-z_][a-z0-9_-]{0,31}$
+        public_keys:
+          title: SSH public keys
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/]+={0,3}( [A-Za-z0-9@._-]+)?$
+        source_ips:
+          title: SSH source IPs
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
     ansible:
       title: Ansible
       type: object
@@ -54,6 +100,24 @@ values_schema:
           enum:
             - public_ipv4
             - private_ipv4
+    inframill:
+      title: Inframill worker deployment
+      type: object
+      additionalProperties: false
+      required: [image, tls_cert]
+      properties:
+        image:
+          title: Kit image
+          type: string
+          minLength: 1
+        tls_cert:
+          title: TLS PEM certificate chain
+          description: Paste the complete PEM certificate chain, preserving all line breaks.
+          type: string
+          x-inframill-ui:
+            widget: textarea
+          minLength: 1
+          pattern: '^-----BEGIN CERTIFICATE-----'
     nodes:
       title: Nodes
       type: object
@@ -64,30 +128,16 @@ values_schema:
           enum: [all, ungrouped]
       additionalProperties:
         $ref: '#/$defs/node'
-    cloud_secret_ref:
-      title: Cloud secret reference
-      type: string
-      pattern: ^[a-z][a-z0-9_-]{0,127}$
-    cloudflare_zone_id:
-      title: Cloudflare zone ID
-      type: string
-      pattern: ^[a-f0-9]{32}$
-    cloudflare_secret_ref:
-      title: Cloudflare API token secret reference
-      type: string
-      pattern: ^[a-z][a-z0-9_-]{0,127}$
-    ssh_source_ips:
-      title: SSH source IPs
-      type: array
-      minItems: 1
-      uniqueItems: true
-      items:
-        type: string
-        minLength: 1
-    network_zone:
-      title: Network zone
-      type: string
-      pattern: ^[a-z][a-z0-9-]+$
+    cloudflare:
+      title: Cloudflare
+      type: object
+      required: [zone_id]
+      additionalProperties: false
+      properties:
+        zone_id:
+          title: Cloudflare zone ID
+          type: string
+          pattern: ^[a-f0-9]{32}$
   additionalProperties: false
   $schema: https://json-schema.org/draft/2020-12/schema
   $defs:
@@ -131,7 +181,7 @@ values_schema:
           minItems: 1
           items:
             type: string
-            pattern: ^(common|docker|web|data)$
+            pattern: ^(common|docker|web|data|worker)$
           uniqueItems: true
         private_networks:
           title: Private networks
@@ -139,7 +189,7 @@ values_schema:
           x-inframill-validations:
             - function: unique
             - function: references
-              target: private_networks
+              target: network.private_networks
               target_select: name
           items:
             type: string
@@ -155,6 +205,16 @@ values_schema:
             - ubuntu-24.04
       additionalProperties: false
       allOf:
+        - if:
+            properties:
+              roles:
+                contains:
+                  enum: [data, worker]
+          then:
+            properties:
+              roles:
+                contains:
+                  const: docker
         - if:
             properties:
               architecture:
@@ -191,9 +251,21 @@ provider_settings:
         - docker
         - web
         - data
+        - worker
       playbooks:
         site: site.yml
       settings_file: kit-provider.json
+
+  dispatch:
+    version: '0.1'
+    settings:
+      id: dispatch
+      settings_file: kit-provider.json
+      producer_id: opentofu
+      producer_version: 0.4.0
+      artifact: opentofu-nodes-v1.json
+      connection: ssh
+      host_key_policy: accept-new
 
 features:
   - network_firewall

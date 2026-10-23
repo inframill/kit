@@ -44,22 +44,20 @@ func (p *prepared) inventory() (inventoryDocument, []string, error) {
 		return result, nil, err
 	}
 	base := p.settings.Directories[p.args.Directory].Select
-	for _, selector := range []Selector{base, p.args.Select} {
-		for _, name := range selector.Names {
-			if !slices.ContainsFunc(nodes.Nodes, func(n artifacts.Node) bool { return n.Name == name }) {
-				return result, nil, errors.New("unknown selected node name")
-			}
+	for _, name := range base.Names {
+		if !slices.ContainsFunc(nodes.Nodes, func(n artifacts.Node) bool { return n.Name == name }) {
+			return result, nil, errors.New("unknown selected node name")
 		}
-		for _, role := range selector.Roles {
-			if !slices.ContainsFunc(nodes.Nodes, func(n artifacts.Node) bool { return slices.Contains(n.Roles, role) }) {
-				return result, nil, errors.New("unknown selected node role")
-			}
+	}
+	for _, role := range base.Roles {
+		if !slices.ContainsFunc(nodes.Nodes, func(n artifacts.Node) bool { return slices.Contains(n.Roles, role) }) {
+			return result, nil, errors.New("unknown selected node role")
 		}
 	}
 	addresses := map[string]bool{}
 	var selected []string
 	for _, node := range nodes.Nodes {
-		if !base.matches(node) || !p.args.Select.matches(node) {
+		if !base.matches(node) {
 			continue
 		}
 		address := map[string]string{"public_ipv4": node.PublicIPv4, "private_ipv4": node.PrivateIPv4, "fqdn": node.FQDN}[p.settings.AddressMode]

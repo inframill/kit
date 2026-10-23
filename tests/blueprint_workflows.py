@@ -29,7 +29,12 @@ def local_paths():
 
 
 def provider_ids(name):
-    return {'debug': 'debug'} if name == 'hello-world' else {'opentofu': 'opentofu', 'ansible': 'ansible'}
+    if name == 'hello-world':
+        return {'debug': 'debug'}
+    ids = {'opentofu': 'opentofu', 'ansible': 'ansible'}
+    if name == 'pv-cloud':
+        ids['dispatch'] = 'dispatch'
+    return ids
 
 
 def protocol_fixture(tmp):
@@ -66,7 +71,22 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     local_rerender_check(client, namespace, iid, data)
     destroy = do(prefix + '.plan', {'destroy': True})
     do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
+    local_direct_flow(client, namespace, iid, prefix)
     provider_events(client, namespace, iid)
+
+
+def local_direct_flow(client, namespace, iid, prefix):
+    # Exercise omitted arguments through the real daemon, protocol schema and
+    # OpenTofu. The fixture manages only a disposable local terraform_data resource.
+    state = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid / 'artifacts' / (prefix + '-terraform.tfstate')
+    applied = client.execute(namespace, iid, prefix + '.apply')
+    assert applied['valid'] and applied['nodes'] == 1, applied
+    resources = json.loads(state.read_text())['resources']
+    assert len(resources) == 1 and resources[0]['type'] == 'terraform_data', resources
+    destroyed = client.execute(namespace, iid, prefix + '.destroy')
+    assert destroyed == {'destroyed': True, 'managed_state_empty': True}, destroyed
+    assert json.loads(state.read_text()).get('resources', []) == []
+    print('OpenTofu apply and destroy without plan_id passed', flush=True)
 
 
 def ansible_failure_flow(client, namespace, iid):
@@ -134,9 +154,35 @@ def hello_world_flow(client, reference, namespace='test'):
     print('Hello-world rendering and debug-only commands passed', flush=True)
 
 
+def pv_required_secrets(client, namespace, reference, values, name):
+    required = ['cloudflare', 'hetzner', 'inframill-root-token', 'inframill-tls-key', 'pv-cloud-registry-token']
+    instances = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances'
+    before_files = set(instances.iterdir()) if instances.exists() else set()
+    before = client.rpc('ListInstances', namespace=namespace).get('instances', [])
+    # Fetch succeeds without credentials; creation must report every missing name
+    # without leaving a workspace or reserving the name used by the successful retry.
+    for missing in [required[index:] for index in range(0, len(required), 2)]:
+        try:
+            client.initialize(namespace, name, reference, values)
+        except urllib.error.HTTPError as error:
+            failure = json.load(error)
+            assert error.code == 400 and failure['code'] == 'failed_precondition', failure
+            assert f"missing required secrets: {', '.join(missing)};" in failure['message'], failure
+            assert 'secret upsert' in failure['message'], failure
+        else:
+            raise AssertionError('Instance creation accepted missing required secrets')
+        assert client.rpc('ListInstances', namespace=namespace).get('instances', []) == before
+        assert (set(instances.iterdir()) if instances.exists() else set()) == before_files
+        for secret in missing[:2]:
+            client.rpc('UpsertNamespaceSecret', {
+                'secret': {'name': secret, 'value': 'synthetic-pv-' + secret},
+            }, namespace=namespace)
+    print('pv-cloud rejects missing secrets before creation and accepts namespace upserts', flush=True)
+
+
 def pv_flow(client, reference, tofu):
     latest = client.fetch(reference, 'test')
-    reference = 'built.in/pv-cloud:0.5.0'
+    reference = 'built.in/pv-cloud:0.8.0'
     release = client.fetch(reference, 'test')
     assert release['digest'] == latest['digest'], (release, latest)
     ids = provider_ids('pv-cloud')
@@ -146,6 +192,8 @@ def pv_flow(client, reference, tofu):
         ('amd64', FIXTURES / 'examples/pv-cloud-amd64.json'),
         ('docker', BLUEPRINTS / 'examples/pv-cloud.json'),
     ]
+    pv_required_secrets(client, 'test', reference,
+                        json.loads(cases[0][1].read_text()), 'pv-arm64')
     for name, path in cases:
         values = json.loads(path.read_text())
         iid = client.initialize('test', 'pv-' + name, reference, values)
@@ -154,11 +202,72 @@ def pv_flow(client, reference, tofu):
         assert f'app    = {json.dumps("pv-" + name)}' in (work / 'main.tf').read_text()
         assert f'instance_id = {json.dumps(iid)}' in (work / 'dns.tf').read_text()
         settings = json.loads((work / 'kit-provider.json').read_text())
-        assert settings['environment']['CLOUDFLARE_API_TOKEN'] == values['cloudflare_secret_ref']
+        assert settings['environment'] == {'HCLOUD_TOKEN': 'hetzner', 'CLOUDFLARE_API_TOKEN': 'cloudflare'}
+        assert json.loads((work / 'terraform.auto.tfvars.json').read_text()) == {
+            'nodes': values['nodes'], 'private_networks': values['network']['private_networks'],
+            'ssh_source_ips': values['ssh']['source_ips'],
+            'cloudflare_zone_id': values['cloudflare']['zone_id'],
+        }
+        assert f'loc    = {json.dumps(values["network"]["zone"])}' in (work / 'main.tf').read_text()
+        cloud_init = (work / 'cloud-init.yaml').read_text()
+        assert f'name: {json.dumps(values["ssh"]["user"])}' in cloud_init
+        keys_json = json.dumps(values['ssh']['public_keys'], separators=(',', ':'))
+        assert f'ssh_authorized_keys: {keys_json}' in cloud_init
+        dispatch = work.parent / 'dispatch'
+        delivery = json.loads((dispatch / 'kit-provider.json').read_text())
+        assert delivery['address_mode'] == values['ansible']['address_mode']
+        assert delivery['ssh_user'] == values['ssh']['user']
+        assert delivery['directories']['postgres'] == {
+            'source': 'postgres', 'destination': '/opt/pv-cloud/postgres',
+            'select': {'roles': ['data']}, 'exclude': ['secrets/**'], 'become': True,
+        }
+        assert delivery['directories']['inframill'] == {
+            'source': 'inframill', 'destination': '/opt/pv-cloud/inframill',
+            'select': {'roles': ['worker']}, 'exclude': ['secrets/**', 'ssh/**', 'blueprints/**'],
+            'secret_files': {'secrets/root_token': 'inframill-root-token',
+                             'secrets/tls_private_key': 'inframill-tls-key'},
+            'become': True,
+        }
+        assert (dispatch / 'inframill/tls/fullchain.pem').read_text().strip() == values['inframill']['tls_cert'].strip()
+        assert json.dumps(values['inframill']['image']) in (dispatch / 'inframill/compose.yaml').read_text()
+        assert not (dispatch / 'inframill/secrets').exists()
+        for service in ('inframill', 'postgres'):
+            assert json.loads((dispatch / service / 'registry.json').read_text()) == {}
+        assert not any(b'synthetic-pv-' in path.read_bytes()
+                       for path in work.parent.rglob('*') if path.is_file())
+        assert (dispatch / 'postgres/compose.yaml').is_file()
+        assert (dispatch / 'postgres/Makefile').is_file()
+        assert not (work.parent / 'ansible/roles/data/tasks/main.yml').exists()
         client.execute('test', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
+    pv_registry_flow(client, reference, values)
     data = pathlib.Path(client.config['engine']['dataDir'])
     workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
+    # Network references must resolve through the new object group.
+    network_values = {**values,
+        'network': {**values['network'], 'private_networks': [{'name': 'app', 'cidr': '10.40.1.0/24'}]},
+        'nodes': {name: {**node, 'private_networks': ['app']} for name, node in values['nodes'].items()},
+    }
+    client.initialize('test', 'pv-private-network', reference, network_values)
+    invalid_groups = [
+        {**values, 'ssh': values['ssh']['user']},
+        {**values, 'ssh_user': values['ssh']['user']},
+        {**values, 'cloud': {'secret_ref': 'hetzner'}},
+        {**values, 'cloudflare': {**values['cloudflare'], 'secret_ref': 'cloudflare'}},
+        {**values, 'inframill': {**values['inframill'], 'tls_key_secret_ref': 'inframill-tls-key'}},
+        {**values, 'inframill': {**values['inframill'], 'root_token_secret_ref': 'inframill-root-token'}},
+        {**network_values, 'network': values['network']},
+        {**network_values, 'network': {**values['network'], 'private_networks': [
+            {'name': 'app', 'cidr': '10.40.1.0/24'}, {'name': 'overlap', 'cidr': '10.40.1.0/25'},
+        ]}},
+    ]
+    for index, invalid in enumerate(invalid_groups):
+        try:
+            client.initialize('test', 'pv-reject-group-' + str(index), reference, invalid)
+        except urllib.error.HTTPError as error:
+            assert error.code == 400, error
+        else:
+            raise AssertionError('Invalid grouped Values were accepted: ' + str(index))
     for reserved in ['all', 'ungrouped', 'bad_name', 'trailing-', 'a' * 37]:
         invalid = {**values, 'nodes': {reserved: next(iter(values['nodes'].values()))}}
         try:
@@ -167,14 +276,52 @@ def pv_flow(client, reference, tofu):
             assert error.code == 400, error
         else:
             raise AssertionError('Invalid node name was accepted: ' + reserved)
+    for role in ['data', 'worker']:
+        invalid = {**values, 'nodes': {role + '-1': {
+            **next(iter(values['nodes'].values())), 'roles': ['common', role],
+        }}}
+        try:
+            client.initialize('test', 'pv-reject-' + role + '-without-docker', reference, invalid)
+        except urllib.error.HTTPError as error:
+            assert error.code == 400, error
+        else:
+            raise AssertionError(role + ' role without Docker was accepted')
     ansible = pathlib.Path(client.config['engine']['providers']['ansible']['args'][1])
     run([ansible.with_name('python3'), pathlib.Path(__file__).with_name('pv_roles_check.py'),
          ansible, workspaces[0].parent / 'ansible/site.yml'])
-    # Init must work without any namespace credentials and initialize the real backend.
+    # Provider init uses no credentials even after namespace secrets are removed.
+    for secret in ['cloudflare', 'hetzner', 'inframill-root-token', 'inframill-tls-key', 'pv-cloud-registry-token']:
+        client.rpc('DeleteNamespaceSecret', {'name': secret}, namespace='test')
     client.execute('test', instances[0], ids['opentofu'] + '.init')
     local_state_check(workspaces[0], tofu)
     for args in [['validate', '-no-color'], ['test', '-no-color']]:
         run([tofu, *args], cwd=workspaces[0], env={**os.environ, 'HCLOUD_TOKEN': 'mock-only'})
+
+
+def pv_registry_flow(client, reference, values):
+    registry = {'host': 'registry.example.invalid:5000', 'username': 'robot$pv-cloud'}
+    # Token presence is required at creation; its contents are resolved during push.
+    iid = client.initialize('test', 'pv-registry', reference, {**values, 'registry': registry})
+    workspace = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace/dispatch'
+    delivery = json.loads((workspace / 'kit-provider.json').read_text())
+    for service in ('inframill', 'postgres'):
+        assert json.loads((workspace / service / 'registry.json').read_text()) == registry
+        assert delivery['directories'][service]['secret_files']['secrets/registry_token'] == 'pv-cloud-registry-token'
+        assert not (workspace / service / 'secrets/registry_token').exists()
+    for index, invalid in enumerate([
+        {}, {'host': 'ghcr.io'}, {'username': 'example-user'},
+        {**registry, 'host': 'https://ghcr.io'}, {**registry, 'host': 'ghcr.io/example'},
+        {**registry, 'username': ''}, {**registry, 'username': 'two users'},
+        {**registry, 'password': 'must-not-be-in-values'},
+    ]):
+        try:
+            client.initialize('test', 'pv-reject-registry-' + str(index), reference,
+                              {**values, 'registry': invalid})
+        except urllib.error.HTTPError as error:
+            assert error.code == 400, error
+        else:
+            raise AssertionError('Invalid registry Values were accepted')
+    print('pv-cloud optional registry settings render login configuration and secret references', flush=True)
 
 
 def local_rerender_check(client, namespace, iid, values):
@@ -223,9 +370,11 @@ def runtime_flows(client, arch, tofu):
     local_rerender_check(client, 'smoke', iid, {'architecture': arch})
     plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
     client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
-    reference = 'built.in/pv-cloud:0.5.0'
+    local_direct_flow(client, 'smoke', iid, prefix)
+    reference = 'built.in/pv-cloud:0.8.0'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')
+    pv_required_secrets(client, 'smoke', reference, values, 'pv-cloud')
     iid = client.initialize('smoke', 'pv-cloud', reference, values)
     ids = provider_ids('pv-cloud')
     client.execute('smoke', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})

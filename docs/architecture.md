@@ -38,19 +38,22 @@ results; credential-bearing projections reject. Transport remains upstream-owned
 
 Every saved plan binds the shared artifact directory, producer ID,
 implementation/tool versions, configuration/settings/source hashes,
-mode and plan bytes. Apply/destroy recheck this before effects. Admission retires
-the plan; failures require new planning. Node inventory is invalidated before tool
-mutation and republished only after verified outputs. Destroy checks managed state.
+mode and plan bytes. Apply/destroy with `plan_id` recheck this before effects and
+retire the plan before mutation; failures require new planning. When `plan_id` is
+omitted, they execute the current configuration noninteractively with automatic
+approval, without selecting a saved plan. Invalid supplied plans never fall back
+to direct execution. Both paths invalidate node inventory before tool mutation
+and republish only after verified outputs. Destroy checks managed state.
 
 Ansible validates node schema, identity, producer, host uniqueness and exact address
 selection. Its private configuration and callback prevent user environment overrides.
 A successful process exit needs a complete successful host recap. Syntax-check does
 not require node artifacts; check mode reports prediction.
 
-Dispatch independently consumes the verified node artifact, intersects mapping
-and execution selectors, snapshots a directory under its supplied workspace and
+Dispatch independently consumes the verified node artifact, selects hosts using
+the directory mapping, snapshots a directory under its supplied workspace and
 generates a private inventory/playbook. It invokes Ansible directly for SSH,
-archive transfer/extraction and ordered Make targets. Success requires complete
+archive transfer/extraction and individual Make targets. Success requires complete
 host/task counters and successful target exit codes. Shared artifacts remain
 input; Ansible workspace files are not a dependency. See [Dispatch](dispatch.md).
 
