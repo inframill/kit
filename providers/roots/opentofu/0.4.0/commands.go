@@ -37,6 +37,11 @@ type OutputResult struct {
 	Nodes    int    `json:"nodes"`
 	Valid    bool   `json:"valid"`
 }
+type DestroyResult struct {
+	OutputResult
+	Destroyed bool `json:"destroyed"`
+	Empty     bool `json:"managed_state_empty"`
+}
 
 func (p *execution) configHash() string {
 	return artifacts.JSONHash(struct {
@@ -114,11 +119,6 @@ func (p *execution) execute(ctx context.Context, run toolrun.Runner) (any, error
 		return p.plan(ctx, run)
 	case "apply", "destroy":
 		return p.apply(ctx, run)
-	case "output":
-		if err := p.invalidate(); err != nil {
-			return nil, err
-		}
-		return p.publish(ctx, run)
 	}
 	return nil, errors.New("unknown command")
 }
@@ -225,10 +225,11 @@ func (p *execution) apply(ctx context.Context, run toolrun.Runner) (any, error) 
 		if managed(state.Values.Root) > 0 {
 			return nil, errors.New("managed resources remain")
 		}
-		return struct {
-			Destroyed bool `json:"destroyed"`
-			Empty     bool `json:"managed_state_empty"`
-		}{true, true}, nil
+		output, err := p.publish(ctx, run)
+		if err != nil {
+			return nil, err
+		}
+		return DestroyResult{output, true, true}, nil
 	}
 	return p.publish(ctx, run)
 }
@@ -252,19 +253,42 @@ func managed(m module) int {
 	}
 	return n
 }
-func (p *execution) publish(ctx context.Context, run toolrun.Runner) (any, error) {
-	data, code, err := run.Call(ctx, true, "output", "-json", p.static.NodeOutput)
+func (p *execution) publish(ctx context.Context, run toolrun.Runner) (OutputResult, error) {
+	args := []string{"output", "-json"}
+	if p.command != "destroy" {
+		args = append(args, p.static.NodeOutput)
+	}
+	data, code, err := run.Call(ctx, true, args...)
 	if err = toolrun.Success(code, err); err != nil {
-		return nil, err
+		return OutputResult{}, err
+	}
+	if p.command == "destroy" {
+		// A full destroy removes root outputs. Query all outputs so a missing
+		// node output is an empty result rather than a missing-output tool error.
+		var outputs map[string]struct {
+			Value json.RawMessage `json:"value"`
+		}
+		if err = json.Unmarshal(data, &outputs); err != nil || outputs == nil {
+			return OutputResult{}, errors.New("invalid output response")
+		}
+		if output, ok := outputs[p.static.NodeOutput]; ok {
+			data = output.Value
+		} else {
+			data = []byte(`{}`)
+		}
 	}
 	var nodes map[string]artifacts.Node
 	if err = artifacts.Decode(data, &nodes); err != nil {
-		return nil, err
+		return OutputResult{}, err
 	}
-	if len(nodes) == 0 || len(nodes) > 1000 {
-		return nil, errors.New("node output must contain 1..1000 nodes")
+	if p.command == "destroy" {
+		if len(nodes) != 0 {
+			return OutputResult{}, errors.New("node output remains after destroy")
+		}
+	} else if len(nodes) == 0 || len(nodes) > 1000 {
+		return OutputResult{}, errors.New("node output must contain 1..1000 nodes")
 	}
-	record := artifacts.Nodes{Schema: 1, Valid: true, ArtifactScope: artifacts.Scope(p.scope.ArtifactDir), ProducerID: p.static.ID, ProducerVersion: p.provider.Version, ExecutionID: p.scope.ExecutionID}
+	record := artifacts.Nodes{Schema: 1, Valid: p.command != "destroy", ArtifactScope: artifacts.Scope(p.scope.ArtifactDir), ProducerID: p.static.ID, ProducerVersion: p.provider.Version, ExecutionID: p.scope.ExecutionID, Nodes: []artifacts.Node{}}
 	keys := []string{}
 	for key := range nodes {
 		keys = append(keys, key)
@@ -273,18 +297,18 @@ func (p *execution) publish(ctx context.Context, run toolrun.Runner) (any, error
 	for _, key := range keys {
 		node := nodes[key]
 		if node.Name != key {
-			return nil, errors.New("node key differs from name")
+			return OutputResult{}, errors.New("node key differs from name")
 		}
 		if err = artifacts.CheckNode(node); err != nil {
-			return nil, err
+			return OutputResult{}, err
 		}
 		record.Nodes = append(record.Nodes, node)
 	}
 	if err = toolrun.Public(record, run.Secrets); err != nil {
-		return nil, err
+		return OutputResult{}, err
 	}
 	if err = artifacts.Write(p.scope.ArtifactDir, p.static.Artifact, record); err != nil {
-		return nil, err
+		return OutputResult{}, err
 	}
-	return OutputResult{p.static.Artifact, len(nodes), true}, nil
+	return OutputResult{p.static.Artifact, len(nodes), record.Valid}, nil
 }

@@ -80,7 +80,7 @@ def dispatch_check(tmp, env=None):
         client.fetch('built.in/local-dispatch', 'dispatch')
         iid = client.initialize('dispatch', 'sample', 'built.in/local-dispatch', {'architecture': architecture})
         command_contract_check(client, 'dispatch', iid,
-            ['opentofu.' + c for c in ['init', 'validate', 'output', 'plan', 'apply', 'destroy']] +
+            ['opentofu.' + c for c in ['init', 'validate', 'plan', 'apply', 'destroy']] +
             ['delivery.push', 'delivery.make'], [
                 ('dispatch.push', {'directory': 'app'}),
                 ('delivery.push', {'directory': 'app', 'target': 'deploy'}),

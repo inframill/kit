@@ -26,10 +26,6 @@
       "type": "object",
       "additionalProperties": false
     },
-    "opentofu.output": {
-      "type": "object",
-      "additionalProperties": false
-    },
     "opentofu.plan": {
       "type": "object",
       "additionalProperties": false,

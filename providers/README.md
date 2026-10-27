@@ -92,8 +92,9 @@ defensive input decoding, file/artifact checks, credential checks and outcome
 verification; there is no preparation callback or command validation subprocess.
 
 Version 0.4.0 adopts Inframill 0.24's required command access modes. OpenTofu
-`validate` declares `read_only`. Its other commands declare `read_write`, including
-`output` because it publishes shared node artifacts. All Ansible commands declare
+`validate` declares `read_only`. Its other commands declare `read_write`; `apply`
+publishes verified node outputs, while `destroy` collects empty outputs and
+publishes an invalid empty node artifact. All Ansible commands declare
 `read_write`: inventory writes a shared file and even syntax/check/ping commands
 create temporary files in the workspace. Inframill serializes writers across the
 whole Instance and allows consecutive readers to overlap without bypassing a writer.

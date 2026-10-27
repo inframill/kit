@@ -43,14 +43,13 @@ var _ runmill.Provider = Provider{}
 
 func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	commands := map[string]runmill.CommandDefinition{}
-	for _, name := range []string{"init", "validate", "output"} {
+	for _, name := range []string{"init", "validate"} {
 		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the OpenTofu workspace"}
 	}
 	commands["plan"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Save an integrity-bound plan"}
-	for _, name := range []string{"apply", "destroy"} {
-		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the current configuration or an optional saved plan and verify the result"}
-	}
-	// Validation only reads the initialized workspace. Output publishes a shared
+	commands["apply"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Apply the current configuration or an optional saved plan and publish verified node outputs"}
+	commands["destroy"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Destroy the current configuration or an optional saved plan and verify empty managed state and node outputs"}
+	// Validation only reads the initialized workspace. Apply publishes a shared
 	// node artifact; plans and every other command also require exclusive access.
 	validation := commands["validate"]
 	validation.AccessMode = runmill.ReadOnly
@@ -148,7 +147,7 @@ func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionCont
 	}
 	allowed := map[string]bool{}
 	switch command {
-	case "init", "validate", "output":
+	case "init", "validate":
 	case "plan":
 		allowed["destroy"] = true
 		allowed["refresh_only"] = true

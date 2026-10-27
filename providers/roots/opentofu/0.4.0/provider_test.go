@@ -22,6 +22,28 @@ func fixture(t *testing.T) (Provider, runmill.ExecutionContext) {
 	artifacts.Write(work, "kit-provider.json", Settings{Schema: 1, Backend: map[string]any{}, Environment: map[string]string{}})
 	return Provider{Version: "0.4.0", ToolVersion: "1.11.5", Tool: "/missing"}, runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "tofu", "settings_file": "kit-provider.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
 }
+
+func TestStandaloneOutputIsUnavailable(t *testing.T) {
+	d, scope := fixture(t)
+	definition, err := d.Definition()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := definition.Commands["output"]; ok {
+		t.Fatal("standalone output is still advertised")
+	}
+	if err := artifacts.Write(scope.ArtifactDir, "tofu-nodes-v1.json", map[string]bool{"valid": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Execute(t.Context(), scope, "output", nil, nil); err == nil || err.Error() != "unknown OpenTofu command" {
+		t.Fatal("standalone output did not reject before tool execution", err)
+	}
+	data, err := artifacts.Read(scope.ArtifactDir, "tofu-nodes-v1.json", artifacts.Limit)
+	if err != nil || !bytes.Contains(data, []byte(`"valid":true`)) {
+		t.Fatal("rejected command invalidated the node artifact", err)
+	}
+}
+
 func TestPrerequisitesAndSecretsBeforeEffects(t *testing.T) {
 	d, s := fixture(t)
 	artifacts.Write(s.WorkspaceDir, "kit-provider.json", Settings{Schema: 1, Environment: map[string]string{"HCLOUD_TOKEN": "cloud-token"}})
@@ -91,9 +113,15 @@ func TestApplyAndDestroyWithoutSavedPlan(t *testing.T) {
 		{"apply", "apply", "success", false},
 		{"failed-apply", "apply", "tool-failure", true},
 		{"invalid-output", "apply", "invalid-output", true},
+		{"empty-apply-output", "apply", "empty-output", true},
+		{"failed-apply-output", "apply", "output-failure", true},
 		{"destroy", "destroy", "success", false},
+		{"empty-destroy-output", "destroy", "empty-output", false},
 		{"failed-destroy", "destroy", "tool-failure", true},
 		{"remaining-resources", "destroy", "remaining", true},
+		{"invalid-destroy-output", "destroy", "invalid-output", true},
+		{"failed-destroy-output", "destroy", "output-failure", true},
+		{"remaining-node-output", "destroy", "remaining-output", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d, scope := fixture(t)
@@ -104,6 +132,7 @@ func TestApplyAndDestroyWithoutSavedPlan(t *testing.T) {
 				}
 			}
 			write(scope.WorkspaceDir, "outcome", tc.outcome, 0600)
+			write(scope.WorkspaceDir, "command", tc.command, 0600)
 			write(scope.WorkspaceDir, "inventory-path", filepath.Join(scope.ArtifactDir, "tofu-nodes-v1.json"), 0600)
 			write(scope.ArtifactDir, "tofu-nodes-v1.json", `{"valid":true}`, 0600)
 			// Omission must use the current configuration, without selecting or
@@ -120,8 +149,16 @@ apply|destroy)
     grep -q '"valid":false' "$(cat inventory-path)"
     if [ "$(cat outcome)" = tool-failure ]; then exit 1; fi;;
 output)
-    if [ "$(cat outcome)" = invalid-output ]; then printf '{}'; else
-        printf '{"local":{"name":"local","roles":["local"],"architecture":"amd64","public_ipv4":"127.0.0.1","private_ipv4":""}}'
+    if [ "$(cat outcome)" = output-failure ]; then exit 1; fi
+    nodes='{"local":{"name":"local","roles":["local"],"architecture":"amd64","public_ipv4":"127.0.0.1","private_ipv4":""}}'
+    if [ "$(cat outcome)" = invalid-output ]; then printf '[]';
+    elif [ "$(cat outcome)" = empty-output ]; then
+        if [ "$(cat command)" = destroy ]; then printf '{"nodes":{"sensitive":false,"type":["map","string"],"value":{}}}';
+        else printf '{}'; fi
+    elif [ "$(cat command)" = destroy ]; then
+        if [ "$(cat outcome)" = remaining-output ]; then printf '{"nodes":{"value":%s}}' "$nodes";
+        else printf '{}'; fi
+    else printf '%s' "$nodes"
     fi;;
 show)
     if [ "$(cat outcome)" = remaining ]; then
@@ -161,6 +198,14 @@ esac
 			if tc.command == "apply" && !tc.wantError && result != (OutputResult{"tofu-nodes-v1.json", 1, true}) {
 				t.Fatal("apply did not publish verified nodes", result)
 			}
+			if tc.command == "destroy" && !tc.wantError {
+				if result != (DestroyResult{OutputResult{"tofu-nodes-v1.json", 0, false}, true, true}) || len(nodes.Nodes) != 0 {
+					t.Fatal("destroy did not publish empty outputs", result, nodes)
+				}
+				if string(calls) != args+"show\n-json\noutput\n-json\n" {
+					t.Fatalf("destroy did not collect outputs after verifying state: %s", calls)
+				}
+			}
 			data, err = artifacts.Read(scope.ArtifactDir, plan, artifacts.SettingsLimit)
 			if err != nil || string(data) != "unrelated saved plan" {
 				t.Fatal("direct execution consumed a saved plan", err)
@@ -191,7 +236,7 @@ func TestCloudflareSecretScopeAndAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"init", "validate", "output", "plan", "apply", "destroy"} {
+	for _, name := range []string{"init", "validate", "plan", "apply", "destroy"} {
 		command.command = name
 		credentials := command.credentials()
 		needed := name == "plan" || name == "apply" || name == "destroy"

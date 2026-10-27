@@ -97,7 +97,7 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     ids = provider_ids('local-resource')
     prefix, ansible = ids['opentofu'], ids['ansible']
     command_contract_check(client, namespace, iid,
-        ['opentofu.' + c for c in ['init', 'validate', 'output', 'plan', 'apply', 'destroy']] +
+        ['opentofu.' + c for c in ['init', 'validate', 'plan', 'apply', 'destroy']] +
         ['ansible.' + c for c in ['inventory', 'ping', 'syntax-check', 'check', 'apply']], [
             ('opentofu.init', {'unknown': True}),
             ('opentofu.plan', {'destroy': None}),
@@ -118,7 +118,8 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     do(prefix + '.init')
     do(prefix + '.validate')
     plan = do(prefix + '.plan')
-    do(prefix + '.apply', {'plan_id': plan['plan_id']})
+    applied = do(prefix + '.apply', {'plan_id': plan['plan_id']})
+    assert applied['valid'] and applied['nodes'] == 1, applied
     do(ansible + '.inventory')
     ping = do(ansible + '.ping')
     assert ping['hosts'] and all(host['ok'] == 1 for host in ping['hosts'].values()), ping
@@ -128,7 +129,9 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     ansible_failure_flow(client, namespace, iid)
     local_rerender_check(client, namespace, iid, data)
     destroy = do(prefix + '.plan', {'destroy': True})
-    do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
+    destroyed = do(prefix + '.destroy', {'plan_id': destroy['plan_id']})
+    assert destroyed['destroyed'] and destroyed['managed_state_empty'], destroyed
+    assert not destroyed['valid'] and destroyed['nodes'] == 0, destroyed
     local_direct_flow(client, namespace, iid, prefix)
     provider_events(client, namespace, iid)
 
@@ -142,7 +145,8 @@ def local_direct_flow(client, namespace, iid, prefix):
     resources = json.loads(state.read_text())['resources']
     assert len(resources) == 1 and resources[0]['type'] == 'terraform_data', resources
     destroyed = client.execute(namespace, iid, prefix + '.destroy')
-    assert destroyed == {'destroyed': True, 'managed_state_empty': True}, destroyed
+    assert destroyed == {'destroyed': True, 'managed_state_empty': True,
+                         'artifact': prefix + '-nodes-v1.json', 'nodes': 0, 'valid': False}, destroyed
     assert json.loads(state.read_text()).get('resources', []) == []
     print('OpenTofu apply and destroy without plan_id passed', flush=True)
 
@@ -265,7 +269,7 @@ def pv_flow(client, reference, tofu):
         instances.append(iid)
         if name == 'arm64':
             command_contract_check(client, 'test', iid,
-                ['opentofu.' + c for c in ['init', 'validate', 'output', 'plan', 'apply', 'destroy']] +
+                ['opentofu.' + c for c in ['init', 'validate', 'plan', 'apply', 'destroy']] +
                 ['ansible.' + c for c in ['inventory', 'ping', 'syntax-check', 'check', 'apply']] +
                 ['dispatch.push', 'dispatch.make'], [
                     ('opentofu.apply', {'plan_id': ''}),
@@ -420,7 +424,8 @@ def local_rerender_check(client, namespace, iid, values):
     plan = client.execute(namespace, iid, 'opentofu.plan')
     assert not plan['changes'], plan
     assert json.loads(state.read_text())['lineage'] == before['lineage']
-    client.execute(namespace, iid, 'opentofu.output')
+    applied = client.execute(namespace, iid, 'opentofu.apply', {'plan_id': plan['plan_id']})
+    assert applied['valid'] and applied['nodes'] == 1, applied
 
 
 def local_state_check(work, tofu):

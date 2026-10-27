@@ -330,7 +330,7 @@ subprocesses or secret access. Execute receives arguments and the namespace secr
 snapshot directly, checks rendered inputs and prerequisites before effects, then
 performs and verifies the operation.
 
-OpenTofu supplies init, validate, plan, apply, destroy and output. Plan returns a
+OpenTofu supplies init, validate, plan, apply and destroy. Plan returns a
 `plan_id`; apply/destroy accept it optionally. With an ID, Kit validates and consumes
 that exact saved plan. Plans bind the shared artifact directory,
 provider/tool/configuration and source bytes. Kit retires a saved plan before apply
@@ -340,8 +340,13 @@ Without `plan_id`, apply/destroy plan and execute the current configuration in o
 noninteractive operation using OpenTofu's `-auto-approve`. They do not select a
 previously saved plan. An explicitly supplied ID must be valid and available;
 invalid, stale or missing saved plans fail without falling back to direct execution.
-Both paths invalidate shared nodes before mutation and only publish verified
-output. Destroy verifies empty managed state. Refresh-only and destroy saved plans
+Both paths invalidate shared nodes before mutation. Apply reads the configured
+node output, validates it, publishes the shared node artifact and returns
+`artifact`, `nodes` and `valid`. Destroy verifies empty managed state, collects
+outputs and rejects any remaining nodes. It returns `destroyed` and
+`managed_state_empty` plus `artifact`, `nodes: 0` and `valid: false`; the empty
+node artifact prevents downstream commands from using deleted hosts. Output
+collection is part of apply and destroy. Refresh-only and destroy saved plans
 remain distinct modes.
 
 ```sh
@@ -366,7 +371,7 @@ Dispatch is a separate provider using the same Ansible runtime. Its `push` and
 from `workspace/dispatch/` and run Make targets on selected nodes. Configure
 payload mappings in `templates/dispatch/`; see [Dispatch usage](dispatch.md).
 
-Use ping after OpenTofu apply/output to check SSH authentication and remote Python
+Use ping after OpenTofu apply to check SSH authentication and remote Python
 without applying a playbook. It accepts optional `hosts`, but no playbook or tags:
 
 `hosts` selects exact node names by filtering inventory before Ansible runs. Names

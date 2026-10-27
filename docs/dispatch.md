@@ -21,8 +21,8 @@ instance/
     worker/...
 ```
 
-Dispatch reads the existing schema-1 node artifact published by OpenTofu apply or
-output. It validates the producer ID/version, artifact scope, execution identity,
+Dispatch reads the existing schema-1 node artifact published by OpenTofu apply.
+It validates the producer ID/version, artifact scope, execution identity,
 validity flag and node records. An Ansible-generated inventory is not required.
 The artifact is checked again immediately before execution, so retiring or
 invalidating it prevents new Dispatch effects.
