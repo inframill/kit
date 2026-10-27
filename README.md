@@ -18,6 +18,11 @@ pins provider selections and the Go/SDK dependency. Tool versions live in
 [`runtime/Dockerfile`](runtime/Dockerfile). Local blueprints are selected by name
 and content digest.
 
+Blueprints declare their supported commands and argument schemas in
+`command_arguments`. Inspect the complete contract with
+`inframill instance commands NAME --namespace ID -o json`. See the
+[Blueprint upgrade notes](blueprints/README.md) for saved revision compatibility.
+
 For a new release, prepare the sibling Inframill release binaries, then run:
 
 ```sh

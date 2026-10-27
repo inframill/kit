@@ -37,7 +37,7 @@ func (s Selector) matches(n artifacts.Node) bool {
 	return true
 }
 
-func (p *prepared) inventory() (inventoryDocument, []string, error) {
+func (p *execution) inventory() (inventoryDocument, []string, error) {
 	result := inventoryDocument{All: inventoryGroup{Hosts: map[string]host{}}}
 	nodes, err := artifacts.ReadNodes(p.scope.ArtifactDir, p.static.Artifact, artifacts.Scope(p.scope.ArtifactDir), p.static.ProducerID, p.static.ProducerVersion)
 	if err != nil {

@@ -38,14 +38,14 @@ type OutputResult struct {
 	Valid    bool   `json:"valid"`
 }
 
-func (p *prepared) configHash() string {
+func (p *execution) configHash() string {
 	return artifacts.JSONHash(struct {
 		StaticSettings StaticSettings
 		Settings       Settings
 	}{p.static, p.settings})
 }
-func (p *prepared) planName(id string) string { return p.static.ID + "-plan-" + id }
-func (p *prepared) savedPlan() (Plan, []byte, error) {
+func (p *execution) planName(id string) string { return p.static.ID + "-plan-" + id }
+func (p *execution) savedPlan() (Plan, []byte, error) {
 	var rec Plan
 	name := p.planName(p.arguments.PlanID)
 	data, err := artifacts.Read(p.scope.ArtifactDir, name+".json", artifacts.SettingsLimit)
@@ -72,10 +72,10 @@ func (p *prepared) savedPlan() (Plan, []byte, error) {
 	}
 	return rec, data, nil
 }
-func (p *prepared) invalidate() error {
+func (p *execution) invalidate() error {
 	return artifacts.Write(p.scope.ArtifactDir, p.static.Artifact, artifacts.Nodes{Schema: 1, Valid: false, ArtifactScope: artifacts.Scope(p.scope.ArtifactDir), ProducerID: p.static.ID, ProducerVersion: p.provider.Version, ExecutionID: p.scope.ExecutionID})
 }
-func (p *prepared) execute(ctx context.Context, run toolrun.Runner) (any, error) {
+func (p *execution) execute(ctx context.Context, run toolrun.Runner) (any, error) {
 	switch p.command {
 	case "init":
 		args := []string{"init", "-input=false", "-no-color", "-lockfile=readonly"}
@@ -122,7 +122,7 @@ func (p *prepared) execute(ctx context.Context, run toolrun.Runner) (any, error)
 	}
 	return nil, errors.New("unknown command")
 }
-func (p *prepared) plan(ctx context.Context, run toolrun.Runner) (any, error) {
+func (p *execution) plan(ctx context.Context, run toolrun.Runner) (any, error) {
 	if !artifacts.ValidExecutionID(p.scope.ExecutionID) {
 		return nil, errors.New("command id required")
 	}
@@ -170,7 +170,7 @@ func (p *prepared) plan(ctx context.Context, run toolrun.Runner) (any, error) {
 	}
 	return PlanResult{p.scope.ExecutionID, code == 2, p.arguments.Destroy, p.arguments.RefreshOnly}, nil
 }
-func (p *prepared) apply(ctx context.Context, run toolrun.Runner) (any, error) {
+func (p *execution) apply(ctx context.Context, run toolrun.Runner) (any, error) {
 	var data []byte
 	if p.arguments.PlanID != "" {
 		var err error
@@ -252,7 +252,7 @@ func managed(m module) int {
 	}
 	return n
 }
-func (p *prepared) publish(ctx context.Context, run toolrun.Runner) (any, error) {
+func (p *execution) publish(ctx context.Context, run toolrun.Runner) (any, error) {
 	data, code, err := run.Call(ctx, true, "output", "-json", p.static.NodeOutput)
 	if err = toolrun.Success(code, err); err != nil {
 		return nil, err

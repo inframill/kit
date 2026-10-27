@@ -176,8 +176,8 @@ def daemon_check(tmp, env):
         assert {'fixture.probe', 'opentofu.plan', 'ansible.apply'} <= names, commands
         assert not any(name.startswith(('builtin.', 'unavailable.')) for name in names), commands
         wire_commands = rpc('ListCommandDefinitions')['commands']
-        assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
-                            for c in wire_commands], commands
+        assert commands == wire_commands, commands
+        assert all('argumentsSchema' not in c for c in commands), commands
         assert cli('provider', 'commands', 'fixture.probe') == next(
             c for c in commands if c['name'] == 'fixture.probe')
         assert [i['id'] for i in rpc('ListInstances', namespace='alpha')['instances']] == [first]

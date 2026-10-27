@@ -34,7 +34,7 @@ type Result struct {
 	ProviderVersion string           `json:"provider_version"`
 }
 
-func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any, error) {
+func (p *execution) run(ctx context.Context, secrets map[string]string) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from build import ROOT, configuration, local_tools, native_platform, providers_dist
 from engine_client import Engine
+from blueprint_workflows import command_contract_check
 
 
 def dispatch_check(tmp, env=None):
@@ -19,6 +20,10 @@ def dispatch_check(tmp, env=None):
     shutil.copytree(ROOT / 'tests/fixtures/blueprints/local-resource/latest', source)
     definition = json.loads((source / 'blueprint.yaml').read_text())
     del definition['provider_settings']['ansible']
+    definition['command_arguments'] = {
+        name: schema for name, schema in definition['command_arguments'].items()
+        if not name.startswith('ansible.')
+    }
     shutil.rmtree(source / 'templates/ansible')
     definition['provider_settings']['delivery'] = {
         'version': '0.1', 'settings': {
@@ -26,6 +31,17 @@ def dispatch_check(tmp, env=None):
             'producer_version': '0.4.0', 'artifact': 'opentofu-nodes-v1.json', 'connection': 'local',
         },
     }
+    for command in ['push', 'make']:
+        schema = {
+            'type': 'object', 'additionalProperties': False, 'required': ['directory'],
+            'properties': {'directory': {'type': 'string', 'enum': ['app']}},
+        }
+        if command == 'make':
+            schema['required'].append('target')
+            schema['properties']['target'] = {
+                'type': 'string', 'pattern': '^[a-zA-Z0-9_][a-zA-Z0-9_./-]{0,127}$',
+            }
+        definition['command_arguments']['delivery.' + command] = schema
     (source / 'blueprint.yaml').write_text(json.dumps(definition))
     payload = source / 'templates/delivery/app'
     payload.mkdir(parents=True)
@@ -63,6 +79,14 @@ def dispatch_check(tmp, env=None):
         client.create_namespace('dispatch')
         client.fetch('built.in/local-dispatch', 'dispatch')
         iid = client.initialize('dispatch', 'sample', 'built.in/local-dispatch', {'architecture': architecture})
+        command_contract_check(client, 'dispatch', iid,
+            ['opentofu.' + c for c in ['init', 'validate', 'output', 'plan', 'apply', 'destroy']] +
+            ['delivery.push', 'delivery.make'], [
+                ('dispatch.push', {'directory': 'app'}),
+                ('delivery.push', {'directory': 'app', 'target': 'deploy'}),
+                ('delivery.make', {'directory': 'app'}),
+                ('delivery.make', {'directory': 'app', 'target': ['deploy']}),
+            ])
         workspace = tmp / 'data/dispatch/instances' / iid / 'workspace'
         assert (workspace / 'delivery/app/Makefile').is_file()
         assert not (workspace / 'dispatch').exists()

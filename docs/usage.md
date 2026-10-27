@@ -124,6 +124,8 @@ bin/inframill provider list
 bin/inframill instance list --namespace production
 bin/inframill provider commands
 bin/inframill provider commands opentofu.plan
+bin/inframill instance commands example --namespace production
+bin/inframill instance commands example opentofu.plan --namespace production
 bin/inframill execution list --instance example --namespace production --all -o json
 bin/inframill execution get EXECUTION_ULID --instance example --namespace production
 bin/inframill execution wait EXECUTION_ULID --instance example --namespace production
@@ -134,9 +136,11 @@ Instance inspection (`instance get`) and execution accept a local name or canoni
 Both require `--namespace`, including ID-based operations.
 Execution history uses `--instance`. `provider commands` lists cached commands
 across all available providers, without running tools or checking secrets.
-`provider commands NAME` shows one command and its accepted arguments. Discovery
-has no Instance scope and does not guarantee applicability to an Instance.
-Built-in operations are excluded; use `instance delete` to delete an Instance.
+`provider commands NAME` shows one command's description and access mode.
+`instance commands INSTANCE [NAME] --namespace ID` includes the supported commands
+and their Blueprint-owned argument schemas, plus engine-owned built-ins. Global
+Provider discovery has no Instance scope and does not guarantee applicability to
+an Instance. Use `instance delete` to delete an Instance.
 Logs default to raw stdout; add `--stream stderr` for stderr. JSON log output is a
 single snapshot and cannot use `--follow`. Paginated Instance and execution lists
 support `--all`, with `--limit` controlling page size under one total timeout.
@@ -282,18 +286,24 @@ entries; resolve requires a usable revision. Deleting a cached revision by its d
 preserves existing Instances and their source snapshots.
 With `-o json`, `blueprint get`, `provider get` and `provider commands NAME` return the selected
 resource directly; `blueprint resolve` returns `blueprint` metadata and the raw
-Values schema as an ordinary `valuesSchema` object. The `GetBlueprint` RPC wraps
-that schema in a `JsonDocument`; human CLI output shows a Values schema section.
+Values schema as an ordinary `valuesSchema` object. Blueprint metadata also
+publishes `commands`, each with a name and argument schema. RPC wraps schemas in
+`JsonDocument` envelopes; CLI JSON unwraps them. Human Blueprint details show a
+Command arguments section, and `blueprint resolve` also shows the Values schema.
 Blueprint metadata also exposes declared `features` as sorted identifiers; an empty
 list may be omitted in JSON. Human details and list output display these capabilities.
 
 ## Providers
 
 A blueprint has a static `blueprint.yaml` containing `api_version`, `description`,
-an inline `values_schema`, and `provider_settings`, alongside `templates/`.
+an inline `values_schema`, `command_arguments`, and `provider_settings`, alongside `templates/`.
 Each entry has a required major.minor version and nested provider settings:
 
 ```yaml
+command_arguments:
+  opentofu.init:
+    type: object
+    additionalProperties: false
 provider_settings:
   opentofu:
     version: "0.4"
@@ -313,8 +323,12 @@ Templates render nonsecret settings into `kit-provider.json` within
 `templates/opentofu/` and `templates/ansible/` directories. The engine supplies
 each provider's directory directly; providers do not append another directory.
 Secret references are names in settings files, never credentials.
-Settings validation uses no files; Prepare reads and validates rendered inputs with
-no tool execution, writes, network or secrets. Execute performs and verifies effects.
+Settings validation uses no files. Blueprints explicitly select supported commands
+and own their argument schemas through `command_arguments`. Inframill validates
+arguments before admission using the Instance's retained revision, without provider
+subprocesses or secret access. Execute receives arguments and the namespace secret
+snapshot directly, checks rendered inputs and prerequisites before effects, then
+performs and verifies the operation.
 
 OpenTofu supplies init, validate, plan, apply, destroy and output. Plan returns a
 `plan_id`; apply/destroy accept it optionally. With an ID, Kit validates and consumes
@@ -475,8 +489,13 @@ CLI JSON unwraps document envelopes into their JSON values; raw RPC clients reta
 the `json` wrapper. Execution references use `execution_id`; statuses use `COMMAND_EXECUTION_STATUS_*`.
 Provider discovery uses `ListProviders` and reports `availability`.
 `ListCommandDefinitions` takes an empty request and returns cached commands from
-all available providers, excluding built-in operations. The former `instance_id`
-field is reserved and no longer scopes discovery.
+all available providers, excluding built-in operations. It returns names,
+descriptions and access modes without argument schemas. `GetBlueprint` publishes
+the revision's selected commands and schemas; `ListInstanceCommandDefinitions`
+returns that retained selection with provider metadata and the three engine-owned
+built-ins. Use `inframill instance commands INSTANCE --namespace ID -o json` to
+inspect the complete Instance contract. The former `instance_id` field on global
+discovery is reserved.
 
 Every namespace-owned RPC requires exactly one `X-Namespace-ID` header containing
 a valid namespace ID. Namespace selectors are absent from request bodies and

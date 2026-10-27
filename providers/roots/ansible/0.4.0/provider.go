@@ -33,7 +33,7 @@ type Arguments struct {
 	Hosts    []string `json:"hosts,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 }
-type prepared struct {
+type execution struct {
 	provider Provider
 	scope    runmill.ExecutionContext
 	static   StaticSettings
@@ -48,18 +48,11 @@ var userName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	// Even syntax-check, check and ping create temporary workspace files.
 	// Inventory publishes a shared file, so all commands require exclusive access.
-	commands := map[string]runmill.CommandDefinition{"inventory": {AccessMode: runmill.ReadWrite, Description: "Write inventory from a verified node artifact", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}}}
-	list := map[string]any{"type": "array", "maxItems": 100, "uniqueItems": true, "items": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
-	commands["ping"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Verify SSH/local connectivity and Python on every selected host", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"hosts": list}}}
+	commands := map[string]runmill.CommandDefinition{"inventory": {AccessMode: runmill.ReadWrite, Description: "Write inventory from a verified node artifact"}}
+	commands["ping"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Verify SSH/local connectivity and Python on every selected host"}
 	for _, name := range []string{"syntax-check", "check", "apply"} {
-		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the selected playbook and verify the outcome", ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"playbook"}, "properties": map[string]any{"playbook": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}, "hosts": list, "tags": list}}}
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the selected playbook and verify the outcome"}
 	}
-	apply := commands["apply"]
-	delete(apply.ArgumentsSchema, "required")
-	apply.ArgumentsSchema["properties"].(map[string]any)["playbook"].(map[string]any)["default"] = "site"
-	syntax := commands["syntax-check"]
-	syntax.ArgumentsSchema["properties"] = map[string]any{"playbook": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
-	commands["syntax-check"] = syntax
 	return runmill.ProviderDefinition{Name: "ansible", Commands: commands}, nil
 }
 func (d Provider) parseSettings(config runmill.Settings) (StaticSettings, error) {
@@ -95,7 +88,16 @@ func (d Provider) ValidateSettings(ctx context.Context, config runmill.Settings)
 	_, err := d.parseSettings(config)
 	return errors.Join(ctx.Err(), err)
 }
-func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments) (runmill.PreparedExecution, error) {
+func (d Provider) Execute(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments, secrets map[string]string) (any, error) {
+	p, err := d.loadExecution(ctx, scope, command, args)
+	if err != nil {
+		return nil, err
+	}
+	return p.run(ctx, secrets)
+}
+
+// loadExecution defensively decodes inputs and checks prerequisites before effects.
+func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments) (*execution, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -115,14 +117,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 		return nil, errors.New("invalid Ansible workspace settings")
 	}
 	var a Arguments
-	data, err = json.Marshal(args)
-	if err != nil {
-		return nil, errors.New("invalid arguments")
-	}
-	if string(data) == "null" {
-		data = []byte("{}")
-	}
-	if err = artifacts.Decode(data, &a); err != nil {
+	if err = artifacts.DecodeArguments(args, &a); err != nil {
 		return nil, err
 	}
 	switch command {
@@ -165,7 +160,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 	if command == "syntax-check" && (len(a.Hosts) > 0 || len(a.Tags) > 0) {
 		return nil, errors.New("syntax-check does not select hosts or tags")
 	}
-	p := &prepared{d, scope, m, s, a, command}
+	p := &execution{d, scope, m, s, a, command}
 	if command != "syntax-check" {
 		if _, _, err = p.inventory(); err != nil {
 			return nil, err

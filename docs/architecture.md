@@ -7,7 +7,7 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
 ## Ownership
 
 - Inframill owns namespace lifecycle, namespace-scoped Blueprints and Instances,
-  Values validation/rendering, namespace secret snapshots,
+  Blueprint-owned Values and command argument validation, rendering, namespace secret snapshots,
   queues, persistence, history and the external provider transport.
 - `providers/roots/<name>/<version>/` owns each implementation, release metadata, command
   entrypoint and tests. `providers/roots/internal/runner` calls upstream `runmill.Serve`.
@@ -23,9 +23,18 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
 
 `ValidateSettings` examines only the provider's static settings object. Engine
 renders `templates/<configured-id>/` into the matching provider workspace, each
-with its own `kit-provider.json`. Kit configures IDs `opentofu`, `ansible` and `dispatch`. `Prepare` validates arguments/settings and reads required files
-without effects or credentials. For run, the fresh provider process prepares again,
-then Execute receives the namespace's secret snapshot.
+with its own `kit-provider.json`. Kit configures IDs `opentofu`, `ansible` and `dispatch`.
+Each Blueprint declares its supported qualified commands and JSON argument schemas
+in `command_arguments`. Inframill compiles these when loading the revision and
+validates submissions before admission without starting a provider process.
+Provider discovery supplies command descriptions and access modes; Blueprint and
+Instance discovery supply the revision's argument schemas. Instance discovery also
+includes the engine-owned cancel, delete and rerender commands.
+
+Runmill invokes `Provider.Execute` directly in one run process with the namespace's
+secret snapshot. Execute defensively decodes arguments, validates rendered settings
+and checks files, artifact bindings and credentials before effects. There is no
+`Prepare` callback or `validate_command` protocol method.
 
 Only Execute can create artifacts or launch tools. Known required credentials are
 resolved before effects and passed through a selected child environment. No secrets

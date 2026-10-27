@@ -41,8 +41,50 @@ def protocol_fixture(tmp):
     source = tmp / 'blueprints/protocol-fixture/latest'
     (source / 'templates/fixture').mkdir(parents=True)
     (source / 'templates/fixture/readme.txt').write_text('secret snapshot test\n')
-    (source / 'blueprint.yaml').write_text(json.dumps({'api_version': 'inframill.dev/blueprint/v1', 'description': 'protocol fixture', 'values_schema': {'type': 'object', 'additionalProperties': False}, 'provider_settings': {'fixture': {'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'}}}}))
+    (source / 'blueprint.yaml').write_text(json.dumps({
+        'api_version': 'inframill.dev/blueprint/v1',
+        'description': 'protocol fixture',
+        'values_schema': {'type': 'object', 'additionalProperties': False},
+        'command_arguments': {'fixture.probe': {
+            'type': 'object', 'additionalProperties': False, 'required': ['text'],
+            'properties': {'text': {'type': 'string'}, 'wait': {'type': 'boolean'}},
+        }},
+        'provider_settings': {'fixture': {
+            'version': '0.1', 'settings': {'id': 'fixture', 'contract': '0.1.0'},
+        }},
+    }))
     return str(source.parent.parent)
+
+
+def command_contract_check(client, namespace, iid, expected, invalid):
+    commands = client.rpc('ListInstanceCommandDefinitions', {
+        'instance_id': iid,
+    }, namespace=namespace)['commands']
+    names = [c['name'] for c in commands]
+    assert names == sorted(names), commands
+    assert set(names) == set(expected) | {
+        'builtin.cancel', 'builtin.delete', 'builtin.rerender'}, commands
+    assert all(json.loads(c['argumentsSchema']['json'])['type'] == 'object'
+               for c in commands), commands
+
+    def history():
+        return client.rpc('ListCommandExecutions', {
+            'instance_id': iid,
+        }, namespace=namespace).get('executions', [])
+
+    before = history()
+    for command, arguments in invalid:
+        try:
+            client.rpc('SubmitCommand', {
+                'instance_id': iid, 'command_name': command,
+                'arguments': {'json': json.dumps(arguments)},
+            }, namespace=namespace)
+        except urllib.error.HTTPError as error:
+            failure = json.load(error)
+            assert failure['code'] == 'invalid_argument', failure
+        else:
+            raise AssertionError(f'Blueprint admitted invalid arguments for {command}')
+    assert history() == before, 'Rejected arguments created execution history'
 
 
 def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True):
@@ -54,6 +96,22 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
     iid = client.initialize(namespace, local_name, reference, data)
     ids = provider_ids('local-resource')
     prefix, ansible = ids['opentofu'], ids['ansible']
+    command_contract_check(client, namespace, iid,
+        ['opentofu.' + c for c in ['init', 'validate', 'output', 'plan', 'apply', 'destroy']] +
+        ['ansible.' + c for c in ['inventory', 'ping', 'syntax-check', 'check', 'apply']], [
+            ('opentofu.init', {'unknown': True}),
+            ('opentofu.plan', {'destroy': None}),
+            ('opentofu.plan', {'destroy': True, 'refresh_only': True}),
+            ('opentofu.apply', {'plan_id': '00000000000000000000000000'}),
+            ('opentofu.destroy', {'plan_id': None}),
+            ('ansible.apply', {'playbook': ''}),
+            ('ansible.apply', {'playbook': None}),
+            ('ansible.apply', {'playbook': 'missing'}),
+            ('ansible.check', {}),
+            ('ansible.syntax-check', {'playbook': 'site', 'hosts': []}),
+            ('ansible.ping', {'hosts': ['localhost', 'localhost']}),
+            ('ansible.ping', {'hosts': None}),
+        ])
 
     def do(command, args=None):
         return client.execute(namespace, iid, command, args)
@@ -76,7 +134,7 @@ def local_flow(client, reference=LOCAL_REFERENCE, name="test/local", fetch=True)
 
 
 def local_direct_flow(client, namespace, iid, prefix):
-    # Exercise omitted arguments through the real daemon, protocol schema and
+    # Exercise omitted arguments through the real daemon, Blueprint schema and
     # OpenTofu. The fixture manages only a disposable local terraform_data resource.
     state = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid / 'artifacts' / (prefix + '-terraform.tfstate')
     applied = client.execute(namespace, iid, prefix + '.apply')
@@ -116,6 +174,13 @@ def hello_world_flow(client, reference, namespace='test'):
     values = json.loads((BLUEPRINTS / 'examples/hello-world.json').read_text())
     client.fetch(reference, namespace)
     iid = client.initialize(namespace, 'hello-world', reference, values)
+    command_contract_check(client, namespace, iid,
+        ['debug.' + c for c in ['echo', 'fail', 'logs', 'read-artifact', 'record', 'wait', 'write-artifact']], [
+            ('debug.echo', {'message': 42}),
+            ('debug.echo', {'unknown': True}),
+            ('debug.wait', {'durationMs': -1}),
+            ('debug.write-artifact', {'name': 'greeting.txt'}),
+        ])
     workspace = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances' / iid / 'workspace'
     assert {path.name for path in workspace.iterdir()} == {'debug'}
     message = f"{values['greeting']}, {values['name']}!"
@@ -198,6 +263,20 @@ def pv_flow(client, reference, tofu):
         values = json.loads(path.read_text())
         iid = client.initialize('test', 'pv-' + name, reference, values)
         instances.append(iid)
+        if name == 'arm64':
+            command_contract_check(client, 'test', iid,
+                ['opentofu.' + c for c in ['init', 'validate', 'output', 'plan', 'apply', 'destroy']] +
+                ['ansible.' + c for c in ['inventory', 'ping', 'syntax-check', 'check', 'apply']] +
+                ['dispatch.push', 'dispatch.make'], [
+                    ('opentofu.apply', {'plan_id': ''}),
+                    ('opentofu.plan', {'destroy': True, 'refresh_only': True}),
+                    ('ansible.apply', {'playbook': 'missing'}),
+                    ('dispatch.push', {'directory': 'missing'}),
+                    ('dispatch.push', {'directory': 'postgres', 'target': 'install'}),
+                    ('dispatch.make', {'directory': 'postgres'}),
+                    ('dispatch.make', {'directory': 'inframill', 'target': None}),
+                    ('dispatch.make', {'directory': 'inframill', 'target': '-f'}),
+                ])
         work = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace/opentofu'
         assert f'app    = {json.dumps("pv-" + name)}' in (work / 'main.tf').read_text()
         assert f'instance_id = {json.dumps(iid)}' in (work / 'dns.tf').read_text()
@@ -217,22 +296,27 @@ def pv_flow(client, reference, tofu):
         delivery = json.loads((dispatch / 'kit-provider.json').read_text())
         assert delivery['address_mode'] == values['ansible']['address_mode']
         assert delivery['ssh_user'] == values['ssh']['user']
-        assert delivery['directories']['postgres'] == {
+        postgres_mapping = {
             'source': 'postgres', 'destination': '/opt/pv-cloud/postgres',
             'select': {'roles': ['data']}, 'exclude': ['secrets/**'], 'become': True,
         }
-        assert delivery['directories']['inframill'] == {
+        inframill_mapping = {
             'source': 'inframill', 'destination': '/opt/pv-cloud/inframill',
             'select': {'roles': ['worker']}, 'exclude': ['secrets/**', 'ssh/**', 'blueprints/**'],
             'secret_files': {'secrets/root_token': 'inframill-root-token',
                              'secrets/tls_private_key': 'inframill-tls-key'},
             'become': True,
         }
+        if values.get('registry'):
+            postgres_mapping['secret_files'] = {'secrets/registry_token': 'pv-cloud-registry-token'}
+            inframill_mapping['secret_files']['secrets/registry_token'] = 'pv-cloud-registry-token'
+        assert delivery['directories']['postgres'] == postgres_mapping
+        assert delivery['directories']['inframill'] == inframill_mapping
         assert (dispatch / 'inframill/tls/fullchain.pem').read_text().strip() == values['inframill']['tls_cert'].strip()
         assert json.dumps(values['inframill']['image']) in (dispatch / 'inframill/compose.yaml').read_text()
         assert not (dispatch / 'inframill/secrets').exists()
         for service in ('inframill', 'postgres'):
-            assert json.loads((dispatch / service / 'registry.json').read_text()) == {}
+            assert json.loads((dispatch / service / 'registry.json').read_text()) == values.get('registry', {})
         assert not any(b'synthetic-pv-' in path.read_bytes()
                        for path in work.parent.rglob('*') if path.is_file())
         assert (dispatch / 'postgres/compose.yaml').is_file()

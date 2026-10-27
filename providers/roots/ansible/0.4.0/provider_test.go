@@ -41,11 +41,7 @@ printf '%s' '{"schema":1,"hosts":{"local":{"ok":1}}}'
 				if command == "syntax-check" || command == "check" {
 					args["playbook"] = "site"
 				}
-				p, err := d.Prepare(t.Context(), s, command, args)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err = p.Execute(t.Context(), nil); err != nil {
+				if _, err := d.Execute(t.Context(), s, command, args, nil); err != nil {
 					t.Fatal(err)
 				}
 				data, err := os.ReadFile(filepath.Join(s.WorkspaceDir, "ssh-environment"))
@@ -84,44 +80,44 @@ func TestApplyDefaultsToSite(t *testing.T) {
 		{runmill.Arguments{"hosts": []string{"local"}, "tags": []string{"setup"}}, "site"},
 		{runmill.Arguments{"playbook": "other"}, "other"},
 	} {
-		p, err := d.Prepare(t.Context(), scope, "apply", tc.args)
+		p, err := d.loadExecution(t.Context(), scope, "apply", tc.args)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := p.(*prepared).args.Playbook; got != tc.want {
+		if got := p.args.Playbook; got != tc.want {
 			t.Fatalf("playbook = %q, want %q", got, tc.want)
 		}
 	}
 	for _, args := range []runmill.Arguments{{"playbook": ""}, {"playbook": nil}, {"playbook": "missing"}} {
-		if _, err := d.Prepare(t.Context(), scope, "apply", args); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "apply", args, nil); err == nil {
 			t.Fatalf("accepted invalid playbook %v", args)
 		}
 	}
 	for _, command := range []string{"syntax-check", "check"} {
-		if _, err := d.Prepare(t.Context(), scope, command, nil); err == nil {
+		if _, err := d.Execute(t.Context(), scope, command, nil, nil); err == nil {
 			t.Fatalf("%s accepted a missing playbook", command)
 		}
 	}
 	scope.Settings["playbooks"] = map[string]string{"other": "site.yml"}
-	if _, err := d.Prepare(t.Context(), scope, "apply", nil); err == nil {
+	if _, err := d.Execute(t.Context(), scope, "apply", nil, nil); err == nil {
 		t.Fatal("accepted an undeclared default site playbook")
 	}
 }
 
-func TestPingPreparation(t *testing.T) {
+func TestPingPrerequisites(t *testing.T) {
 	d, s, n := fixture(t)
-	if _, err := d.Prepare(t.Context(), s, "ping", nil); err == nil {
+	if _, err := d.Execute(t.Context(), s, "ping", nil, nil); err == nil {
 		t.Fatal("ping accepted missing nodes")
 	}
 	artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n)
 	os.Remove(filepath.Join(s.WorkspaceDir, "site.yml"))
 	for _, args := range []runmill.Arguments{nil, {"hosts": []string{"local"}}} {
-		if _, err := d.Prepare(t.Context(), s, "ping", args); err != nil {
+		if _, err := d.loadExecution(t.Context(), s, "ping", args); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, args := range []runmill.Arguments{{"playbook": "site"}, {"tags": []string{}}, {"hosts": []string{"missing"}}, {"hosts": []string{"local", "local"}}} {
-		if _, err := d.Prepare(t.Context(), s, "ping", args); err == nil {
+	for _, args := range []runmill.Arguments{{"playbook": "site"}, {"tags": []string{}}, {"hosts": nil}, {"hosts": "local"}, {"hosts": []string{"missing"}}, {"hosts": []string{"local", "local"}}} {
+		if _, err := d.Execute(t.Context(), s, "ping", args, nil); err == nil {
 			t.Fatalf("accepted invalid ping arguments: %v", args)
 		}
 	}
@@ -165,11 +161,7 @@ printf '%s' '` + string(recap) + "'\n"
 			if err := os.WriteFile(d.Tool, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
-			command, err := d.Prepare(t.Context(), scope, "ping", runmill.Arguments{"hosts": []string{name}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := command.Execute(t.Context(), nil); err != nil {
+			if _, err := d.Execute(t.Context(), scope, "ping", runmill.Arguments{"hosts": []string{name}}, nil); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(filepath.Join(scope.WorkspaceDir, "used-inventory.json"))
@@ -206,11 +198,7 @@ func TestToolFailuresReturnWithDiagnostics(t *testing.T) {
 			if command == "apply" {
 				args["playbook"] = "site"
 			}
-			p, err := d.Prepare(t.Context(), s, command, args)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err = p.Execute(t.Context(), nil); err == nil || !bytes.Contains(logs.Bytes(), []byte("host unreachable")) {
+			if _, err := d.Execute(t.Context(), s, command, args, nil); err == nil || !bytes.Contains(logs.Bytes(), []byte("host unreachable")) {
 				t.Fatal("lost tool failure or diagnostics", err)
 			}
 		})
@@ -228,24 +216,24 @@ func fixture(t *testing.T) (Provider, runmill.ExecutionContext, artifacts.Nodes)
 	nodes := artifacts.Nodes{Schema: 1, Valid: true, ArtifactScope: artifacts.Scope(s.ArtifactDir), ProducerID: "tofu", ProducerVersion: "0.4.0", ExecutionID: s.ExecutionID, Nodes: []artifacts.Node{{Name: "local", Roles: []string{"local"}, Architecture: "arm64", PublicIPv4: "127.0.0.1"}}}
 	return Provider{"0.4.0", "2.20.1", "/missing"}, s, nodes
 }
-func TestPreparationRequiresOnlyCommandInputs(t *testing.T) {
+func TestPrerequisitesRequiresOnlyCommandInputs(t *testing.T) {
 	d, s, n := fixture(t)
-	if _, e := d.Prepare(t.Context(), s, "syntax-check", map[string]any{"playbook": "site"}); e != nil {
+	if _, e := d.loadExecution(t.Context(), s, "syntax-check", map[string]any{"playbook": "site"}); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := d.Prepare(t.Context(), s, "apply", map[string]any{"playbook": "site"}); e == nil {
+	if _, e := d.Execute(t.Context(), s, "apply", map[string]any{"playbook": "site"}, nil); e == nil {
 		t.Fatal("missing nodes accepted")
 	}
 	artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n)
-	if _, e := d.Prepare(t.Context(), s, "inventory", nil); e != nil {
+	if _, e := d.loadExecution(t.Context(), s, "inventory", nil); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := os.Stat(filepath.Join(s.WorkspaceDir, "kit-inventory.json")); !os.IsNotExist(e) {
-		t.Fatal("preparation wrote inventory")
+		t.Fatal("input validation wrote inventory")
 	}
 	n.ArtifactScope = "other"
 	artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n)
-	if _, e := d.Prepare(t.Context(), s, "inventory", nil); e == nil {
+	if _, e := d.Execute(t.Context(), s, "inventory", nil, nil); e == nil {
 		t.Fatal("wrong binding accepted")
 	}
 }
@@ -259,11 +247,7 @@ func TestExecutionVerifiesRecap(t *testing.T) {
 			artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", n)
 			d.Tool = filepath.Join(t.TempDir(), "ansible")
 			os.WriteFile(d.Tool, []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then printf '[core 2.20.1]'; else printf '%s' '"+tc.recap+"'; fi\n"), 0700)
-			p, e := d.Prepare(t.Context(), s, "apply", map[string]any{"playbook": "site"})
-			if e != nil {
-				t.Fatal(e)
-			}
-			_, e = p.Execute(t.Context(), nil)
+			_, e := d.Execute(t.Context(), s, "apply", map[string]any{"playbook": "site"}, nil)
 			if (e == nil) != tc.ok {
 				t.Fatal(e)
 			}
@@ -284,11 +268,11 @@ func TestUsesEngineSuppliedProviderDirectory(t *testing.T) {
 	nested := filepath.Join(expected, "ansible")
 	os.Mkdir(nested, 0700)
 	os.WriteFile(filepath.Join(nested, "kit-provider.json"), []byte("wrong nested root"), 0600)
-	command, err := d.Prepare(t.Context(), s, "syntax-check", map[string]any{"playbook": "site"})
+	command, err := d.loadExecution(t.Context(), s, "syntax-check", map[string]any{"playbook": "site"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := command.(*prepared).scope
+	scope := command.scope
 	if scope.WorkspaceDir != expected || scope.ArtifactDir != s.ArtifactDir {
 		t.Fatal("provider changed engine-supplied workspace or artifact paths")
 	}

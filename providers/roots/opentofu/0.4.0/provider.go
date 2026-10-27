@@ -30,7 +30,7 @@ type Arguments struct {
 	Destroy     bool   `json:"destroy,omitempty"`
 	RefreshOnly bool   `json:"refresh_only,omitempty"`
 }
-type prepared struct {
+type execution struct {
 	provider  Provider
 	scope     runmill.ExecutionContext
 	static    StaticSettings
@@ -42,23 +42,13 @@ type prepared struct {
 var _ runmill.Provider = Provider{}
 
 func (d Provider) Definition() (runmill.ProviderDefinition, error) {
-	object := func(properties map[string]any, required ...string) map[string]any {
-		if properties == nil {
-			properties = map[string]any{}
-		}
-		s := map[string]any{"type": "object", "additionalProperties": false, "properties": properties}
-		if len(required) > 0 {
-			s["required"] = required
-		}
-		return s
-	}
 	commands := map[string]runmill.CommandDefinition{}
 	for _, name := range []string{"init", "validate", "output"} {
-		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the OpenTofu workspace", ArgumentsSchema: object(nil)}
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the OpenTofu workspace"}
 	}
-	commands["plan"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Save an integrity-bound plan", ArgumentsSchema: object(map[string]any{"destroy": map[string]any{"type": "boolean"}, "refresh_only": map[string]any{"type": "boolean"}})}
+	commands["plan"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Save an integrity-bound plan"}
 	for _, name := range []string{"apply", "destroy"} {
-		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the current configuration or an optional saved plan and verify the result", ArgumentsSchema: object(map[string]any{"plan_id": map[string]any{"type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$", "not": map[string]any{"const": "00000000000000000000000000"}}})}
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the current configuration or an optional saved plan and verify the result"}
 	}
 	// Validation only reads the initialized workspace. Output publishes a shared
 	// node artifact; plans and every other command also require exclusive access.
@@ -135,7 +125,16 @@ func readSettings(scope runmill.ExecutionContext, m StaticSettings) (Settings, e
 	}
 	return s, nil
 }
-func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments) (runmill.PreparedExecution, error) {
+func (d Provider) Execute(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments, secrets map[string]string) (any, error) {
+	p, err := d.loadExecution(ctx, scope, command, args)
+	if err != nil {
+		return nil, err
+	}
+	return p.run(ctx, secrets)
+}
+
+// loadExecution defensively decodes inputs and checks prerequisites before effects.
+func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments) (*execution, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -144,14 +143,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 		return nil, err
 	}
 	var a Arguments
-	data, err := json.Marshal(args)
-	if err != nil {
-		return nil, errors.New("invalid arguments")
-	}
-	if string(data) == "null" {
-		data = []byte("{}")
-	}
-	if err = artifacts.Decode(data, &a); err != nil {
+	if err = artifacts.DecodeArguments(args, &a); err != nil {
 		return nil, err
 	}
 	allowed := map[string]bool{}
@@ -180,7 +172,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 	if err != nil {
 		return nil, err
 	}
-	p := &prepared{d, scope, m, s, a, command}
+	p := &execution{d, scope, m, s, a, command}
 	if a.PlanID != "" {
 		if _, _, err = p.savedPlan(); err != nil {
 			return nil, err
@@ -188,7 +180,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 	}
 	return p, nil
 }
-func (p *prepared) credentials() map[string]string {
+func (p *execution) credentials() map[string]string {
 	out := map[string]string{}
 	for key, ref := range p.settings.Environment {
 		needed := false
@@ -206,7 +198,7 @@ func (p *prepared) credentials() map[string]string {
 	}
 	return out
 }
-func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any, error) {
+func (p *execution) run(ctx context.Context, secrets map[string]string) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

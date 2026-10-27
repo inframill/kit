@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Synthetic implementations have distinct schemas and settings contracts.
+// Synthetic implementations have distinct decoding and settings contracts.
 // No production provider version is registered by changing its version string.
 func init() {
 	for _, version := range []string{"0.1.0", "0.2.0"} {
@@ -24,12 +24,7 @@ func init() {
 type fixtureProvider struct{ version string }
 
 func (d fixtureProvider) Definition() (runmill.ProviderDefinition, error) {
-	key := "text"
-	if d.version == "0.2.0" {
-		key = "message"
-	}
-	schema := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{key: map[string]any{"type": "string"}, "wait": map[string]any{"type": "boolean"}}, "required": []string{key}}
-	return runmill.ProviderDefinition{Name: "fixture", Commands: map[string]runmill.CommandDefinition{"probe": {AccessMode: runmill.ReadWrite, Description: "Test secret snapshots without emitting credentials", ArgumentsSchema: schema}}}, nil
+	return runmill.ProviderDefinition{Name: "fixture", Commands: map[string]runmill.CommandDefinition{"probe": {AccessMode: runmill.ReadWrite, Description: "Test secret snapshots without emitting credentials"}}}, nil
 }
 func (d fixtureProvider) ValidateSettings(ctx context.Context, c runmill.Settings) error {
 	if c["contract"] != d.version {
@@ -42,7 +37,7 @@ func (d fixtureProvider) ValidateSettings(ctx context.Context, c runmill.Setting
 	}
 	return ctx.Err()
 }
-func (d fixtureProvider) Prepare(ctx context.Context, s runmill.ExecutionContext, command string, args runmill.Arguments) (runmill.PreparedExecution, error) {
+func (d fixtureProvider) Execute(ctx context.Context, s runmill.ExecutionContext, command string, args runmill.Arguments, secrets map[string]string) (any, error) {
 	if err := d.ValidateSettings(ctx, s.Settings); err != nil {
 		return nil, err
 	}
@@ -54,25 +49,25 @@ func (d fixtureProvider) Prepare(ctx context.Context, s runmill.ExecutionContext
 		return nil, errors.New("unknown command")
 	}
 	if _, ok := args[key].(string); !ok {
-		return nil, errors.New("fixture schema mismatch")
+		return nil, errors.New("fixture argument contract mismatch")
 	}
-	return fixtureCommand{s: s, wait: args["wait"] == true}, nil
-}
-
-type fixtureCommand struct {
-	s    runmill.ExecutionContext
-	wait bool
-}
-
-func (c fixtureCommand) Execute(ctx context.Context, secrets map[string]string) (any, error) {
-	if c.wait {
-		if err := os.WriteFile(filepath.Join(c.s.ArtifactDir, "ready"), []byte("ready"), 0600); err != nil {
+	for name, value := range args {
+		if name == "wait" {
+			if _, ok := value.(bool); !ok {
+				return nil, errors.New("wait must be a boolean")
+			}
+		} else if name != key {
+			return nil, errors.New("unexpected fixture argument")
+		}
+	}
+	if args["wait"] == true {
+		if err := os.WriteFile(filepath.Join(s.ArtifactDir, "ready"), []byte("ready"), 0600); err != nil {
 			return nil, err
 		}
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
 		for {
-			if _, err := os.Stat(filepath.Join(c.s.ArtifactDir, "release")); err == nil {
+			if _, err := os.Stat(filepath.Join(s.ArtifactDir, "release")); err == nil {
 				break
 			}
 			select {
@@ -82,7 +77,7 @@ func (c fixtureCommand) Execute(ctx context.Context, secrets map[string]string) 
 			}
 		}
 	}
-	if err := c.s.Message("fixture completed"); err != nil {
+	if err := s.Message("fixture completed"); err != nil {
 		return nil, err
 	}
 	sum := sha256.Sum256([]byte(secrets["token"]))

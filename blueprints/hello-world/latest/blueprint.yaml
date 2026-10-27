@@ -1,5 +1,60 @@
 api_version: inframill.dev/blueprint/v1
 description: Hello world using only the built-in debug provider
+command_arguments:
+  debug.echo:
+    additionalProperties: false
+    properties:
+      message:
+        type: string
+    type: object
+  debug.fail:
+    additionalProperties: false
+    properties:
+      message:
+        type: string
+    type: object
+  debug.logs:
+    additionalProperties: false
+    properties:
+      stderr:
+        type: string
+      stdout:
+        type: string
+    type: object
+  debug.read-artifact:
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+    required: ["name"]
+    type: object
+  debug.record:
+    additionalProperties: false
+    properties:
+      message:
+        type: string
+      mode:
+        enum: ["success", "fail", "block"]
+        type: string
+    type: object
+  debug.wait:
+    additionalProperties: false
+    properties:
+      durationMs:
+        maximum: 60000
+        minimum: 0
+        type: integer
+    type: object
+  debug.write-artifact:
+    additionalProperties: false
+    properties:
+      content:
+        type: string
+      name:
+        type: string
+    required: ["name", "content"]
+    type: object
+
 values_schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object

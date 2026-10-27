@@ -5,6 +5,19 @@ Each has a `latest/` directory containing `blueprint.yaml` and `templates/`.
 Edit those files directly; there
 is no build, packaging, release manifest or publication step.
 
+Inframill `0.1.22-dev` requires `command_arguments` in every Blueprint. It maps
+qualified configured provider IDs to JSON object schemas and explicitly selects
+the supported commands. An empty mapping exposes only engine-owned built-ins.
+Kit's Blueprints declare their command contracts; `hello-world` exposes the debug
+commands and `pv-cloud` exposes OpenTofu, Ansible and Dispatch operations.
+Inspect an Instance's complete contract with
+`inframill instance commands NAME --namespace ID -o json`. Provider discovery
+reports descriptions and access modes without schemas.
+
+Older saved revisions without `command_arguments` reject on this engine. Keep
+existing data intact; fetching updated sources changes the catalogue and new
+Instances, while existing Instances retain their saved revision.
+
 ## Configure the daemon
 
 Native development: `task config` includes the absolute path to this directory
@@ -65,7 +78,7 @@ All top-level Values fields are object groups: `network`, `ssh`, `nodes`,
 `network.private_networks`; SSH settings use `ssh.user`, `ssh.public_keys`, and
 `ssh.source_ips`.
 
-Version `0.8.0` requires Inframill `0.1.20-dev` or later. Its static
+The updated `0.8.0` and `latest` sources require Inframill `0.1.22-dev` or later. Their static
 `required_secrets` declaration checks five namespace names before creating an
 Instance: `hetzner`, `cloudflare`, `inframill-root-token`, `inframill-tls-key`, and
 `pv-cloud-registry-token`. Store all five before `instance init`, even when the

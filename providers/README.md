@@ -84,6 +84,13 @@ Use the executable matching your host architecture, or build with `--native`.
 The default tool paths are the versioned paths installed by the Kit image.
 Requests and responses use the Inframill JSON provider protocol.
 
+Inframill `0.1.22-dev` uses direct `Provider.Execute(ctx, scope, command, arguments,
+secrets)` calls. Provider metadata advertises command descriptions and access modes;
+Blueprint `command_arguments` declarations own schemas and admission validation.
+The protocol supports `info`, `validate_settings` and `run`. Execute retains
+defensive input decoding, file/artifact checks, credential checks and outcome
+verification; there is no preparation callback or command validation subprocess.
+
 Version 0.4.0 adopts Inframill 0.24's required command access modes. OpenTofu
 `validate` declares `read_only`. Its other commands declare `read_write`, including
 `output` because it publishes shared node artifacts. All Ansible commands declare

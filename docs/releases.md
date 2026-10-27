@@ -1,5 +1,25 @@
 # Releasing Kit
 
+## 0.1.22-dev
+
+Kit uses Inframill `0.1.22-dev` (`887ffb1e628e`). OpenTofu 0.4.0, Ansible 0.4.0
+and Dispatch 0.1.0 now implement direct `Execute`; their metadata supplies command
+descriptions and access modes without argument schemas. The `Prepare` API and
+`validate_command` protocol method are removed. Provider execution still checks
+arguments, credentials, artifact identity and actual tool outcomes before reporting
+success.
+
+`hello-world`, pv-cloud `0.8.0` and `latest`, and local test Blueprints declare
+`command_arguments`. Blueprints select supported Provider commands and validate
+their arguments before admission. Blueprint and Instance discovery publish those
+schemas; global Provider discovery publishes capabilities. Built-in cancel, delete
+and rerender remain engine-owned and appear in Instance discovery. pv-cloud worker
+image examples select the matching Kit release.
+
+Existing saved revisions without `command_arguments` are unsupported by this
+engine. Fetching updated sources does not rewrite existing Instances. Preserve
+their saved sources and infrastructure state; no automatic migration is performed.
+
 ## 0.1.20-dev
 
 Kit uses Inframill `0.1.20-dev` (`8ac633923bfa`), including required namespace

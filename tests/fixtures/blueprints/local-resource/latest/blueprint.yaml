@@ -17,6 +17,170 @@
       }
     }
   },
+  "command_arguments": {
+    "opentofu.init": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "opentofu.validate": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "opentofu.output": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "opentofu.plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "destroy": {
+          "type": "boolean"
+        },
+        "refresh_only": {
+          "type": "boolean"
+        }
+      },
+      "not": {
+        "required": [
+          "destroy",
+          "refresh_only"
+        ],
+        "properties": {
+          "destroy": {
+            "const": true
+          },
+          "refresh_only": {
+            "const": true
+          }
+        }
+      }
+    },
+    "opentofu.apply": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "not": {
+            "const": "00000000000000000000000000"
+          }
+        }
+      }
+    },
+    "opentofu.destroy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "not": {
+            "const": "00000000000000000000000000"
+          }
+        }
+      }
+    },
+    "ansible.inventory": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "ansible.ping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hosts": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        }
+      }
+    },
+    "ansible.syntax-check": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "type": "string",
+          "enum": [
+            "site"
+          ]
+        }
+      },
+      "required": [
+        "playbook"
+      ]
+    },
+    "ansible.check": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "type": "string",
+          "enum": [
+            "site"
+          ]
+        },
+        "hosts": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        }
+      },
+      "required": [
+        "playbook"
+      ]
+    },
+    "ansible.apply": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playbook": {
+          "type": "string",
+          "enum": [
+            "site"
+          ],
+          "default": "site"
+        },
+        "hosts": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        }
+      }
+    }
+  },
   "provider_settings": {
     "opentofu": {
       "version": "0.4",

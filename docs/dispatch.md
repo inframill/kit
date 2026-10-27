@@ -30,6 +30,26 @@ invalidating it prevents new Dispatch effects.
 Bind Dispatch in your Blueprint:
 
 ```yaml
+command_arguments:
+  dispatch.push:
+    type: object
+    additionalProperties: false
+    required: [directory]
+    properties:
+      directory:
+        type: string
+        enum: [api, worker]
+  dispatch.make:
+    type: object
+    additionalProperties: false
+    required: [directory, target]
+    properties:
+      directory:
+        type: string
+        enum: [api, worker]
+      target:
+        type: string
+        pattern: '^[a-zA-Z0-9_][a-zA-Z0-9_./-]{0,127}$'
 provider_settings:
   dispatch:
     version: '0.1'
@@ -42,6 +62,12 @@ provider_settings:
       connection: ssh
       host_key_policy: accept-new
 ```
+
+Command declarations use the configured provider ID. With an alias such as
+`delivery`, use `delivery.push` and `delivery.make` in both `command_arguments`
+and command submissions. The Blueprint schemas validate arguments before
+admission; Dispatch checks the selected mapping, source and node artifact during
+direct execution.
 
 `connection` defaults to `ssh`. Host-key policy defaults to `strict`; `accept-new`
 records unknown hosts and still rejects changed keys. Authentication uses the

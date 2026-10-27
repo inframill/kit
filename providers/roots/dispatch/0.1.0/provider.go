@@ -53,7 +53,7 @@ type Arguments struct {
 	Target    string `json:"target,omitempty"`
 }
 
-type prepared struct {
+type execution struct {
 	provider Provider
 	scope    runmill.ExecutionContext
 	static   StaticSettings
@@ -70,16 +70,10 @@ var secretName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,127}$`)
 func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	commands := map[string]runmill.CommandDefinition{}
 	for _, name := range []string{"push", "make"} {
-		required := []string{"directory"}
-		properties := map[string]any{"directory": map[string]any{"type": "string", "pattern": artifacts.Identifier.String()}}
-		if name == "make" {
-			required = append(required, "target")
-			properties["target"] = map[string]any{"type": "string", "pattern": targetName.String()}
-		}
 		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: map[string]string{
 			"push": "Push a workspace directory through Ansible",
 			"make": "Run a Make target in a configured remote directory through Ansible",
-		}[name], ArgumentsSchema: map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}}
+		}[name]}
 	}
 	return runmill.ProviderDefinition{Name: "dispatch", Commands: commands}, nil
 }
@@ -138,7 +132,16 @@ func (s Selector) validate() error {
 	return nil
 }
 
-func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, command string, arguments runmill.Arguments) (runmill.PreparedExecution, error) {
+func (d Provider) Execute(ctx context.Context, scope runmill.ExecutionContext, command string, arguments runmill.Arguments, secrets map[string]string) (any, error) {
+	p, err := d.loadExecution(ctx, scope, command, arguments)
+	if err != nil {
+		return nil, err
+	}
+	return p.run(ctx, secrets)
+}
+
+// loadExecution defensively decodes inputs and checks prerequisites before effects.
+func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionContext, command string, arguments runmill.Arguments) (*execution, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -185,7 +188,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 		}
 	}
 	var args Arguments
-	if err = decode(arguments, &args); err != nil {
+	if err = artifacts.DecodeArguments(arguments, &args); err != nil {
 		return nil, err
 	}
 	directory, ok := settings.Directories[args.Directory]
@@ -200,7 +203,7 @@ func (d Provider) Prepare(ctx context.Context, scope runmill.ExecutionContext, c
 	if command == "make" && !targetName.MatchString(args.Target) {
 		return nil, errors.New("select a valid Make target")
 	}
-	p := &prepared{d, scope, static, settings, args, command}
+	p := &execution{d, scope, static, settings, args, command}
 	if _, _, err = p.inventory(); err != nil {
 		return nil, err
 	}

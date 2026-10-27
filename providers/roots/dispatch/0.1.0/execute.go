@@ -77,7 +77,7 @@ func literal(value any) string {
 	return "{{ '" + base64.StdEncoding.EncodeToString(data) + "' | b64decode | from_json }}"
 }
 
-func (p *prepared) playbook(archive string) []map[string]any {
+func (p *execution) playbook(archive string) []map[string]any {
 	directory := p.settings.Directories[p.args.Directory]
 	tasks := []map[string]any{}
 	if p.command == "push" {
@@ -107,7 +107,7 @@ func (p *prepared) playbook(archive string) []map[string]any {
 
 // Only references and temporary paths enter the playbook. Copy suppresses both
 // result details and diffs; secret bytes never enter the source archive or argv.
-func (p *prepared) secretTasks(tmp string) []map[string]any {
+func (p *execution) secretTasks(tmp string) []map[string]any {
 	directory := p.settings.Directories[p.args.Directory]
 	keys := make([]string, 0, len(directory.SecretFiles))
 	for name := range directory.SecretFiles {
@@ -134,7 +134,7 @@ func (p *prepared) secretTasks(tmp string) []map[string]any {
 	return tasks
 }
 
-func (p *prepared) Execute(ctx context.Context, secrets map[string]string) (any, error) {
+func (p *execution) run(ctx context.Context, secrets map[string]string) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

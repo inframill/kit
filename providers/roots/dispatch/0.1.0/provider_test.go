@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -66,11 +65,11 @@ func TestSelectorsAndArtifactBinding(t *testing.T) {
 		settings.Directories["api"] = directory
 		writeFixture(t, scope, settings, nodes)
 		args := runmill.Arguments{"directory": "api"}
-		p, err := d.Prepare(t.Context(), scope, "push", args)
+		p, err := d.loadExecution(t.Context(), scope, "push", args)
 		if err != nil {
 			t.Fatal(err)
 		}
-		inventory, selected, err := p.(*prepared).inventory()
+		inventory, selected, err := p.inventory()
 		if err != nil || !reflect.DeepEqual(selected, tc.want) || len(inventory.All.Hosts) != len(tc.want) {
 			t.Fatalf("selector %v: %v %v", tc.selectNodes, selected, err)
 		}
@@ -80,7 +79,7 @@ func TestSelectorsAndArtifactBinding(t *testing.T) {
 		directory.Select = selector
 		settings.Directories["api"] = directory
 		writeFixture(t, scope, settings, nodes)
-		if _, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}, nil); err == nil {
 			t.Fatalf("accepted selector %v", selector)
 		}
 	}
@@ -99,22 +98,22 @@ func TestSelectorsAndArtifactBinding(t *testing.T) {
 		}
 		mutation(&changed)
 		writeFixture(t, scope, settings, changed)
-		if _, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}, nil); err == nil {
 			t.Fatal("accepted invalid node artifact")
 		}
 	}
 }
 
-func TestPreparationValidatesInputsWithoutEffects(t *testing.T) {
+func TestPrerequisitesValidatesInputsWithoutEffects(t *testing.T) {
 	d, scope, settings, nodes := fixture(t)
 	before, _ := artifacts.SourceHash(scope.WorkspaceDir)
-	p, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
-	if err != nil || p.(*prepared).scope.WorkspaceDir != scope.WorkspaceDir {
+	p, err := d.loadExecution(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
+	if err != nil || p.scope.WorkspaceDir != scope.WorkspaceDir {
 		t.Fatal(err)
 	}
 	after, _ := artifacts.SourceHash(scope.WorkspaceDir)
 	if before != after {
-		t.Fatal("preparation changed workspace")
+		t.Fatal("input validation changed workspace")
 	}
 	for _, args := range []runmill.Arguments{
 		nil, {"directory": "missing"}, {"directory": "api", "unknown": true},
@@ -125,11 +124,11 @@ func TestPreparationValidatesInputsWithoutEffects(t *testing.T) {
 		{"directory": "api", "variables": map[string]string{"X": "value"}},
 		{"directory": "api", "targets": []string{"deploy"}, "variables": map[string]string{"-f": "value"}},
 	} {
-		if _, err := d.Prepare(t.Context(), scope, "push", args); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "push", args, nil); err == nil {
 			t.Fatalf("accepted arguments %v", args)
 		}
 	}
-	if _, err := d.Prepare(t.Context(), scope, "make", runmill.Arguments{"directory": "api"}); err == nil {
+	if _, err := d.Execute(t.Context(), scope, "make", runmill.Arguments{"directory": "api"}, nil); err == nil {
 		t.Fatal("make accepted no target")
 	}
 	for _, args := range []runmill.Arguments{
@@ -141,7 +140,7 @@ func TestPreparationValidatesInputsWithoutEffects(t *testing.T) {
 		{"directory": "api", "target": "deploy", "select": Selector{}},
 		{"directory": "api", "target": "deploy", "variables": map[string]string{"X": "value"}},
 	} {
-		if _, err := d.Prepare(t.Context(), scope, "make", args); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "make", args, nil); err == nil {
 			t.Fatalf("make accepted arguments %v", args)
 		}
 	}
@@ -150,14 +149,14 @@ func TestPreparationValidatesInputsWithoutEffects(t *testing.T) {
 		directory.Source = source
 		settings.Directories["api"] = directory
 		writeFixture(t, scope, settings, nodes)
-		if _, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}, nil); err == nil {
 			t.Fatalf("accepted source %q", source)
 		}
 	}
 	settings.Directories["api"] = Directory{Source: "absent", Destination: "/opt/api", Select: Selector{Roles: []string{"web"}}}
 	writeFixture(t, scope, settings, nodes)
 	// Make operates on the existing remote directory, without reading source files.
-	if _, err := d.Prepare(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": "deploy"}); err != nil {
+	if _, err := d.loadExecution(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": "deploy"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -230,7 +229,7 @@ func TestSecretFilesValidateAndRequireCredentialsBeforeEffects(t *testing.T) {
 		directory.SecretFiles = files
 		settings.Directories["api"] = directory
 		writeFixture(t, scope, settings, nodes)
-		if _, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "push", runmill.Arguments{"directory": "api"}, nil); err == nil {
 			t.Fatalf("accepted invalid secret file mapping %v", files)
 		}
 	}
@@ -238,12 +237,12 @@ func TestSecretFilesValidateAndRequireCredentialsBeforeEffects(t *testing.T) {
 	settings.Directories["api"] = directory
 	writeFixture(t, scope, settings, nodes)
 	before, _ := artifacts.SourceHash(scope.WorkspaceDir)
-	p, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
+	p, err := d.loadExecution(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, secrets := range []map[string]string{nil, {"token": ""}, {"token": "\n "}, {"token": strings.Repeat("x", artifacts.SettingsLimit+1)}} {
-		if _, err := p.Execute(t.Context(), secrets); err == nil {
+		if _, err := p.run(t.Context(), secrets); err == nil {
 			t.Fatal("accepted missing, empty or oversized credential")
 		}
 	}
@@ -289,11 +288,7 @@ func TestExecutionVerifiesHostsTargetsAndRechecksArtifact(t *testing.T) {
 			settings.Directories["api"] = directory
 			writeFixture(t, scope, settings, nodes)
 			d.Tool = stubTool(t, tc.recap)
-			p, err := d.Prepare(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": "deploy"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := p.Execute(t.Context(), nil)
+			result, err := d.Execute(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": "deploy"}, nil)
 			if (err == nil) != tc.ok {
 				t.Fatalf("result %v: %v", result, err)
 			}
@@ -306,19 +301,19 @@ func TestExecutionVerifiesHostsTargetsAndRechecksArtifact(t *testing.T) {
 		})
 	}
 	d, scope, _, _ := fixture(t)
-	p, err := d.Prepare(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
+	p, err := d.loadExecution(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = os.Remove(filepath.Join(scope.ArtifactDir, "opentofu-nodes-v1.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.Execute(t.Context(), nil); err == nil {
+	if _, err = p.run(t.Context(), nil); err == nil {
 		t.Fatal("execution accepted retired artifact")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err = p.Execute(ctx, nil); err != context.Canceled {
+	if _, err = p.run(ctx, nil); err != context.Canceled {
 		t.Fatal(err)
 	}
 }
@@ -351,12 +346,12 @@ func TestRealAnsiblePushAndMake(t *testing.T) {
 		}
 	}
 	args := runmill.Arguments{"directory": "api"}
-	p, err := d.Prepare(t.Context(), scope, "push", args)
+	p, err := d.loadExecution(t.Context(), scope, "push", args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	privateKey := "synthetic-private-key\n{{ lookup('pipe', 'false') }}\n$literal\n"
-	value, err := p.Execute(t.Context(), map[string]string{"token": "synthetic-token", "tls-key": privateKey})
+	value, err := p.run(t.Context(), map[string]string{"token": "synthetic-token", "tls-key": privateKey})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, logs.String())
 	}
@@ -378,7 +373,7 @@ func TestRealAnsiblePushAndMake(t *testing.T) {
 		t.Fatal("secret file contents appeared in diagnostics")
 	}
 	// A repeated push refreshes secret files even when the payload is unchanged.
-	if _, err = p.Execute(t.Context(), map[string]string{"token": "rotated-token", "tls-key": privateKey, "previous-token": "synthetic-token"}); err != nil {
+	if _, err = p.run(t.Context(), map[string]string{"token": "rotated-token", "tls-key": privateKey, "previous-token": "synthetic-token"}); err != nil {
 		t.Fatal(err)
 	}
 	rotated, err := os.ReadFile(filepath.Join(directory.Destination, "secrets/root_token"))
@@ -386,11 +381,7 @@ func TestRealAnsiblePushAndMake(t *testing.T) {
 		t.Fatal("secret rotation was not applied", err)
 	}
 	for _, target := range []string{"build", "deploy"} {
-		command, err := d.Prepare(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": target})
-		if err != nil {
-			t.Fatal(err)
-		}
-		value, err := command.Execute(t.Context(), map[string]string{"token": "synthetic-token"})
+		value, err := d.Execute(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": target}, map[string]string{"token": "synthetic-token"})
 		if err != nil || value.(Result).Pushed || len(value.(Result).Targets["web-1"]) != 1 {
 			t.Fatalf("%v: %v\n%s", value, err, logs.String())
 		}
@@ -414,11 +405,7 @@ func TestRealAnsiblePushAndMake(t *testing.T) {
 	}
 	for _, target := range []string{"deploy", "fail"} {
 		logs.Reset()
-		p, err := d.Prepare(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": target})
-		if err != nil {
-			t.Fatal(err)
-		}
-		value, err := p.Execute(t.Context(), nil)
+		value, err := d.Execute(t.Context(), scope, "make", runmill.Arguments{"directory": "api", "target": target}, nil)
 		if target == "deploy" && (err != nil || value.(Result).Pushed) {
 			t.Fatalf("%v: %v\n%s", value, err, logs.String())
 		}
@@ -437,8 +424,8 @@ func TestDefinitionAdvertisesIndependentCommands(t *testing.T) {
 		if command.AccessMode != runmill.ReadWrite {
 			t.Fatal("remote effects require exclusive Instance access")
 		}
-		if _, err := json.Marshal(command.ArgumentsSchema); err != nil {
-			t.Fatal(err)
+		if command.Description == "" {
+			t.Fatal("missing command description")
 		}
 	}
 }

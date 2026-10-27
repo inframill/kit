@@ -31,6 +31,30 @@ func Decode(data []byte, target any) error {
 	}
 	return nil
 }
+
+// DecodeArguments rejects null fields that encoding/json otherwise treats as
+// zero values. Providers must reject incompatible input before effects even if a
+// Blueprint publishes a more permissive schema than the command supports.
+func DecodeArguments(arguments map[string]any, target any) error {
+	if arguments == nil {
+		arguments = map[string]any{}
+	}
+	data, err := json.Marshal(arguments)
+	if err != nil {
+		return errors.New("invalid arguments")
+	}
+	var fields map[string]json.RawMessage
+	if err = json.Unmarshal(data, &fields); err != nil {
+		return errors.New("invalid arguments")
+	}
+	for _, value := range fields {
+		if bytes.Equal(value, []byte("null")) {
+			return errors.New("argument fields must not be null")
+		}
+	}
+	return Decode(data, target)
+}
+
 func Hash(data []byte) string   { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 func JSONHash(value any) string { data, _ := json.Marshal(value); return Hash(data) }
 func Relative(name string) bool {

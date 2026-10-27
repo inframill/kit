@@ -22,18 +22,14 @@ func fixture(t *testing.T) (Provider, runmill.ExecutionContext) {
 	artifacts.Write(work, "kit-provider.json", Settings{Schema: 1, Backend: map[string]any{}, Environment: map[string]string{}})
 	return Provider{Version: "0.4.0", ToolVersion: "1.11.5", Tool: "/missing"}, runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "tofu", "settings_file": "kit-provider.json", "backend": "local", "node_output": "nodes", "artifact": "tofu-nodes-v1.json"}}
 }
-func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
+func TestPrerequisitesAndSecretsBeforeEffects(t *testing.T) {
 	d, s := fixture(t)
 	artifacts.Write(s.WorkspaceDir, "kit-provider.json", Settings{Schema: 1, Environment: map[string]string{"HCLOUD_TOKEN": "cloud-token"}})
 	if e := d.ValidateSettings(t.Context(), s.Settings); e != nil {
 		t.Fatal(e)
 	}
 	for _, name := range []string{"plan", "apply", "destroy"} {
-		p, e := d.Prepare(t.Context(), s, name, nil)
-		if e != nil {
-			t.Fatal(e)
-		}
-		_, e = p.Execute(t.Context(), map[string]string{})
+		_, e := d.Execute(t.Context(), s, name, nil, map[string]string{})
 		var detail *runmill.ProviderError
 		if !errors.As(e, &detail) || detail.Code != "MISSING_SECRET" {
 			t.Fatal(name, e)
@@ -45,10 +41,10 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 	}
 	entries, _ = os.ReadDir(s.WorkspaceDir)
 	if len(entries) != 1 {
-		t.Fatal("preparation wrote files")
+		t.Fatal("input validation wrote files")
 	}
-	for _, args := range []map[string]any{{"destroy": true, "refresh_only": true}, {"plan_id": "x"}, {"unknown": false}} {
-		if _, e := d.Prepare(t.Context(), s, "plan", args); e == nil {
+	for _, args := range []map[string]any{{"destroy": true, "refresh_only": true}, {"destroy": nil}, {"refresh_only": nil}, {"destroy": "true"}, {"plan_id": "x"}, {"unknown": false}} {
+		if _, e := d.Execute(t.Context(), s, "plan", args, nil); e == nil {
 			t.Fatal("invalid arguments accepted")
 		}
 	}
@@ -64,7 +60,8 @@ func TestPreparationAndSecretsBeforeEffects(t *testing.T) {
 		}
 		data, _ := json.Marshal(map[string]any{"protocol": 1, "method": method, "params": params})
 		var out bytes.Buffer
-		if runmill.Serve(t.Context(), d, runmill.ServeOptions{Version: d.Version, Stdin: bytes.NewReader(data), Stdout: &out}) != 0 {
+		code := runmill.Serve(t.Context(), d, runmill.ServeOptions{Version: d.Version, Stdin: bytes.NewReader(data), Stdout: &out})
+		if (code == 0) != (method != "validate_command") {
 			t.Fatal(out.String())
 		}
 	}
@@ -75,11 +72,11 @@ func TestOptionalPlanIDRejectsInvalidSuppliedValues(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			d, scope := fixture(t)
 			for _, id := range []any{"", nil, 42, "bad", "../../outside", "00000000000000000000000000"} {
-				if _, err := d.Prepare(t.Context(), scope, name, runmill.Arguments{"plan_id": id}); err == nil {
+				if _, err := d.Execute(t.Context(), scope, name, runmill.Arguments{"plan_id": id}, nil); err == nil {
 					t.Fatalf("accepted invalid plan_id %v", id)
 				}
 			}
-			if _, err := d.Prepare(t.Context(), scope, name, runmill.Arguments{"plan_id": scope.ExecutionID}); err == nil {
+			if _, err := d.Execute(t.Context(), scope, name, runmill.Arguments{"plan_id": scope.ExecutionID}, nil); err == nil {
 				t.Fatal("missing saved plan fell back to direct execution")
 			}
 		})
@@ -134,14 +131,14 @@ show)
 esac
 `
 			write(filepath.Dir(d.Tool), "tofu", script, 0700)
-			p, err := d.Prepare(t.Context(), scope, tc.command, nil)
+			p, err := d.loadExecution(t.Context(), scope, tc.command, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err = os.Stat(filepath.Join(scope.WorkspaceDir, "calls.txt")); !os.IsNotExist(err) {
-				t.Fatal("preparation invoked the tool", err)
+				t.Fatal("input validation invoked the tool", err)
 			}
-			result, err := p.Execute(t.Context(), nil)
+			result, err := p.run(t.Context(), nil)
 			if (err != nil) != tc.wantError {
 				t.Fatalf("result %v, error %v", result, err)
 			}
@@ -178,11 +175,7 @@ func TestCloudflareSecretScopeAndAdmission(t *testing.T) {
 	if err := artifacts.Write(scope.WorkspaceDir, "kit-provider.json", settings); err != nil {
 		t.Fatal(err)
 	}
-	command, err := d.Prepare(t.Context(), scope, "plan", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := command.Execute(t.Context(), nil); err == nil {
+	if _, err := d.Execute(t.Context(), scope, "plan", nil, nil); err == nil {
 		t.Fatal("missing Cloudflare secret was accepted")
 	} else {
 		var detail *runmill.ProviderError
@@ -194,10 +187,13 @@ func TestCloudflareSecretScopeAndAdmission(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatal("effects before credentials", entries, err)
 	}
-	prepared := command.(*prepared)
+	command, err := d.loadExecution(t.Context(), scope, "plan", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"init", "validate", "output", "plan", "apply", "destroy"} {
-		prepared.command = name
-		credentials := prepared.credentials()
+		command.command = name
+		credentials := command.credentials()
 		needed := name == "plan" || name == "apply" || name == "destroy"
 		if (credentials["CLOUDFLARE_API_TOKEN"] == "cloudflare") != needed {
 			t.Fatalf("Cloudflare credential scope for %s: %v", name, credentials)
@@ -227,11 +223,7 @@ apply) exit 1;;
 esac
 `), 0700)
 	d.Tool = tool
-	p, e := d.Prepare(t.Context(), s, "plan", nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	v, e := p.Execute(t.Context(), nil)
+	v, e := d.Execute(t.Context(), s, "plan", nil, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -250,14 +242,14 @@ esac
 			t.Fatal(err)
 		}
 	}
-	if _, e = d.Prepare(t.Context(), bad, "apply", args); e == nil {
+	if _, e = d.Execute(t.Context(), bad, "apply", args, nil); e == nil {
 		t.Fatal("plan copied to another artifact directory accepted")
 	}
-	if _, e = d.Prepare(t.Context(), s, "destroy", args); e == nil {
+	if _, e = d.Execute(t.Context(), s, "destroy", args, nil); e == nil {
 		t.Fatal("wrong mode accepted")
 	}
 	artifacts.Write(s.WorkspaceDir, "changed.tf", map[string]any{})
-	if _, e = d.Prepare(t.Context(), s, "apply", args); e == nil {
+	if _, e = d.Execute(t.Context(), s, "apply", args, nil); e == nil {
 		t.Fatal("changed source accepted")
 	}
 	artifacts.Remove(s.WorkspaceDir, "changed.tf")
@@ -267,23 +259,19 @@ esac
 		t.Fatal(err)
 	}
 	artifacts.WriteBytes(s.ArtifactDir, planName, []byte("tampered"))
-	if _, e = d.Prepare(t.Context(), s, "apply", args); e == nil {
+	if _, e = d.Execute(t.Context(), s, "apply", args, nil); e == nil {
 		t.Fatal("corrupt plan accepted")
 	}
 	artifacts.WriteBytes(s.ArtifactDir, planName, original)
 	artifacts.Write(s.ArtifactDir, "tofu-nodes-v1.json", map[string]bool{"valid": true})
-	p, e = d.Prepare(t.Context(), s, "apply", args)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = p.Execute(t.Context(), nil); e == nil {
+	if _, e = d.Execute(t.Context(), s, "apply", args, nil); e == nil {
 		t.Fatal("failed tool accepted")
 	}
 	data, _ := artifacts.Read(s.ArtifactDir, "tofu-nodes-v1.json", artifacts.Limit)
 	if bytes.Contains(data, []byte(`"valid":true`)) {
 		t.Fatal("inventory remains valid")
 	}
-	if _, e = d.Prepare(t.Context(), s, "apply", args); e == nil {
+	if _, e = d.Execute(t.Context(), s, "apply", args, nil); e == nil {
 		t.Fatal("partially applied plan replayed")
 	}
 }
@@ -301,11 +289,11 @@ func TestUsesEngineSuppliedProviderDirectory(t *testing.T) {
 	nested := filepath.Join(expected, "opentofu")
 	os.Mkdir(nested, 0700)
 	os.WriteFile(filepath.Join(nested, "kit-provider.json"), []byte("wrong nested root"), 0600)
-	command, err := d.Prepare(t.Context(), s, "plan", nil)
+	command, err := d.loadExecution(t.Context(), s, "plan", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := command.(*prepared).scope
+	scope := command.scope
 	if scope.WorkspaceDir != expected || scope.ArtifactDir != s.ArtifactDir {
 		t.Fatal("provider changed engine-supplied workspace or artifact paths")
 	}
@@ -322,7 +310,7 @@ func TestS3RequiresExplicitStateKey(t *testing.T) {
 		if err := artifacts.Write(scope.WorkspaceDir, "kit-provider.json", settings); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := d.Prepare(t.Context(), scope, "init", nil); err == nil {
+		if _, err := d.Execute(t.Context(), scope, "init", nil, nil); err == nil {
 			t.Fatalf("accepted key %v", key)
 		}
 	}
@@ -345,11 +333,7 @@ done
 		t.Fatal(err)
 	}
 	d.Tool = tool
-	prepared, err := d.Prepare(t.Context(), scope, "init", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := prepared.Execute(t.Context(), nil); err != nil {
+	if _, err := d.Execute(t.Context(), scope, "init", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -375,11 +359,7 @@ printf '%s\n' "$@" > args.txt
 				t.Fatal(err)
 			}
 			d.Tool = tool
-			command, err := d.Prepare(t.Context(), scope, "init", nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := command.Execute(t.Context(), nil); err != nil {
+			if _, err := d.Execute(t.Context(), scope, "init", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			args, err := os.ReadFile(filepath.Join(scope.WorkspaceDir, "args.txt"))
@@ -401,12 +381,12 @@ printf '%s\n' "$@" > args.txt
 func TestPlanRejectsUnsafeExecutionIDBeforeEffects(t *testing.T) {
 	d, scope := fixture(t)
 	scope.ExecutionID = "../../outside"
-	command, err := d.Prepare(t.Context(), scope, "plan", nil)
+	command, err := d.loadExecution(t.Context(), scope, "plan", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Exercise plan directly: the identifier check must precede file creation.
-	if _, err := command.(*prepared).plan(t.Context(), toolrun.Runner{}); err == nil {
+	if _, err := command.plan(t.Context(), toolrun.Runner{}); err == nil {
 		t.Fatal("unsafe execution ID accepted")
 	}
 	entries, err := os.ReadDir(scope.ArtifactDir)

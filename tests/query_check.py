@@ -8,6 +8,13 @@ import urllib.error
 from engine_client import assert_namespace_ready
 
 
+def cli_blueprint(info):
+    return {**info, 'commands': [
+        {**command, 'argumentsSchema': json.loads(command['argumentsSchema']['json'])}
+        for command in info.get('commands', [])
+    ]}
+
+
 def query_check(client, reference, arch):
     def invoke(*args):
         return subprocess.run(
@@ -38,8 +45,8 @@ def query_check(client, reference, arch):
 
     commands = request('provider', 'commands')['commands']
     wire_commands = client.rpc('ListCommandDefinitions')['commands']
-    assert commands == [{**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
-                        for c in wire_commands], commands
+    assert commands == wire_commands, commands
+    assert all('argumentsSchema' not in c for c in commands), commands
     assert {'opentofu.plan', 'ansible.apply'} <= {c['name'] for c in commands}
     assert not any(c['name'].startswith('builtin.') for c in commands)
     for command in commands:
@@ -101,10 +108,11 @@ def query_check(client, reference, arch):
         registries.write_text(json.dumps({
             'host': 'example.invalid', 'username': 'synthetic-query-user', 'password': 'synthetic-query-password'}))
         request('registry', 'upsert', '--namespace', namespace, '--file', str(registries))
-        assert request('blueprint', 'get', reference, '--namespace', namespace) == blueprints[namespace]
+        assert request('blueprint', 'get', reference, '--namespace', namespace) == cli_blueprint(blueprints[namespace])
         resolved = request('blueprint', 'resolve', reference, '--namespace', namespace)
         wire_blueprint = client.rpc('GetBlueprint', {'reference': reference}, namespace=namespace)
-        assert resolved['blueprint'] == wire_blueprint['blueprint'] == blueprints[namespace]
+        assert wire_blueprint['blueprint'] == blueprints[namespace]
+        assert resolved['blueprint'] == cli_blueprint(blueprints[namespace])
         schema = json.loads(wire_blueprint['valuesSchema']['json'])
         assert resolved['valuesSchema'] == schema, resolved
         assert schema['required'] == ['architecture'], schema
@@ -112,6 +120,18 @@ def query_check(client, reference, arch):
         instance = request('instance', 'get', 'same', '--namespace', namespace)['instance']
         assert instance['id'] == instances[namespace][0] and instance['name'] == 'same', instance
         assert instance['status'] == 'INSTANCE_STATUS_READY', instance
+        instance_commands = client.rpc('ListInstanceCommandDefinitions', {
+            'instance_id': instances[namespace][0],
+        }, namespace=namespace)['commands']
+        contracts = {c['name']: c['argumentsSchema'] for c in blueprints[namespace]['commands']}
+        assert {c['name'] for c in instance_commands} == set(contracts) | {
+            'builtin.cancel', 'builtin.delete', 'builtin.rerender'}, instance_commands
+        for command in instance_commands:
+            if command['name'] in contracts:
+                assert command['argumentsSchema'] == contracts[command['name']], command
+        assert request('instance', 'commands', 'same', '--namespace', namespace)['commands'] == [
+            {**c, 'argumentsSchema': json.loads(c['argumentsSchema']['json'])}
+            for c in instance_commands]
         assert instance['createdAt'] and instance['updatedAt'] and 'deletedAt' not in instance, instance
         assert 'namespace' not in instance
         assert invoke('instance', 'get', namespace + '/same', '--namespace', namespace).returncode == 2
@@ -144,8 +164,12 @@ def query_check(client, reference, arch):
                 assert {i['id'] for i in rows} == set(instances[namespace]), rows
             assert all('namespace' not in row for row in rows), rows
             cli_rows = request(resource, 'list', '--namespace', namespace).get(field, [])
-            expected_rows = ([{**row, 'values': json.loads(row['values']['json'])} for row in rows]
-                             if resource == 'instance' else rows)
+            if resource == 'instance':
+                expected_rows = [{**row, 'values': json.loads(row['values']['json'])} for row in rows]
+            elif resource == 'blueprint':
+                expected_rows = [cli_blueprint(row) for row in rows]
+            else:
+                expected_rows = rows
             assert cli_rows == expected_rows, (resource, cli_rows, expected_rows)
         table = subprocess.run(
             [client.binary, resource, 'list', '--namespace', 'query-alpha', '--endpoint', client.endpoint],

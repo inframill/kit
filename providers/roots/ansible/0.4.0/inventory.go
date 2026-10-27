@@ -23,7 +23,7 @@ type host struct {
 	Architecture string `json:"kit_architecture,omitempty"`
 }
 
-func (p *prepared) inventory() (inventoryDocument, artifacts.Nodes, error) {
+func (p *execution) inventory() (inventoryDocument, artifacts.Nodes, error) {
 	result := inventoryDocument{All: inventoryGroup{Hosts: map[string]host{}, Children: map[string]inventoryGroup{}}}
 	nodes, err := artifacts.ReadNodes(p.scope.ArtifactDir, p.static.Artifact, artifacts.Scope(p.scope.ArtifactDir), p.static.ProducerID, p.static.ProducerVersion)
 	if err != nil {
@@ -90,7 +90,7 @@ func (p *prepared) inventory() (inventoryDocument, artifacts.Nodes, error) {
 	}
 	return result, nodes, nil
 }
-func (p *prepared) expected(nodes artifacts.Nodes) []string {
+func (p *execution) expected(nodes artifacts.Nodes) []string {
 	out := append([]string(nil), p.args.Hosts...)
 	if len(out) == 0 {
 		for _, n := range nodes.Nodes {

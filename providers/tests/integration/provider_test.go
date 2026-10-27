@@ -50,52 +50,23 @@ func TestVersionedProviderEntrypoints(t *testing.T) {
 			if err != nil || json.Unmarshal(output, &reply) != nil || reply.Type != "success" {
 				t.Fatalf("standalone discovery: %s: %v", output, err)
 			}
-			if name == "opentofu" {
-				return
+
+			var info runmill.ProviderInfo
+			if err := json.Unmarshal(reply.Data, &info); err != nil || info.Name != name || len(info.Commands) == 0 {
+				t.Fatalf("provider metadata: %s: %v", reply.Data, err)
+			}
+			if bytes.Contains(reply.Data, []byte("argumentsSchema")) {
+				t.Fatal("Provider advertised Blueprint-owned argument schemas")
 			}
 			host := runmill.NewHost(os.Environ())
 			if err := host.Load(t.Context(), map[string]runmill.Executable{name: {Path: binary}}); err != nil {
 				t.Fatal(err)
 			}
-			cases := []struct {
-				command string
-				args    runmill.Arguments
-				valid   bool
-			}{
-				{"apply", nil, true},
-				{"apply", runmill.Arguments{"playbook": "other"}, true},
-				{"apply", runmill.Arguments{"playbook": ""}, false},
-				{"apply", runmill.Arguments{"playbook": nil}, false},
-				{"syntax-check", nil, false},
-				{"check", nil, false},
+			entries, err := host.List(t.Context())
+			if err != nil || len(entries) != 1 || entries[0].Availability != runmill.Available {
+				t.Fatal(entries, err)
 			}
-			if name == "dispatch" {
-				cases = []struct {
-					command string
-					args    runmill.Arguments
-					valid   bool
-				}{
-					{"push", runmill.Arguments{"directory": "api"}, true},
-					{"push", nil, false},
-					{"push", runmill.Arguments{"directory": 42}, false},
-					{"push", runmill.Arguments{"directory": "api", "target": "deploy"}, false},
-					{"push", runmill.Arguments{"directory": "api", "select": map[string]any{}}, false},
-					{"make", runmill.Arguments{"directory": "api", "target": "deploy"}, true},
-					{"make", runmill.Arguments{"directory": "api"}, false},
-					{"make", runmill.Arguments{"target": "deploy"}, false},
-					{"make", runmill.Arguments{"directory": "api", "target": ""}, false},
-					{"make", runmill.Arguments{"directory": "api", "target": nil}, false},
-					{"make", runmill.Arguments{"directory": "api", "target": []string{"deploy"}}, false},
-					{"make", runmill.Arguments{"directory": "api", "targets": []string{"deploy"}}, false},
-					{"make", runmill.Arguments{"directory": "api", "target": "deploy", "variables": map[string]string{"ENV": "prod"}}, false},
-				}
-			}
-			for _, tc := range cases {
-				err := host.ValidateArguments(t.Context(), name, tc.command, tc.args)
-				if (err == nil) != tc.valid {
-					t.Fatalf("%s arguments %v: %v", tc.command, tc.args, err)
-				}
-			}
+
 		})
 	}
 }
@@ -123,24 +94,6 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 			t.Fatal(entry)
 		}
 	}
-	for _, command := range []string{"apply", "destroy"} {
-		for _, args := range []map[string]any{nil, {}, {"plan_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}} {
-			if err := m.ValidateArguments(t.Context(), "opentofu", command, args); err != nil {
-				t.Fatal(command, args, err)
-			}
-		}
-		for _, value := range []any{"", nil, 42, "bad", "00000000000000000000000000"} {
-			if err := m.ValidateArguments(t.Context(), "opentofu", command, map[string]any{"plan_id": value}); err == nil {
-				t.Fatalf("%s schema accepted invalid plan_id %v", command, value)
-			}
-		}
-	}
-	if m.ValidateArguments(t.Context(), "second", "probe", map[string]any{"text": "wrong"}) == nil {
-		t.Fatal("version schema was aliased")
-	}
-	if e = m.ValidateArguments(t.Context(), "second", "probe", map[string]any{"message": "right"}); e != nil {
-		t.Fatal(e)
-	}
 	settings := runmill.Settings{"contract": "0.1.0"}
 	if m.ValidateSettings(t.Context(), "second", settings) == nil {
 		t.Fatal("wrong manifest contract accepted")
@@ -149,13 +102,9 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 	os.Mkdir(work, 0700)
 	os.WriteFile(filepath.Join(work, "kit-provider.json"), []byte(`{"schema":1,"backend_config":{},"environment":{}}`), 0600)
 	scope := runmill.ExecutionContext{WorkspaceDir: work, ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", Settings: runmill.Settings{"id": "opentofu", "backend": "local", "node_output": "nodes", "settings_file": "kit-provider.json", "artifact": "opentofu-nodes-v1.json"}}
-	p, e := m.Prepare(t.Context(), runmill.Execution{ProviderID: "opentofu", Command: "plan", Context: scope})
-	if e != nil {
-		t.Fatal(e)
-	}
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
-	if _, e = p.Execute(ctx, map[string]string{}); e == nil {
+	if _, e = m.Execute(ctx, runmill.Execution{ProviderID: "opentofu", Command: "plan", Context: scope}, nil); e == nil {
 		t.Fatal("cancellation succeeded")
 	}
 	time.Sleep(500 * time.Millisecond)
@@ -165,11 +114,14 @@ func TestHostVersionsRepliesAndCancellation(t *testing.T) {
 	var replies bytes.Buffer
 	scope.Replies = &replies
 	scope.Settings = runmill.Settings{"contract": "0.1.0"}
-	p, e = m.Prepare(t.Context(), runmill.Execution{ProviderID: "first", Command: "probe", Context: scope, Arguments: map[string]any{"text": "ok"}})
-	if e != nil {
+	if _, e = m.Execute(t.Context(), runmill.Execution{ProviderID: "first", Command: "probe", Context: scope, Arguments: map[string]any{"text": "ok"}}, map[string]string{"token": "synthetic-value"}); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = p.Execute(t.Context(), map[string]string{"token": "synthetic-value"}); e != nil {
+	scope.Settings = runmill.Settings{"contract": "0.2.0"}
+	if _, e = m.Execute(t.Context(), runmill.Execution{ProviderID: "second", Command: "probe", Context: scope, Arguments: map[string]any{"text": "wrong"}}, nil); e == nil {
+		t.Fatal("Provider did not defensively reject an incompatible argument contract")
+	}
+	if _, e = m.Execute(t.Context(), runmill.Execution{ProviderID: "second", Command: "probe", Context: scope, Arguments: map[string]any{"message": "right"}}, nil); e != nil {
 		t.Fatal(e)
 	}
 	if !bytes.Contains(replies.Bytes(), []byte(`"type":"message"`)) || !bytes.Contains(replies.Bytes(), []byte(`"type":"success"`)) || bytes.Contains(replies.Bytes(), []byte("synthetic-value")) {
@@ -200,6 +152,7 @@ func TestExecutableUsesOnlyJSONDispatch(t *testing.T) {
 		{`{"protocol":1,"method":"validate_settings","params":{"settings":{"contract":"0.1.0"}}}`, true},
 		{`{"protocol":1,"method":"validate_settings","params":{"config":{"contract":"0.1.0"}}}`, false},
 		{`{"protocol":1,"method":"validate_manifest","params":{"settings":{"contract":"0.1.0"}}}`, false},
+		{`{"protocol":1,"method":"validate_command","params":{}}`, false},
 	} {
 		cmd := exec.Command(bin, "provider", "fixture", "--provider-version", "0.1.0")
 		cmd.Stdin = bytes.NewBufferString(tc.request)
@@ -227,7 +180,7 @@ func TestHostRejectsInvalidFinalReplies(t *testing.T) {
 			script := `#!/bin/sh
 read request
 case "$request" in
-*'"method":"info"'*) printf '%s\n' '{"type":"success","data":{"name":"broken","version":"1.0.0","protocolVersion":1,"commands":{"probe":{"accessMode":"read_only","description":"probe","argumentsSchema":{"type":"object"}}}}}';;
+*'"method":"info"'*) printf '%s\n' '{"type":"success","data":{"name":"broken","version":"1.0.0","protocolVersion":1,"commands":{"probe":{"accessMode":"read_only","description":"probe"}}}}';;
 *'"method":"run"'*) printf '%s\n' '` + tc.reply + `'; exit ` + fmt.Sprint(tc.exit) + `;;
 *) printf '%s\n' '{"type":"success"}';;
 esac
@@ -240,11 +193,7 @@ esac
 				t.Fatal(e)
 			}
 			scope := runmill.ExecutionContext{Settings: runmill.Settings{}, WorkspaceDir: t.TempDir(), ArtifactDir: t.TempDir(), ExecutionID: "01ARZ3NDEKTSV4RRFFQ69G5FAV"}
-			prepared, e := manager.Prepare(t.Context(), runmill.Execution{ProviderID: "broken", Command: "probe", Context: scope})
-			if e != nil {
-				t.Fatal(e)
-			}
-			if _, e = prepared.Execute(t.Context(), nil); e == nil {
+			if _, e := manager.Execute(t.Context(), runmill.Execution{ProviderID: "broken", Command: "probe", Context: scope}, nil); e == nil {
 				t.Fatal("invalid final reply succeeded")
 			}
 		})
