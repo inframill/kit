@@ -1,8 +1,26 @@
 # Releasing Kit
 
+## pv-cloud 0.10.0
+
+The fresh-instance example adds `web-1` with `common`, `docker` and `web` roles.
+A Millway Dispatch payload runs the unchanged non-root UI/API image, connects to
+`app1` on `data-1`, and authenticates to Inframill on `worker-1`. It uses the same
+`start`, `status`, `verify` and `stop` targets. `millway-root-token` is an additional
+required namespace secret; `cloudflare.zone_name` derives and validates service
+DNS names. Millway uses the generated web-node DNS name.
+
+The web role replaces Nginx installation with a web-node kernel port threshold
+of 443, permitting non-root HTTPS with host networking. Protected configuration
+is staged into a private volume for UID/GID 65532. No Millway source changes are
+required. Verification tests database connectivity, migration checksums, fresh
+authenticated Inframill version pings and the Millway HTTPS API/UI. The pinned
+migration manifest must be refreshed alongside matching image changes.
+
+`0.9.0` and existing Instance snapshots keep their prior sources and behavior.
+
 ## pv-cloud 0.9.0
 
-The `0.9.0` and `latest` Blueprints share TLS settings as `tls.certificate` and
+The `0.9.0` Blueprint introduced shared TLS settings as `tls.certificate` and
 the `pv-cloud-tls-private-key` namespace secret. Move the old `inframill.tls_cert`
 value and upsert the same private key under the new name. The `0.8.0` tag and
 existing Instance snapshots retain their prior names and behavior.

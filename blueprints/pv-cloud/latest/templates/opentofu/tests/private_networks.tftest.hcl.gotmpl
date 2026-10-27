@@ -13,6 +13,7 @@ mock_provider "cloudflare" {
 
 variables {
   cloudflare_zone_id = "0123456789abcdef0123456789abcdef"
+  cloudflare_zone_name = "example.test"
   private_networks = [{ name = "frontend", cidr = "10.40.1.0/24" }, { name = "database", cidr = "10.40.2.0/24" }]
   nodes = {
     web-1 = {

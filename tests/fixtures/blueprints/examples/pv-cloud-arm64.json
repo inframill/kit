@@ -13,28 +13,61 @@
     ]
   },
   "nodes": {
-    "web-arm": {
+    "data-1": {
       "architecture": "arm64",
       "image": "ubuntu-24.04",
       "server_type": "cax11",
       "location": "fsn1",
       "roles": [
         "common",
+        "docker",
+        "data"
+      ],
+      "private_networks": []
+    },
+    "worker-1": {
+      "architecture": "arm64",
+      "image": "ubuntu-24.04",
+      "server_type": "cax11",
+      "location": "fsn1",
+      "roles": [
+        "common",
+        "docker",
+        "worker"
+      ],
+      "private_networks": []
+    },
+    "web-1": {
+      "architecture": "arm64",
+      "image": "ubuntu-24.04",
+      "server_type": "cax11",
+      "location": "fsn1",
+      "roles": [
+        "common",
+        "docker",
         "web"
       ],
       "private_networks": []
     }
   },
   "cloudflare": {
-    "zone_id": "0123456789abcdef0123456789abcdef"
+    "zone_id": "0123456789abcdef0123456789abcdef",
+    "zone_name": "example.test"
   },
   "ansible": {
     "address_mode": "public_ipv4"
   },
   "inframill": {
-    "image": "ghcr.io/inframill/kit:0.1.22-dev"
+    "image": "ghcr.io/inframill/kit:0.1.23-dev"
   },
   "tls": {
     "certificate": "-----BEGIN CERTIFICATE-----\nREPLACE_WITH_YOUR_PEM_CERTIFICATE_CHAIN\n-----END CERTIFICATE-----\n"
+  },
+  "millway": {
+    "image": "ghcr.io/inframill/millway:0.1.4-dev",
+    "google_client_ids": {
+      "web": "REPLACE_WITH_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com"
+    },
+    "admin_emails": []
   }
 }

@@ -3,10 +3,11 @@
     "address_mode": "public_ipv4"
   },
   "cloudflare": {
-    "zone_id": "2ece89727911d11992decfb720af5c5a"
+    "zone_id": "2ece89727911d11992decfb720af5c5a",
+    "zone_name": "kummus.app"
   },
   "inframill": {
-    "image": "ghcr.io/inframill/kit:0.1.22-dev"
+    "image": "ghcr.io/inframill/kit:0.1.23-dev"
   },
   "network": {
     "private_networks": [],
@@ -34,6 +35,18 @@
         "common",
         "docker",
         "worker"
+      ],
+      "server_type": "cpx22"
+    },
+    "web-1": {
+      "architecture": "amd64",
+      "image": "ubuntu-24.04",
+      "location": "fsn1",
+      "private_networks": [],
+      "roles": [
+        "common",
+        "docker",
+        "web"
       ],
       "server_type": "cpx22"
     }
@@ -71,5 +84,12 @@
     ],
     "max_connections": 50,
     "work_mem_mb": 4
+  },
+  "millway": {
+    "image": "ghcr.io/inframill/millway:0.1.4-dev",
+    "google_client_ids": {
+      "web": "REPLACE_WITH_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com"
+    },
+    "admin_emails": ["sir.sir.hassan@gmail.com"]
   }
 }

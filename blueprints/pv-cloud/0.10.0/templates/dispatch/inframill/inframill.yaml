@@ -1,0 +1,45 @@
+# Inframill worker: native HTTPS and namespace-secret-backed root token.
+main:
+  port: 443
+  tls:
+    certFile: /etc/inframill/tls/fullchain.pem
+    keyFile: /run/secrets/tls_private_key
+  shutdownTimeout: 10s
+  readHeaderTimeout: 5s
+  readTimeout: 15s
+  writeTimeout: 30s
+  idleTimeout: 60s
+
+logger:
+  type: slog
+  settings:
+    level: info
+    format: json
+
+engine:
+  dataDir: /var/lib/inframill
+  localBlueprintPaths:
+    - /opt/inframill/blueprints
+  providers:
+    opentofu:
+      path: /opt/inframill/providers/opentofu/0.4.0/provider
+      args:
+        - --tool
+        - /opt/inframill/tools/opentofu/1.11.5/tofu
+    ansible:
+      path: /opt/inframill/providers/ansible/0.4.0/provider
+      args:
+        - --tool
+        - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
+    dispatch:
+      path: /opt/inframill/providers/dispatch/0.1.0/provider
+      args:
+        - --tool
+        - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
+
+handlers:
+  - type: connect-engine
+    settings:
+      rootToken: ${ROOT_TOKEN}
+
+workers: [ ]

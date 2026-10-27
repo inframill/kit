@@ -39,3 +39,6 @@ variable "cloudflare_zone_id" {
     error_message = "Cloudflare zone ID must be 32 lowercase hexadecimal characters."
   }
 }
+variable "cloudflare_zone_name" {
+  type = string
+}

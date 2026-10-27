@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    network_mode: host
+    entrypoint: ["/bin/sh", "/etc/pv-postgres/entrypoint.sh"]
+    command: ["postgres", "-c", "config_file=/etc/pv-postgres/runtime/postgresql.conf"]
+    mem_limit: "${POSTGRES_MEMORY_MB:-2048}m"
+    shm_size: "${POSTGRES_SHM_MB:-256}m"
+    labels:
+      pv-cloud.config: "${POSTGRES_CONFIG_SHA:-unconfigured}"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGPORT: "${POSTGRES_PORT:-5432}"
+    secrets:
+      - postgres_password
+      - tls_private_key
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./entrypoint.sh:/etc/pv-postgres/entrypoint.sh:ro
+      - ./runtime:/etc/pv-postgres/runtime:ro
+    tmpfs:
+      - /run/pv-postgres-tls:rw,noexec,nosuid,size=1m,mode=0700
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "gosu postgres pg_isready -q -p ${POSTGRES_PORT:-5432} -U postgres -d postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  tls_private_key:
+    file: ./secrets/tls_private_key
+
+volumes:
+  postgres_data:

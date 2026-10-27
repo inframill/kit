@@ -1,0 +1,46 @@
+services:
+  millway:
+    image: "${MILLWAY_IMAGE:?Run make start first}"
+    user: "65532:65532"
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["-config", "/etc/millway/millway.json"]
+    environment:
+      SSL_CERT_FILE: /etc/millway/ca.pem
+      DB_MAX_CONNS: "${MILLWAY_DB_MAX_CONNS:-10}"
+      DB_MIN_CONNS: "1"
+    volumes:
+      - millway_runtime:/etc/millway:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    labels:
+      pv-cloud.config: "${MILLWAY_CONFIG_SHA:-unconfigured}"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "false"
+    stop_grace_period: 10s
+
+  stage:
+    profiles: [tools]
+    image: postgres:16
+    network_mode: none
+    read_only: true
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        install -d -m 0700 -o 65532 -g 65532 /output;
+        for name in millway.json ca.pem fullchain.pem server.key; do
+          install -m 0600 -o 65532 -g 65532 "/input/$$name" "/output/$$name";
+        done
+    volumes:
+      - ./runtime:/input:ro
+      - millway_runtime:/output
+
+volumes:
+  millway_runtime:

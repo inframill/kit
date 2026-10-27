@@ -34,7 +34,7 @@ def prepare_payload(root):
         password.write_text(secrets.token_hex(32) + '\n')
         password.chmod(0o600)
     subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
-                    '-subj', '/CN=postgres.test', '-addext', 'subjectAltName=DNS:postgres.test,IP:127.0.0.1',
+                    '-subj', '/CN=postgres.test', '-addext', 'subjectAltName=DNS:postgres.test,DNS:*.example.test,IP:127.0.0.1',
                     '-keyout', str(payload / 'secrets/tls_private_key'),
                     '-out', str(payload / 'tls/fullchain.pem')], check=True, capture_output=True)
     return payload

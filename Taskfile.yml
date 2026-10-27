@@ -15,6 +15,12 @@ env:
   REFERENCE: '{{default "" .REFERENCE}}'
 
 tasks:
+  millway:manifest:
+    desc: Refresh the pinned Millway image migration contract from the unchanged sibling checkout
+    vars:
+      MILLWAY_SOURCE: '{{.MILLWAY_SOURCE | default "../millway"}}'
+    cmds:
+      - python3 blueprints/millway_manifest.py --source "{{.MILLWAY_SOURCE}}" --output blueprints/pv-cloud/latest/templates/dispatch/millway/migrations.json --output blueprints/pv-cloud/0.10.0/templates/dispatch/millway/migrations.json
   default:
     aliases: [help]
     desc: Show tasks, examples and version selectors
@@ -147,8 +153,9 @@ tasks:
   check-full:
     desc: Run fast checks, native workflows and both Linux images in a disposable registry
     summary: |
-      Prerequisites: task setup, task providers:build -- --native, Docker, openssl, and task bundle.
-      Runs local resources, provider mocks, disposable PostgreSQL, daemon and registry checks, then
+      Prerequisites: task setup, task providers:build -- --native, Docker, openssl, task bundle,
+      and the Millway UI/API image matching the pinned migration contract.
+      Runs local resources, provider mocks, disposable PostgreSQL/Millway, daemon and registry checks, then
       ARM64/AMD64 image workflows. Creates no cloud resources or GHCR packages.
     cmds:
       - task: check-fast

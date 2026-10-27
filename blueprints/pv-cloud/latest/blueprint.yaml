@@ -7,6 +7,7 @@ required_secrets:
   - cloudflare
   - hetzner
   - inframill-root-token
+  - millway-root-token
   - pv-cloud-tls-private-key
   - pv-cloud-registry-token
 
@@ -123,7 +124,7 @@ command_arguments:
     properties:
       directory:
         type: string
-        enum: [postgres, inframill]
+        enum: [postgres, inframill, millway]
   dispatch.make:
     type: object
     additionalProperties: false
@@ -131,7 +132,7 @@ command_arguments:
     properties:
       directory:
         type: string
-        enum: [postgres, inframill]
+        enum: [postgres, inframill, millway]
       target:
         type: string
         enum: [start, status, verify, stop]
@@ -147,7 +148,68 @@ values_schema:
     - ansible
     - inframill
     - tls
+    - millway
   properties:
+    millway:
+      title: Millway web deployment
+      type: object
+      additionalProperties: false
+      required: [image, google_client_ids]
+      properties:
+        image:
+          title: Published Millway UI/API image
+          description: Must match the bundled migration manifest and node architecture, and contain the configured Google IDs in its exported UI.
+          type: string
+          minLength: 1
+          pattern: '^\S+$'
+        web_node:
+          type: string
+          default: web-1
+          pattern: '^[a-z][a-z0-9-]{0,35}$'
+        database_node:
+          type: string
+          default: data-1
+          pattern: '^[a-z][a-z0-9-]{0,35}$'
+        worker_node:
+          type: string
+          default: worker-1
+          pattern: '^[a-z][a-z0-9-]{0,35}$'
+        database_host:
+          title: Optional database DNS override
+          type: string
+          pattern: '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'
+        inframill_endpoint:
+          title: Optional Inframill HTTPS origin override
+          type: string
+          pattern: '^https://[^\s/?#@]+/?$'
+        max_connections:
+          title: Database pool maximum
+          type: integer
+          minimum: 1
+          maximum: 495
+        google_client_ids:
+          title: Google OAuth client IDs
+          type: object
+          additionalProperties: false
+          required: [web]
+          properties:
+            web:
+              type: string
+              pattern: '^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$'
+            ios:
+              type: string
+              pattern: '^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$'
+            android:
+              type: string
+              pattern: '^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$'
+        admin_emails:
+          title: New-account administrator emails
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^[^\s@]+@[^\s@]+$'
     tls:
       title: Shared TLS
       type: object
@@ -156,7 +218,7 @@ values_schema:
       properties:
         certificate:
           title: TLS PEM certificate chain
-          description: Shared by PostgreSQL and Inframill. Must cover both client-facing hostnames. Store its private key as pv-cloud-tls-private-key.
+          description: Shared by PostgreSQL, Inframill and Millway. Must cover all client-facing hostnames. Store its private key as pv-cloud-tls-private-key.
           type: string
           x-inframill-ui:
             widget: textarea
@@ -344,13 +406,18 @@ values_schema:
     cloudflare:
       title: Cloudflare
       type: object
-      required: [zone_id]
+      required: [zone_id, zone_name]
       additionalProperties: false
       properties:
         zone_id:
           title: Cloudflare zone ID
           type: string
           pattern: ^[a-f0-9]{32}$
+        zone_name:
+          title: Cloudflare zone domain
+          description: Must match zone_id. Used to derive service DNS endpoints for the fresh Instance.
+          type: string
+          pattern: '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z0-9-]+$'
   additionalProperties: false
   $schema: https://json-schema.org/draft/2020-12/schema
   $defs:
@@ -422,7 +489,7 @@ values_schema:
             properties:
               roles:
                 contains:
-                  enum: [data, worker]
+                  enum: [data, worker, web]
           then:
             properties:
               roles:

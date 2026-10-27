@@ -269,6 +269,7 @@ def registry_check():
         tmp = pathlib.Path(td)
         native_checks(tmp, os.environ.copy())
         run([sys.executable, ROOT / 'tests/pv_postgres_check.py'])
+        run([sys.executable, ROOT / 'tests/pv_millway_check.py'])
         with registry() as (address, network, push_address):
             container_checks(tmp, network, registry_env(tmp, push_address))
 

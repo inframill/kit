@@ -1,22 +1,18 @@
 ---
-- name: Install Nginx
-  ansible.builtin.apt:
-    name: nginx
-    state: present
-    update_cache: true
+- name: Allow the non-root web service to bind HTTPS on the dedicated web node
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-pv-cloud-web.conf
+    mode: "0644"
+    content: |
+      # Host networking: allow non-root processes to bind ports 443 and higher.
+      net.ipv4.ip_unprivileged_port_start = 443
 
-- name: Enable Nginx
-  ansible.builtin.service:
-    name: nginx
-    state: started
-    enabled: true
+- name: Read the current unprivileged port threshold
+  ansible.builtin.command: sysctl -n net.ipv4.ip_unprivileged_port_start
+  register: web_port_threshold
+  changed_when: false
+  check_mode: false
 
-- name: Gather service status
-  ansible.builtin.service_facts:
-
-- name: Verify nginx is enabled and running
-  ansible.builtin.assert:
-    that:
-      - "ansible_facts.services['nginx.service'].state == 'running'"
-      - "ansible_facts.services['nginx.service'].status == 'enabled'"
-  when: not ansible_check_mode
+- name: Apply the web node port threshold
+  ansible.builtin.command: sysctl --load /etc/sysctl.d/90-pv-cloud-web.conf
+  when: web_port_threshold.stdout != '443'

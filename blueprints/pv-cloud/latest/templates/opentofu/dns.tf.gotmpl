@@ -23,6 +23,10 @@ resource "cloudflare_dns_record" "node" {
 
   lifecycle {
     precondition {
+      condition = data.cloudflare_zone.this.name == var.cloudflare_zone_name
+      error_message = "Cloudflare zone_name must match the zone selected by zone_id."
+    }
+    precondition {
       condition     = length(local.node_dns_names[each.key]) <= 253
       error_message = "Node DNS names must not exceed 253 characters."
     }

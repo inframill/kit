@@ -1,0 +1,7 @@
+{
+  "instance_id": {{ toJSON (instance).ID }},
+  "zone_name": {{ toJSON .cloudflare.zone_name }},
+  "nodes": {{ toJSON .nodes }},
+  "millway": {{ toJSON .millway }},
+  "postgres": {{ with index . "postgres" }}{{ toJSON . }}{{ else }}{}{{ end }}
+}

@@ -118,13 +118,13 @@ The current payload runs PostgreSQL through Compose with host networking in
 `/opt/pv-cloud/postgres`. Its `start` target creates `app1` and `app2` with separate
 owner passwords supplied by required namespace secrets `app1-password` and
 `app2-password`, applies memory and connection budgets, and verifies TLS access
-and database isolation. Both services use the shared `tls.certificate` and
+and database isolation. All services use the shared `tls.certificate` and
 `pv-cloud-tls-private-key` namespace secret. External PostgreSQL ingress is
 configured by OpenTofu specifically for data nodes. See the
 [pv-cloud instructions](../blueprints/README.md#pv-cloud) for credentials,
 role requirements and lifecycle targets. Tags before `0.6.0` do not bind Dispatch.
 
-pv-cloud `0.9.0` and `latest` use a single target enum: `start`, `status`, `verify`,
+pv-cloud `0.10.0` and `latest` use a single target enum: `start`, `status`, `verify`,
 and `stop`.
 Unknown targets reject before command admission. The selected payload's Makefile
 determines which targets it supports:
@@ -133,13 +133,20 @@ determines which targets it supports:
 | --- | --- |
 | `postgres` | `start`, `status`, `verify`, `stop` |
 | `inframill` | `start`, `status`, `verify`, `stop` |
+| `millway` | `start`, `status`, `verify`, `stop` |
 
-Both payloads default to `start`, which validates inputs, logs into the configured
+All three payloads default to `start`, which validates inputs, logs into the configured
 registry, starts the service and waits for readiness. `verify` checks the running
 service, `status` reports its Compose status, and `stop` preserves data and
 credentials. After changing namespace secrets and repeating the push, `start`
 applies the supplied application passwords or Inframill credentials and verifies
 the service. PostgreSQL preserves its administrator password.
+
+The Millway mapping selects `web` nodes and uses the data node's `app1` database
+and worker Inframill endpoint. Its verification checks real database TLS access,
+the migration ledger against the pinned image manifest, fresh authenticated
+Inframill version responses, and the application's HTTPS API and UI. Host-side
+helpers preserve the unchanged non-root Millway image.
 
 Sources are clean relative directories beneath the provider-supplied root;
 `.` and paths escaping that root are rejected. Destinations are clean absolute

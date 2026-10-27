@@ -1,0 +1,51 @@
+{{ $databases := false }}
+{{ with index . "postgres" }}{{ $databases = index . "databases" }}{{ end }}
+{{ $appPassword := "app1-password" }}
+{{ if $databases }}{{ range $databases }}{{ if eq .name "app1" }}{{ $appPassword = .password_secret }}{{ end }}{{ end }}{{ end }}
+{
+  "schema": 1,
+  "address_mode": {{ toJSON .ansible.address_mode }},
+  "ssh_user": {{ toJSON .ssh.user }},
+  "directories": {
+    "postgres": {
+      "source": "postgres",
+      "destination": "/opt/pv-cloud/postgres",
+      "select": {"roles": ["data"]},
+      "exclude": ["secrets/**", "runtime/**", ".env", ".setup.lock"],
+      "secret_files": {
+        "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},
+        "secrets/registry_token": "pv-cloud-registry-token"{{ end }}{{ if $databases }}{{ range $databases }},
+        {{ toJSON (printf "secrets/%s_password" .name) }}: {{ toJSON .password_secret }}{{ end }}{{ else }},
+        "secrets/app1_password": "app1-password",
+        "secrets/app2_password": "app2-password"{{ end }}
+      },
+      "become": true
+    },
+    "millway": {
+      "source": "millway",
+      "destination": "/opt/pv-cloud/millway",
+      "select": {"roles": ["web"]},
+      "exclude": ["secrets/**", "runtime/**", ".env", ".start.lock"],
+      "secret_files": {
+        "secrets/root_token": "millway-root-token",
+        "secrets/database_password": {{ toJSON $appPassword }},
+        "secrets/inframill_root_token": "inframill-root-token",
+        "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},
+        "secrets/registry_token": "pv-cloud-registry-token"{{ end }}
+      },
+      "become": true
+    },
+    "inframill": {
+      "source": "inframill",
+      "destination": "/opt/pv-cloud/inframill",
+      "select": {"roles": ["worker"]},
+      "exclude": ["secrets/**", "ssh/**", "blueprints/**"],
+      "secret_files": {
+        "secrets/root_token": "inframill-root-token",
+        "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},
+        "secrets/registry_token": "pv-cloud-registry-token"{{ end }}
+      },
+      "become": true
+    }
+  }
+}

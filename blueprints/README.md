@@ -65,7 +65,7 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 
 ## pv-cloud
 
-The current blueprint release is `built.in/pv-cloud:0.9.0`; `latest` has the same
+The current blueprint release is `built.in/pv-cloud:0.10.0`; `latest` has the same
 content. It uses Kit OpenTofu and Ansible `0.4.0` and Dispatch `0.1.0`.
 Resource names use the immutable Instance name through `{{ (instance).Name }}`;
 Values do not contain `instance_name`. This requires an Inframill build with the
@@ -74,22 +74,22 @@ For existing deployments, keep the Instance name equal to the previous
 `instance_name` value to preserve generated resource names. Existing Instances
 retain their saved blueprint sources until explicitly replaced.
 All top-level Values fields are object groups: `network`, `ssh`, `nodes`,
-`cloudflare`, `ansible`, `inframill`, `tls`, and optional `postgres` and `registry`. Network settings use `network.zone` and
+`cloudflare`, `ansible`, `inframill`, `millway`, `tls`, and optional `postgres` and `registry`. Network settings use `network.zone` and
 `network.private_networks`; SSH settings use `ssh.user`, `ssh.public_keys`, and
 `ssh.source_ips`.
 
-The `0.9.0` and `latest` sources require Inframill `0.1.22-dev` or later. Their static
-`required_secrets` declaration checks seven namespace names before creating an
+The `0.10.0` and `latest` sources require Inframill `0.1.23-dev` or later. Their static
+`required_secrets` declaration checks eight namespace names before creating an
 Instance: `app1-password`, `app2-password`, `hetzner`, `cloudflare`,
-`inframill-root-token`, `pv-cloud-tls-private-key`, and `pv-cloud-registry-token`.
-Store all seven before `instance init`, even when the
+`inframill-root-token`, `millway-root-token`, `pv-cloud-tls-private-key`, and `pv-cloud-registry-token`.
+Store all eight before `instance init`, even when the
 selected nodes have no worker role or registry login is omitted.
 Missing names produce `MISSING_SECRET` before any Instance is created; add
 the entries and retry with the same Instance name. This checks presence only;
 Providers still validate credentials before effects.
 
 The shared TLS certificate is `tls.certificate`; its namespace private-key secret is
-`pv-cloud-tls-private-key`. Both the data and worker payloads use this pair. When
+`pv-cloud-tls-private-key`. All three payloads use this pair. When
 moving from `0.8.0`, move `inframill.tls_cert` to `tls.certificate` and upsert the
 existing key under the new secret name. Existing `0.8.0` snapshots still use
 `inframill-tls-key`. The service-specific `inframill-root-token` keeps its name.
@@ -99,8 +99,8 @@ The infrastructure, registry and TLS secret references are fixed to those names.
 `inframill.root_token_secret_ref` from Values and store the credentials under the
 required names. Older tags and existing Instance snapshots keep their prior behavior.
 The repository and image configurations enable all three providers. [Example Values](examples/pv-cloud.json)
-define two AMD64 Docker nodes named `data-1` and `worker-1`, both assigned `common`
-and `docker`. They also have `data` and `worker`, respectively. Docker and Compose
+define three AMD64 Docker nodes named `data-1`, `worker-1`, and `web-1`, assigned
+`common` and `docker`, plus `data`, `worker`, and `web` respectively. Docker and Compose
 installation and service checks belong to the dedicated `docker` role; `common`
 is available for shared guest setup. ARM64 and AMD64 examples live
 in `../tests/fixtures/blueprints/examples/`.
@@ -108,7 +108,7 @@ The guest cloud-config disables optional vendor-data and owns SSH user/key setup
 avoiding deprecated password settings injected by Hetzner. Ansible requires
 cloud-init to complete successfully. Role plays select inventory group members,
 so node names never assign services. Dispatch selects PostgreSQL destinations by the
-`data` role and Inframill destinations by the `worker` role. Both require `docker`.
+`data` role, Inframill by `worker`, and Millway by `web`. All require `docker`.
 Ansible prepares the hosts, and explicit Dispatch pushes install the Compose payloads.
 Cloud labels identify nodes with `node=<name>`.
 The reserved inventory names `all` and `ungrouped` are rejected as node names.
@@ -119,7 +119,9 @@ and the shared node artifact. Names use the immutable Instance ID, so separate
 Instances do not collide. Node names must be DNS labels of at most 36 characters;
 underscores and trailing hyphens are rejected.
 
-Set `cloudflare.zone_id` to the zone's 32-character ID. The
+Set `cloudflare.zone_id` to the zone's 32-character ID and `cloudflare.zone_name`
+to its domain. OpenTofu validates the name against the zone API; the Millway
+payload uses it with the Instance ID to derive service endpoints. The
 example zone ID is a placeholder. Store the API token as `cloudflare` with
 `inframill secret upsert --namespace production --file /private/path/cloudflare.json`,
 where the file contains `{"name":"cloudflare","value":"REPLACE_WITH_API_TOKEN"}`.
@@ -130,16 +132,17 @@ OpenTofu provider is pinned to `5.27.0`.
 
 ```sh
 inframill namespace create production
-inframill blueprint fetch built.in/pv-cloud:0.9.0 --namespace production
+inframill blueprint fetch built.in/pv-cloud:0.10.0 --namespace production
 inframill secret upsert --namespace production --file /private/path/app1-password.json
 inframill secret upsert --namespace production --file /private/path/app2-password.json
 inframill secret upsert --namespace production --file /private/path/hetzner.json
 inframill secret upsert --namespace production --file /private/path/cloudflare.json
 inframill secret upsert --namespace production --file /private/path/pv-cloud-tls-private-key.json
 inframill secret upsert --namespace production --file /private/path/inframill-root-token.json
+inframill secret upsert --namespace production --file /private/path/millway-root-token.json
 inframill secret upsert --namespace production --file /private/path/pv-cloud-registry-token.json
 inframill instance init example --namespace production \
-  --blueprint built.in/pv-cloud:0.9.0 --values-file blueprints/examples/pv-cloud.json
+  --blueprint built.in/pv-cloud:0.10.0 --values-file blueprints/examples/pv-cloud.json
 ```
 
 After OpenTofu apply has published nodes, prepare the guests and install PostgreSQL:
@@ -220,7 +223,7 @@ writes remain enabled. Query statistics are available through `pg_stat_statement
 These defaults are a starting point for workload measurements, not an automatic
 guarantee against every query's memory usage.
 
-Both payloads expose `start`, `status`, `verify`, and `stop`, with `start` as the
+All three payloads expose `start`, `status`, `verify`, and `stop`, with `start` as the
 default. PostgreSQL's `start` starts the service, reconciles databases and runs
 verification. Its `verify` checks TLS/password authentication, migration rights, isolation, rejected
 plaintext/admin TCP connections and effective settings; `status` inspects the
@@ -250,6 +253,7 @@ Supply the private key and root token through the namespace secrets
 ```sh
 inframill secret upsert --namespace production --file /private/path/pv-cloud-tls-private-key.json
 inframill secret upsert --namespace production --file /private/path/inframill-root-token.json
+inframill secret upsert --namespace production --file /private/path/millway-root-token.json
 inframill instance exec example dispatch.push --namespace production \
   --arguments '{"directory":"inframill"}' --stream --timeout 15m
 inframill instance exec example dispatch.make --namespace production \
@@ -276,6 +280,74 @@ root token is loaded from a Compose secret into the server process environment
 at startup. The `verify` target runs the same authenticated HTTPS probe against
 the running container.
 
+Version `0.10.0` adds a `millway` mapping to `/opt/pv-cloud/millway` on `web` nodes.
+It runs the existing Millway UI/API image as UID/GID `65532:65532`, using host
+networking, a read-only filesystem, no Linux capabilities and `no-new-privileges`.
+The Ansible `web` role sets `net.ipv4.ip_unprivileged_port_start=443` on web nodes,
+allowing all non-root processes there to bind ports 443 and higher. It no longer
+installs host Nginx. Run Ansible before Millway's first start. Older tags retain
+their original role and existing Instance snapshots are not upgraded automatically.
+
+Configure Millway in Values:
+
+```json
+"millway": {
+  "image": "ghcr.io/inframill/millway:0.1.4-dev",
+  "google_client_ids": {"web": "YOUR_CLIENT_ID.apps.googleusercontent.com"},
+  "admin_emails": ["admin@example.com"]
+}
+```
+
+The image must contain both UI and API, match the web node architecture, and have
+the same Google client IDs embedded in its exported UI. `admin_emails` controls
+new-account administrator assignment. Optional `web_node`, `database_node` and
+`worker_node` select logical nodes, defaulting to `web-1`, `data-1` and `worker-1`;
+each needs its corresponding role and `docker`. Millway uses `app1` and its
+configured password secret, authenticates to the worker with
+`inframill-root-token`, and protects its own administrative API with the distinct
+`millway-root-token`. The database pool defaults to at most ten connections,
+bounded by app1's connection limit; override with `max_connections`.
+
+The public origin uses the generated web-node DNS name. Register that HTTPS
+origin in Google OAuth, and ensure the shared certificate covers web, data and
+worker names. Optional `database_host` and `inframill_endpoint` override derived
+endpoints; upstream access requires HTTPS and database access uses
+`sslmode=verify-full`.
+
+Start PostgreSQL and Inframill first, then:
+
+```sh
+inframill instance exec example dispatch.push --namespace production \
+  --arguments '{"directory":"millway"}' --stream --timeout 15m
+inframill instance exec example dispatch.make --namespace production \
+  --arguments '{"directory":"millway","target":"start"}' --stream --timeout 15m
+```
+
+The host helper builds protected runtime configuration from namespace secrets.
+A temporary PostgreSQL-image helper stages it in a private volume owned by
+Millway's UID. No shell, Python, entrypoint or code changes are required in the
+Millway image or sibling repository. `start` applies migrations through Millway's
+existing startup behavior, then verifies dependencies. `stop` preserves the
+runtime volume and database. Push excludes generated configuration and credentials.
+
+Millway's `verify` checks an authenticated TLS database connection and `SELECT 1`
+as app1, compares its migration ledger with a pinned checksum manifest in a
+read-only transaction, sends a fresh authenticated Inframill version RPC and
+checks major/minor compatibility, and verifies Millway's image version, HTTPS API
+and UI. It prints component summaries and fails if any check fails. A temporary
+`postgres:16` client runs SQL with a private passfile supplied through stdin;
+credentials never enter command arguments or verification output. The normal
+Millway health endpoint reports versions only and cannot replace these checks.
+
+`migrations.json` pins Millway's version, source revision, migration filenames and
+SHA-256 checksums. Before changing the image, refresh the contract with
+`task millway:manifest MILLWAY_SOURCE=../millway` from its matching clean checkout,
+review the manifest and verify the new image. The task only reads the sibling
+project. Unknown, missing or changed migrations fail verification; `verify`
+never applies migrations or resets data. The current manifest matches Millway
+`0.1.4-dev`; use an image built from that matching source, preferably pinned by
+digest for deployment.
+
 For private container images, add the optional `registry` Values group:
 
 ```json
@@ -289,11 +361,11 @@ Store the registry password or pull token as the namespace secret
 `pv-cloud-registry-token`, using a secret input file with `name` and `value` as
 above. The token is never included in Values or rendered configuration. When
 `registry` is configured, Dispatch injects `secrets/registry_token` with mode
-`0600` for both mappings. Missing or empty tokens reject the push. The secret's
+`0600` for all three mappings. Missing or empty tokens reject the push. The secret's
 presence is required before Instance creation even when the `registry` group is
 omitted. An empty `registry` group is invalid.
 
-Both payloads' `start` targets log into the configured registry before
+All three payloads' `start` targets log into the configured registry before
 starting Compose and stop if login fails. Login reads the injected token through
 `docker login --password-stdin`; the host and username come from `registry.json`.
 Login and Compose run as root through the mapping's `become: true` and use root's
@@ -352,6 +424,8 @@ blueprints/
   pv-cloud/0.8.0/templates/...
   pv-cloud/0.9.0/blueprint.yaml
   pv-cloud/0.9.0/templates/...
+  pv-cloud/0.10.0/blueprint.yaml
+  pv-cloud/0.10.0/templates/...
 ```
 
 `built.in/pv-cloud` is shorthand for `built.in/pv-cloud:latest`. To maintain another
@@ -386,6 +460,8 @@ BLUEPRINT=hello-world python3 tests/check.py blueprint:check
 BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check
 # Disposable real PostgreSQL containers; requires Docker and openssl:
 python3 tests/pv_postgres_check.py
+# Requires the Millway UI/API and current Kit images locally:
+python3 tests/pv_millway_check.py
 # All native workflows, including revision and cache checks:
 python3 tests/check.py native
 ```
