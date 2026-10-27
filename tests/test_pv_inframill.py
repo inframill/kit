@@ -32,7 +32,7 @@ def prepare_payload(root):
 
 
 class InframillPayloadTests(unittest.TestCase):
-    def test_install_requires_credentials_and_preserves_them(self):
+    def test_start_requires_credentials_and_preserves_them(self):
         with tempfile.TemporaryDirectory(prefix='kit-inframill-') as td:
             root = pathlib.Path(td)
             payload = prepare_payload(root)
@@ -51,23 +51,26 @@ class InframillPayloadTests(unittest.TestCase):
             token = payload / 'secrets/root_token'
             original_key, original_token = key.read_bytes(), token.read_bytes()
             key.unlink()
-            missing = make('install')
+            missing = make('start')
             self.assertNotEqual(missing.returncode, 0)
             self.assertFalse(commands.exists())
             key.write_bytes(b'invalid-private-key')
-            self.assertNotEqual(make('install').returncode, 0)
+            self.assertNotEqual(make('start').returncode, 0)
             self.assertFalse(commands.exists())
             key.write_bytes(original_key)
             token.write_text('')
-            self.assertNotEqual(make('install').returncode, 0)
+            self.assertNotEqual(make('start').returncode, 0)
             token.write_bytes(original_token)
-            installed = make('install')
+            installed = make('start')
             self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
             self.assertNotIn(original_token.decode(), installed.stdout + installed.stderr)
             self.assertEqual(commands.read_text().splitlines(), [
                 'compose --project-name pv-cloud-inframill --file compose.yaml config --quiet',
                 'compose --project-name pv-cloud-inframill --file compose.yaml up --detach --force-recreate --wait --wait-timeout 120',
             ])
+            self.assertEqual(make('verify').returncode, 0)
+            self.assertEqual(commands.read_text().splitlines()[-1],
+                             'compose --project-name pv-cloud-inframill --file compose.yaml exec --no-TTY inframill python3 /etc/inframill/healthcheck.py')
             self.assertEqual(make('stop').returncode, 0)
             self.assertEqual(key.read_bytes(), original_key)
             self.assertEqual(token.read_bytes(), original_token)

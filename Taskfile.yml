@@ -147,8 +147,8 @@ tasks:
   check-full:
     desc: Run fast checks, native workflows and both Linux images in a disposable registry
     summary: |
-      Prerequisites: task setup, task providers:build -- --native, Docker, and task bundle.
-      Runs local resources, provider mocks, daemon and registry checks, then
+      Prerequisites: task setup, task providers:build -- --native, Docker, openssl, and task bundle.
+      Runs local resources, provider mocks, disposable PostgreSQL, daemon and registry checks, then
       ARM64/AMD64 image workflows. Creates no cloud resources or GHCR packages.
     cmds:
       - task: check-fast

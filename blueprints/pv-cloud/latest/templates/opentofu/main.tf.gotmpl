@@ -68,6 +68,25 @@ resource "hcloud_firewall" "this" {
   }
 }
 
+resource "hcloud_firewall" "postgres" {
+  count = anytrue([for node in values(var.nodes) : contains(node.roles, "data")]) ? 1 : 0
+
+  name   = "${local.app}-postgres"
+  labels = local.labels
+
+  rule {
+    direction   = "in"
+    protocol    = "tcp"
+    port        = tostring(var.postgres.port)
+    source_ips  = var.postgres.source_ips
+    description = "PostgreSQL TLS"
+  }
+
+  apply_to {
+    label_selector = "app=${local.app},role-data=true"
+  }
+}
+
 resource "hcloud_server" "this" {
   for_each = var.nodes
 
@@ -77,7 +96,7 @@ resource "hcloud_server" "this" {
   location    = each.value.location
   ssh_keys    = []
   user_data   = file("${path.module}/cloud-init.yaml")
-  labels      = merge(local.labels, { node = each.key })
+  labels      = merge(local.labels, { node = each.key, "role-data" = tostring(contains(each.value.roles, "data")) })
 
   lifecycle {
     precondition {

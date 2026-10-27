@@ -1,1 +1,1 @@
-{ "nodes": {{ toJSON .nodes }}, "private_networks": {{ toJSON .network.private_networks }}, "ssh_source_ips": {{ toJSON .ssh.source_ips }}, "cloudflare_zone_id": {{ toJSON .cloudflare.zone_id }} }
+{ "nodes": {{ toJSON .nodes }}, "private_networks": {{ toJSON .network.private_networks }}, "ssh_source_ips": {{ toJSON .ssh.source_ips }}, "cloudflare_zone_id": {{ toJSON .cloudflare.zone_id }}, "postgres": {{ with index . "postgres" }}{{ toJSON . }}{{ else }}{}{{ end }} }

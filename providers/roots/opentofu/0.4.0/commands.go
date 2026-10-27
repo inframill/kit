@@ -32,15 +32,18 @@ type PlanResult struct {
 	Destroy     bool   `json:"destroy"`
 	RefreshOnly bool   `json:"refresh_only"`
 }
-type OutputResult struct {
+type NodeOutputResult struct {
 	Artifact string `json:"artifact"`
 	Nodes    int    `json:"nodes"`
 	Valid    bool   `json:"valid"`
 }
+type ApplyResult struct {
+	NodeOutputResult
+}
 type DestroyResult struct {
-	OutputResult
-	Destroyed bool `json:"destroyed"`
-	Empty     bool `json:"managed_state_empty"`
+	NodeOutputResult
+	Destroyed         bool `json:"destroyed"`
+	ManagedStateEmpty bool `json:"managed_state_empty"`
 }
 
 func (p *execution) configHash() string {
@@ -118,7 +121,7 @@ func (p *execution) execute(ctx context.Context, run toolrun.Runner) (any, error
 	case "plan":
 		return p.plan(ctx, run)
 	case "apply", "destroy":
-		return p.apply(ctx, run)
+		return p.applyOrDestroy(ctx, run)
 	}
 	return nil, errors.New("unknown command")
 }
@@ -170,7 +173,7 @@ func (p *execution) plan(ctx context.Context, run toolrun.Runner) (any, error) {
 	}
 	return PlanResult{p.scope.ExecutionID, code == 2, p.arguments.Destroy, p.arguments.RefreshOnly}, nil
 }
-func (p *execution) apply(ctx context.Context, run toolrun.Runner) (any, error) {
+func (p *execution) applyOrDestroy(ctx context.Context, run toolrun.Runner) (any, error) {
 	var data []byte
 	if p.arguments.PlanID != "" {
 		var err error
@@ -231,7 +234,11 @@ func (p *execution) apply(ctx context.Context, run toolrun.Runner) (any, error) 
 		}
 		return DestroyResult{output, true, true}, nil
 	}
-	return p.publish(ctx, run)
+	output, err := p.publish(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	return ApplyResult{output}, nil
 }
 
 type module struct {
@@ -253,14 +260,14 @@ func managed(m module) int {
 	}
 	return n
 }
-func (p *execution) publish(ctx context.Context, run toolrun.Runner) (OutputResult, error) {
+func (p *execution) publish(ctx context.Context, run toolrun.Runner) (NodeOutputResult, error) {
 	args := []string{"output", "-json"}
 	if p.command != "destroy" {
 		args = append(args, p.static.NodeOutput)
 	}
 	data, code, err := run.Call(ctx, true, args...)
 	if err = toolrun.Success(code, err); err != nil {
-		return OutputResult{}, err
+		return NodeOutputResult{}, err
 	}
 	if p.command == "destroy" {
 		// A full destroy removes root outputs. Query all outputs so a missing
@@ -269,7 +276,7 @@ func (p *execution) publish(ctx context.Context, run toolrun.Runner) (OutputResu
 			Value json.RawMessage `json:"value"`
 		}
 		if err = json.Unmarshal(data, &outputs); err != nil || outputs == nil {
-			return OutputResult{}, errors.New("invalid output response")
+			return NodeOutputResult{}, errors.New("invalid output response")
 		}
 		if output, ok := outputs[p.static.NodeOutput]; ok {
 			data = output.Value
@@ -279,14 +286,14 @@ func (p *execution) publish(ctx context.Context, run toolrun.Runner) (OutputResu
 	}
 	var nodes map[string]artifacts.Node
 	if err = artifacts.Decode(data, &nodes); err != nil {
-		return OutputResult{}, err
+		return NodeOutputResult{}, err
 	}
 	if p.command == "destroy" {
 		if len(nodes) != 0 {
-			return OutputResult{}, errors.New("node output remains after destroy")
+			return NodeOutputResult{}, errors.New("node output remains after destroy")
 		}
 	} else if len(nodes) == 0 || len(nodes) > 1000 {
-		return OutputResult{}, errors.New("node output must contain 1..1000 nodes")
+		return NodeOutputResult{}, errors.New("node output must contain 1..1000 nodes")
 	}
 	record := artifacts.Nodes{Schema: 1, Valid: p.command != "destroy", ArtifactScope: artifacts.Scope(p.scope.ArtifactDir), ProducerID: p.static.ID, ProducerVersion: p.provider.Version, ExecutionID: p.scope.ExecutionID, Nodes: []artifacts.Node{}}
 	keys := []string{}
@@ -297,18 +304,18 @@ func (p *execution) publish(ctx context.Context, run toolrun.Runner) (OutputResu
 	for _, key := range keys {
 		node := nodes[key]
 		if node.Name != key {
-			return OutputResult{}, errors.New("node key differs from name")
+			return NodeOutputResult{}, errors.New("node key differs from name")
 		}
 		if err = artifacts.CheckNode(node); err != nil {
-			return OutputResult{}, err
+			return NodeOutputResult{}, err
 		}
 		record.Nodes = append(record.Nodes, node)
 	}
 	if err = toolrun.Public(record, run.Secrets); err != nil {
-		return OutputResult{}, err
+		return NodeOutputResult{}, err
 	}
 	if err = artifacts.Write(p.scope.ArtifactDir, p.static.Artifact, record); err != nil {
-		return OutputResult{}, err
+		return NodeOutputResult{}, err
 	}
-	return OutputResult{p.static.Artifact, len(nodes), record.Valid}, nil
+	return NodeOutputResult{p.static.Artifact, len(nodes), record.Valid}, nil
 }

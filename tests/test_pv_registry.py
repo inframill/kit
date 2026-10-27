@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from test_pv_inframill import prepare_payload as prepare_inframill
-from test_pv_postgres import prepare_payload as prepare_postgres
+from test_pv_postgres import prepare_payload as prepare_postgres, run_start
 
 
 class RegistryLoginTests(unittest.TestCase):
@@ -37,7 +37,9 @@ if args[0] == 'login' and pathlib.Path('fail-login').exists():
         token.chmod(0o600)
         return payload, commands, env
 
-    def make(self, payload, env, target='install'):
+    def make(self, payload, env, target='start'):
+        if payload.name == 'postgres':
+            return run_start(payload, env)
         # Also prove login completes before Compose when Make is parallel.
         return subprocess.run(['make', '-j4', target], cwd=payload, env=env,
                               capture_output=True, text=True)
@@ -97,11 +99,3 @@ if args[0] == 'login' and pathlib.Path('fail-login').exists():
                 installed = self.make(payload, env)
                 self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
                 self.assertEqual([record['args'][0] for record in self.records(commands)], ['compose', 'compose'])
-
-    def test_login_target_does_not_start_compose(self):
-        for prepare in (prepare_inframill, prepare_postgres):
-            with self.subTest(payload=prepare.__module__), tempfile.TemporaryDirectory(prefix='kit-registry-') as td:
-                payload, commands, env = self.fixture(pathlib.Path(td), prepare)
-                logged_in = self.make(payload, env, 'login')
-                self.assertEqual(logged_in.returncode, 0, logged_in.stdout + logged_in.stderr)
-                self.assertEqual([record['args'][0] for record in self.records(commands)], ['login'])

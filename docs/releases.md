@@ -1,5 +1,27 @@
 # Releasing Kit
 
+## pv-cloud 0.9.0
+
+The `0.9.0` and `latest` Blueprints share TLS settings as `tls.certificate` and
+the `pv-cloud-tls-private-key` namespace secret. Move the old `inframill.tls_cert`
+value and upsert the same private key under the new name. The `0.8.0` tag and
+existing Instance snapshots retain their prior names and behavior.
+
+PostgreSQL's `start` Dispatch Make target creates `app1` and `app2` by default,
+with one owner/login and independent password per database. Namespace secrets
+`app1-password` and `app2-password` are required before Instance creation;
+application passwords are never generated automatically. It supports a
+configurable database list with required password references, credential updates
+and verification against initialized storage. The service uses host
+networking, external TLS/SCRAM access, a data-node-only firewall, budgeted memory,
+bounded local logging and persistent storage. See the
+[blueprint guide](../blueprints/README.md#pv-cloud) for inputs and lifecycle targets.
+
+Both payloads use exactly four Make targets: `start` (the default), `status`,
+`verify`, and `stop`. Start handles preparation, registry login, credential updates,
+service startup and verification. Push updated secrets and run `start` to rotate
+application credentials; PostgreSQL's administrator password is preserved.
+
 ## 0.1.22-dev
 
 Kit uses Inframill `0.1.22-dev` (`887ffb1e628e`). OpenTofu 0.4.0, Ansible 0.4.0

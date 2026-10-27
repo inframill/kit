@@ -1,23 +1,23 @@
-COMPOSE := docker compose --project-name pv-cloud-inframill --file compose.yaml
+COMPOSE_PROJECT_NAME ?= pv-cloud-inframill
+export COMPOSE_PROJECT_NAME
+COMPOSE := docker compose --project-name $(COMPOSE_PROJECT_NAME) --file compose.yaml
 
-.DEFAULT_GOAL := install
-.PHONY: install validate login status stop
+.DEFAULT_GOAL := start
+.PHONY: start status verify stop
 
-install: validate
-	@$(MAKE) --no-print-directory login
+start:
+	@python3 validate.py
+	@python3 registry_login.py
 	@mkdir -p ssh blueprints
 	@chmod 700 ssh
 	$(COMPOSE) config --quiet
 	$(COMPOSE) up --detach --force-recreate --wait --wait-timeout 120
 
-validate:
-	@python3 validate.py
-
-login:
-	@python3 registry_login.py
-
 status:
 	$(COMPOSE) ps
+
+verify:
+	$(COMPOSE) exec --no-TTY inframill python3 /etc/inframill/healthcheck.py
 
 stop:
 	$(COMPOSE) down

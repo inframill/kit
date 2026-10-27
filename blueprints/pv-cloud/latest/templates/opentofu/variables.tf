@@ -6,6 +6,21 @@ variable "ssh_source_ips" {
   }
 }
 variable "private_networks" { type = list(object({name = string, cidr = string})) }
+variable "postgres" {
+  type = object({
+    port       = optional(number, 5432)
+    source_ips = optional(list(string), ["0.0.0.0/0", "::/0"])
+  })
+  default = {}
+  validation {
+    condition     = var.postgres.port >= 1024 && var.postgres.port <= 65535 && floor(var.postgres.port) == var.postgres.port
+    error_message = "PostgreSQL port must be an integer between 1024 and 65535."
+  }
+  validation {
+    condition     = length(var.postgres.source_ips) > 0 && alltrue([for cidr in var.postgres.source_ips : can(cidrhost(cidr, 0))])
+    error_message = "PostgreSQL sources must be nonempty, valid IPv4 or IPv6 CIDRs."
+  }
+}
 variable "nodes" {
   type = map(object({location=string, server_type=string, roles=list(string), private_networks=list(string), architecture=string, image=string}))
   validation {

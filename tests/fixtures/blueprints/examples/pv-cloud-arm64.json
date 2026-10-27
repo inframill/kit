@@ -32,7 +32,9 @@
     "address_mode": "public_ipv4"
   },
   "inframill": {
-    "image": "ghcr.io/inframill/kit:0.1.22-dev",
-    "tls_cert": "-----BEGIN CERTIFICATE-----\nREPLACE_WITH_YOUR_PEM_CERTIFICATE_CHAIN\n-----END CERTIFICATE-----\n"
+    "image": "ghcr.io/inframill/kit:0.1.22-dev"
+  },
+  "tls": {
+    "certificate": "-----BEGIN CERTIFICATE-----\nREPLACE_WITH_YOUR_PEM_CERTIFICATE_CHAIN\n-----END CERTIFICATE-----\n"
   }
 }

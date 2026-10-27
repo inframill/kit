@@ -1,3 +1,5 @@
+{{ $databases := false }}
+{{ with index . "postgres" }}{{ $databases = index . "databases" }}{{ end }}
 {
   "schema": 1,
   "address_mode": {{ toJSON .ansible.address_mode }},
@@ -7,10 +9,14 @@
       "source": "postgres",
       "destination": "/opt/pv-cloud/postgres",
       "select": {"roles": ["data"]},
-      "exclude": ["secrets/**"],
-      {{ with index . "registry" }}
-      "secret_files": {"secrets/registry_token": "pv-cloud-registry-token"},
-      {{ end }}
+      "exclude": ["secrets/**", "runtime/**", ".env", ".setup.lock"],
+      "secret_files": {
+        "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},
+        "secrets/registry_token": "pv-cloud-registry-token"{{ end }}{{ if $databases }}{{ range $databases }},
+        {{ toJSON (printf "secrets/%s_password" .name) }}: {{ toJSON .password_secret }}{{ end }}{{ else }},
+        "secrets/app1_password": "app1-password",
+        "secrets/app2_password": "app2-password"{{ end }}
+      },
       "become": true
     },
     "inframill": {
@@ -20,7 +26,7 @@
       "exclude": ["secrets/**", "ssh/**", "blueprints/**"],
       "secret_files": {
         "secrets/root_token": "inframill-root-token",
-        "secrets/tls_private_key": "inframill-tls-key"{{ with index . "registry" }},
+        "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},
         "secrets/registry_token": "pv-cloud-registry-token"{{ end }}
       },
       "become": true

@@ -195,11 +195,11 @@ esac
 			if nodes.Valid != (tc.command == "apply" && !tc.wantError) {
 				t.Fatalf("unexpected inventory validity after %s: %s", tc.name, data)
 			}
-			if tc.command == "apply" && !tc.wantError && result != (OutputResult{"tofu-nodes-v1.json", 1, true}) {
+			if tc.command == "apply" && !tc.wantError && result != (ApplyResult{NodeOutputResult{"tofu-nodes-v1.json", 1, true}}) {
 				t.Fatal("apply did not publish verified nodes", result)
 			}
 			if tc.command == "destroy" && !tc.wantError {
-				if result != (DestroyResult{OutputResult{"tofu-nodes-v1.json", 0, false}, true, true}) || len(nodes.Nodes) != 0 {
+				if result != (DestroyResult{NodeOutputResult{"tofu-nodes-v1.json", 0, false}, true, true}) || len(nodes.Nodes) != 0 {
 					t.Fatal("destroy did not publish empty outputs", result, nodes)
 				}
 				if string(calls) != args+"show\n-json\noutput\n-json\n" {

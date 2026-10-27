@@ -111,13 +111,35 @@ After OpenTofu apply and Ansible guest preparation, install it with:
 bin/inframill instance exec example dispatch.push --namespace production \
   --arguments '{"directory":"postgres"}' --stream --timeout 15m
 bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"postgres","target":"install"}' --stream --timeout 15m
+  --arguments '{"directory":"postgres","target":"start"}' --stream --timeout 15m
 ```
 
-The payload runs PostgreSQL through Compose in `/opt/pv-cloud/postgres`, with
-persistent storage and a password generated on the host. See the
+The current payload runs PostgreSQL through Compose with host networking in
+`/opt/pv-cloud/postgres`. Its `start` target creates `app1` and `app2` with separate
+owner passwords supplied by required namespace secrets `app1-password` and
+`app2-password`, applies memory and connection budgets, and verifies TLS access
+and database isolation. Both services use the shared `tls.certificate` and
+`pv-cloud-tls-private-key` namespace secret. External PostgreSQL ingress is
+configured by OpenTofu specifically for data nodes. See the
 [pv-cloud instructions](../blueprints/README.md#pv-cloud) for credentials,
 role requirements and lifecycle targets. Tags before `0.6.0` do not bind Dispatch.
+
+pv-cloud `0.9.0` and `latest` use a single target enum: `start`, `status`, `verify`,
+and `stop`.
+Unknown targets reject before command admission. The selected payload's Makefile
+determines which targets it supports:
+
+| Directory | Targets |
+| --- | --- |
+| `postgres` | `start`, `status`, `verify`, `stop` |
+| `inframill` | `start`, `status`, `verify`, `stop` |
+
+Both payloads default to `start`, which validates inputs, logs into the configured
+registry, starts the service and waits for readiness. `verify` checks the running
+service, `status` reports its Compose status, and `stop` preserves data and
+credentials. After changing namespace secrets and repeating the push, `start`
+applies the supplied application passwords or Inframill credentials and verifies
+the service. PostgreSQL preserves its administrator password.
 
 Sources are clean relative directories beneath the provider-supplied root;
 `.` and paths escaping that root are rejected. Destinations are clean absolute
@@ -137,7 +159,7 @@ A mapping can inject namespace secrets into files beneath its destination:
 ```json
 "secret_files": {
   "secrets/root_token": "inframill-root-token",
-  "secrets/tls_private_key": "inframill-tls-key"
+  "secrets/tls_private_key": "pv-cloud-tls-private-key"
 }
 ```
 
@@ -160,7 +182,7 @@ files and do not resolve or replace credentials.
 
 Use source excludes such as `secrets/**` to keep credentials accidentally placed
 in a payload directory out of the archive. Public certificates can be ordinary
-rendered configuration, as in pv-cloud's `inframill.tls_cert`. Rebuild the Dispatch
+rendered configuration, as in pv-cloud's `tls.certificate`. Rebuild the Dispatch
 executable and controlling Kit image after adding this support.
 
 ## Selectors

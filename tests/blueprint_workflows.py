@@ -224,7 +224,8 @@ def hello_world_flow(client, reference, namespace='test'):
 
 
 def pv_required_secrets(client, namespace, reference, values, name):
-    required = ['cloudflare', 'hetzner', 'inframill-root-token', 'inframill-tls-key', 'pv-cloud-registry-token']
+    required = ['app1-password', 'app2-password', 'cloudflare', 'hetzner', 'inframill-root-token',
+                'pv-cloud-registry-token', 'pv-cloud-tls-private-key']
     instances = pathlib.Path(client.config['engine']['dataDir']) / namespace / 'instances'
     before_files = set(instances.iterdir()) if instances.exists() else set()
     before = client.rpc('ListInstances', namespace=namespace).get('instances', [])
@@ -251,7 +252,7 @@ def pv_required_secrets(client, namespace, reference, values, name):
 
 def pv_flow(client, reference, tofu):
     latest = client.fetch(reference, 'test')
-    reference = 'built.in/pv-cloud:0.8.0'
+    reference = 'built.in/pv-cloud:0.9.0'
     release = client.fetch(reference, 'test')
     assert release['digest'] == latest['digest'], (release, latest)
     ids = provider_ids('pv-cloud')
@@ -280,6 +281,13 @@ def pv_flow(client, reference, tofu):
                     ('dispatch.make', {'directory': 'postgres'}),
                     ('dispatch.make', {'directory': 'inframill', 'target': None}),
                     ('dispatch.make', {'directory': 'inframill', 'target': '-f'}),
+                    ('dispatch.make', {'directory': 'postgres', 'target': 'missing'}),
+                    ('dispatch.make', {'directory': 'postgres', 'target': 'install'}),
+                    ('dispatch.make', {'directory': 'postgres', 'target': 'password'}),
+                    ('dispatch.make', {'directory': 'inframill', 'target': 'validate'}),
+                    ('dispatch.make', {'directory': 'inframill', 'target': 'login'}),
+                    ('dispatch.make', {'directory': 'postgres', 'target': 'setup'}),
+                    ('dispatch.make', {'directory': 'postgres', 'target': 'rotate-credentials'}),
                 ])
         work = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace/opentofu'
         assert f'app    = {json.dumps("pv-" + name)}' in (work / 'main.tf').read_text()
@@ -290,6 +298,7 @@ def pv_flow(client, reference, tofu):
             'nodes': values['nodes'], 'private_networks': values['network']['private_networks'],
             'ssh_source_ips': values['ssh']['source_ips'],
             'cloudflare_zone_id': values['cloudflare']['zone_id'],
+            'postgres': values.get('postgres', {}),
         }
         assert f'loc    = {json.dumps(values["network"]["zone"])}' in (work / 'main.tf').read_text()
         cloud_init = (work / 'cloud-init.yaml').read_text()
@@ -302,21 +311,31 @@ def pv_flow(client, reference, tofu):
         assert delivery['ssh_user'] == values['ssh']['user']
         postgres_mapping = {
             'source': 'postgres', 'destination': '/opt/pv-cloud/postgres',
-            'select': {'roles': ['data']}, 'exclude': ['secrets/**'], 'become': True,
+            'select': {'roles': ['data']},
+            'exclude': ['secrets/**', 'runtime/**', '.env', '.setup.lock'], 'become': True,
+            'secret_files': {'secrets/tls_private_key': 'pv-cloud-tls-private-key'},
         }
+        databases = values.get('postgres', {}).get('databases', [
+            {'name': 'app1', 'password_secret': 'app1-password'},
+            {'name': 'app2', 'password_secret': 'app2-password'},
+        ])
+        for database in databases:
+            postgres_mapping['secret_files'][f"secrets/{database['name']}_password"] = database['password_secret']
         inframill_mapping = {
             'source': 'inframill', 'destination': '/opt/pv-cloud/inframill',
             'select': {'roles': ['worker']}, 'exclude': ['secrets/**', 'ssh/**', 'blueprints/**'],
             'secret_files': {'secrets/root_token': 'inframill-root-token',
-                             'secrets/tls_private_key': 'inframill-tls-key'},
+                             'secrets/tls_private_key': 'pv-cloud-tls-private-key'},
             'become': True,
         }
         if values.get('registry'):
-            postgres_mapping['secret_files'] = {'secrets/registry_token': 'pv-cloud-registry-token'}
+            postgres_mapping['secret_files']['secrets/registry_token'] = 'pv-cloud-registry-token'
             inframill_mapping['secret_files']['secrets/registry_token'] = 'pv-cloud-registry-token'
         assert delivery['directories']['postgres'] == postgres_mapping
         assert delivery['directories']['inframill'] == inframill_mapping
-        assert (dispatch / 'inframill/tls/fullchain.pem').read_text().strip() == values['inframill']['tls_cert'].strip()
+        for service in ('inframill', 'postgres'):
+            assert (dispatch / service / 'tls/fullchain.pem').read_text().strip() == values['tls']['certificate'].strip()
+        assert json.loads((dispatch / 'postgres/settings.json').read_text()) == values.get('postgres', {})
         assert json.dumps(values['inframill']['image']) in (dispatch / 'inframill/compose.yaml').read_text()
         assert not (dispatch / 'inframill/secrets').exists()
         for service in ('inframill', 'postgres'):
@@ -328,6 +347,7 @@ def pv_flow(client, reference, tofu):
         assert not (work.parent / 'ansible/roles/data/tasks/main.yml').exists()
         client.execute('test', iid, ids['ansible'] + '.syntax-check', {'playbook': 'site'})
     pv_registry_flow(client, reference, values)
+    pv_postgres_flow(client, reference, values)
     data = pathlib.Path(client.config['engine']['dataDir'])
     workspaces = [data / 'test/instances' / iid / 'workspace' / 'opentofu' for iid in instances]
     assert all((work / 'main.tf').is_file() for work in workspaces)
@@ -342,7 +362,8 @@ def pv_flow(client, reference, tofu):
         {**values, 'ssh_user': values['ssh']['user']},
         {**values, 'cloud': {'secret_ref': 'hetzner'}},
         {**values, 'cloudflare': {**values['cloudflare'], 'secret_ref': 'cloudflare'}},
-        {**values, 'inframill': {**values['inframill'], 'tls_key_secret_ref': 'inframill-tls-key'}},
+        {**values, 'inframill': {**values['inframill'], 'tls_cert': values['tls']['certificate']}},
+        {**values, 'inframill': {**values['inframill'], 'tls_key_secret_ref': 'pv-cloud-tls-private-key'}},
         {**values, 'inframill': {**values['inframill'], 'root_token_secret_ref': 'inframill-root-token'}},
         {**network_values, 'network': values['network']},
         {**network_values, 'network': {**values['network'], 'private_networks': [
@@ -378,7 +399,8 @@ def pv_flow(client, reference, tofu):
     run([ansible.with_name('python3'), pathlib.Path(__file__).with_name('pv_roles_check.py'),
          ansible, workspaces[0].parent / 'ansible/site.yml'])
     # Provider init uses no credentials even after namespace secrets are removed.
-    for secret in ['cloudflare', 'hetzner', 'inframill-root-token', 'inframill-tls-key', 'pv-cloud-registry-token']:
+    for secret in ['app1-password', 'app2-password', 'cloudflare', 'hetzner', 'inframill-root-token',
+                   'pv-cloud-registry-token', 'pv-cloud-tls-private-key']:
         client.rpc('DeleteNamespaceSecret', {'name': secret}, namespace='test')
     client.execute('test', instances[0], ids['opentofu'] + '.init')
     local_state_check(workspaces[0], tofu)
@@ -410,6 +432,35 @@ def pv_registry_flow(client, reference, values):
         else:
             raise AssertionError('Invalid registry Values were accepted')
     print('pv-cloud optional registry settings render login configuration and secret references', flush=True)
+
+
+def pv_postgres_flow(client, reference, values):
+    settings = {'port': 55432, 'source_ips': ['192.0.2.0/24', '2001:db8::/32'],
+                'databases': [{'name': 'app1', 'password_secret': 'app1-password'},
+                              {'name': 'app2', 'password_secret': 'app2-password'}]}
+    iid = client.initialize('test', 'pv-postgres', reference, {**values, 'postgres': settings})
+    work = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace'
+    delivery = json.loads((work / 'dispatch/kit-provider.json').read_text())
+    assert delivery['directories']['postgres']['secret_files']['secrets/app1_password'] == 'app1-password'
+    assert delivery['directories']['postgres']['secret_files']['secrets/app2_password'] == 'app2-password'
+    assert json.loads((work / 'dispatch/postgres/settings.json').read_text()) == settings
+    assert json.loads((work / 'opentofu/terraform.auto.tfvars.json').read_text())['postgres'] == settings
+    for index, invalid in enumerate([
+        {'databases': []}, {'databases': [{'name': 'app1'}, {'name': 'app1'}]},
+        {'databases': [{'name': 'postgres'}]}, {'databases': [{'name': 'pg_admin'}]},
+        {'databases': [{'name': 'app1', 'password': 'not-in-values'}]},
+        {'databases': [{'name': 'app1', 'password_secret': '../secret'}]},
+        {'databases': [{'name': 'app1'}]},
+        {'databases': [{'name': 'app1', 'password_secret': 'app1-password'}, {'name': 'app2'}]},
+        {'port': 0}, {'memory_mb': 128}, {'max_connections': True}, {'source_ips': []},
+    ]):
+        try:
+            client.initialize('test', 'pv-reject-postgres-' + str(index), reference, {**values, 'postgres': invalid})
+        except urllib.error.HTTPError as error:
+            assert error.code == 400, error
+        else:
+            raise AssertionError('Invalid PostgreSQL Values were accepted')
+    print('pv-cloud database list, shared TLS, credential references and public access settings passed', flush=True)
 
 
 def local_rerender_check(client, namespace, iid, values):
@@ -460,7 +511,7 @@ def runtime_flows(client, arch, tofu):
     plan = client.execute('smoke', iid, prefix + '.plan', {'destroy': True})
     client.execute('smoke', iid, prefix + '.destroy', {'plan_id': plan['plan_id']})
     local_direct_flow(client, 'smoke', iid, prefix)
-    reference = 'built.in/pv-cloud:0.8.0'
+    reference = 'built.in/pv-cloud:0.9.0'
     values = json.loads((BLUEPRINTS / 'examples/pv-cloud.json').read_text())
     client.fetch(reference, 'smoke')
     pv_required_secrets(client, 'smoke', reference, values, 'pv-cloud')

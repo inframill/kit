@@ -65,7 +65,7 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 
 ## pv-cloud
 
-The current blueprint release is `built.in/pv-cloud:0.8.0`; `latest` has the same
+The current blueprint release is `built.in/pv-cloud:0.9.0`; `latest` has the same
 content. It uses Kit OpenTofu and Ansible `0.4.0` and Dispatch `0.1.0`.
 Resource names use the immutable Instance name through `{{ (instance).Name }}`;
 Values do not contain `instance_name`. This requires an Inframill build with the
@@ -74,20 +74,27 @@ For existing deployments, keep the Instance name equal to the previous
 `instance_name` value to preserve generated resource names. Existing Instances
 retain their saved blueprint sources until explicitly replaced.
 All top-level Values fields are object groups: `network`, `ssh`, `nodes`,
-`cloudflare`, `ansible`, `inframill`, and optional `registry`. Network settings use `network.zone` and
+`cloudflare`, `ansible`, `inframill`, `tls`, and optional `postgres` and `registry`. Network settings use `network.zone` and
 `network.private_networks`; SSH settings use `ssh.user`, `ssh.public_keys`, and
 `ssh.source_ips`.
 
-The updated `0.8.0` and `latest` sources require Inframill `0.1.22-dev` or later. Their static
-`required_secrets` declaration checks five namespace names before creating an
-Instance: `hetzner`, `cloudflare`, `inframill-root-token`, `inframill-tls-key`, and
-`pv-cloud-registry-token`. Store all five before `instance init`, even when the
+The `0.9.0` and `latest` sources require Inframill `0.1.22-dev` or later. Their static
+`required_secrets` declaration checks seven namespace names before creating an
+Instance: `app1-password`, `app2-password`, `hetzner`, `cloudflare`,
+`inframill-root-token`, `pv-cloud-tls-private-key`, and `pv-cloud-registry-token`.
+Store all seven before `instance init`, even when the
 selected nodes have no worker role or registry login is omitted.
 Missing names produce `MISSING_SECRET` before any Instance is created; add
 the entries and retry with the same Instance name. This checks presence only;
 Providers still validate credentials before effects.
 
-Secret references are fixed to those names. When moving from `0.7.0`, remove
+The shared TLS certificate is `tls.certificate`; its namespace private-key secret is
+`pv-cloud-tls-private-key`. Both the data and worker payloads use this pair. When
+moving from `0.8.0`, move `inframill.tls_cert` to `tls.certificate` and upsert the
+existing key under the new secret name. Existing `0.8.0` snapshots still use
+`inframill-tls-key`. The service-specific `inframill-root-token` keeps its name.
+
+The infrastructure, registry and TLS secret references are fixed to those names. When moving from `0.7.0`, remove
 `cloud`, `cloudflare.secret_ref`, `inframill.tls_key_secret_ref`, and
 `inframill.root_token_secret_ref` from Values and store the credentials under the
 required names. Older tags and existing Instance snapshots keep their prior behavior.
@@ -123,14 +130,16 @@ OpenTofu provider is pinned to `5.27.0`.
 
 ```sh
 inframill namespace create production
-inframill blueprint fetch built.in/pv-cloud:0.8.0 --namespace production
+inframill blueprint fetch built.in/pv-cloud:0.9.0 --namespace production
+inframill secret upsert --namespace production --file /private/path/app1-password.json
+inframill secret upsert --namespace production --file /private/path/app2-password.json
 inframill secret upsert --namespace production --file /private/path/hetzner.json
 inframill secret upsert --namespace production --file /private/path/cloudflare.json
-inframill secret upsert --namespace production --file /private/path/inframill-tls-key.json
+inframill secret upsert --namespace production --file /private/path/pv-cloud-tls-private-key.json
 inframill secret upsert --namespace production --file /private/path/inframill-root-token.json
 inframill secret upsert --namespace production --file /private/path/pv-cloud-registry-token.json
 inframill instance init example --namespace production \
-  --blueprint built.in/pv-cloud:0.8.0 --values-file blueprints/examples/pv-cloud.json
+  --blueprint built.in/pv-cloud:0.9.0 --values-file blueprints/examples/pv-cloud.json
 ```
 
 After OpenTofu apply has published nodes, prepare the guests and install PostgreSQL:
@@ -141,21 +150,83 @@ inframill instance exec example ansible.apply --namespace production \
 inframill instance exec example dispatch.push --namespace production \
   --arguments '{"directory":"postgres"}' --stream --timeout 15m
 inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"postgres","target":"install"}' --stream --timeout 15m
+  --arguments '{"directory":"postgres","target":"start"}' --stream --timeout 15m
 ```
 
 Dispatch copies `templates/dispatch/postgres/` to `/opt/pv-cloud/postgres` with
-sudo on every `data` node. The `install` target starts `postgres:16`, waits for its
-health check and preserves the named Docker volume and password on repeat runs.
-PostgreSQL listens on `127.0.0.1:5432` on each host; the database and user are both
-`postgres`. The first install generates a random password in
-`/opt/pv-cloud/postgres/secrets/postgres_password`, accessible only to root and
-mounted as a Compose secret. Back up this file with the database; deleting or
-changing it does not reset credentials in an initialized database. Dispatch pushes
-preserve it and exclude local `secrets/` files.
+sudo on every `data` node. The `start` target starts one `postgres:16` container
+and reconciles `app1` and `app2`, each owned by a same-named non-superuser login.
+Each login handles application access and schema migrations. Repeated start
+preserves passwords, data and the running container when its configuration is
+unchanged. Adding a database works against an existing volume. Removing an entry
+removes its managed network access; start never drops databases, objects or roles
+and refuses to take over a database owned by another role.
 
-Use `dispatch.make` with `{"directory":"postgres","target":"status"}` to
-inspect the service, or target `stop` to stop it while keeping its volume and password.
+PostgreSQL uses Docker host networking and listens on port `5432` on the host's
+interfaces. OpenTofu creates a separate PostgreSQL firewall that selects only
+`data` nodes. External source CIDRs default to all IPv4/IPv6 addresses; configure
+`postgres.source_ips` to restrict them. A firewall change needs OpenTofu plan/apply,
+then a Dispatch push and start to update PostgreSQL's access rules. PostgreSQL
+accepts only TLS connections for exact database/user pairs using SCRAM passwords;
+the `postgres` administrator is available only through the container's local
+Unix socket. Use the data node's generated DNS record and `sslmode=verify-full`
+from external clients. The shared certificate must cover both data and worker
+hostnames; one hostname resolving to the worker does not route PostgreSQL to a
+separate data node.
+
+The default Values configuration is equivalent to:
+
+```json
+"postgres": {
+  "databases": [
+    {"name": "app1", "password_secret": "app1-password"},
+    {"name": "app2", "password_secret": "app2-password"}
+  ],
+  "source_ips": ["0.0.0.0/0", "::/0"],
+  "port": 5432,
+  "max_connections": 50,
+  "work_mem_mb": 4
+}
+```
+
+Application passwords are required namespace secrets: `app1-password` and
+`app2-password`. Supply them before Instance creation using secret input files
+such as `{"name":"app1-password","value":"REPLACE_WITH_A_STRONG_PASSWORD"}`.
+Every explicitly configured database entry requires a `password_secret` reference;
+custom references are resolved during push. The two default secret names remain
+required at Instance creation. Dispatch injects `secrets/app1_password` and
+`secrets/app2_password` with mode `0600`; start never generates application
+passwords and rejects missing, empty or invalid files before starting Docker.
+Passwords must be 16–1024 printable ASCII characters without whitespace; a final
+file newline is accepted. The administrator password is still generated once in
+`secrets/postgres_password`. Targets never print credentials; back up credential
+files alongside the database. After updating a namespace secret and repeating
+the push, run `start` to apply the supplied application passwords and verify them.
+Unchanged application passwords and the administrator password are preserved.
+Already established sessions keep their existing authentication state.
+
+The container memory limit defaults to host RAM minus the larger of 512 MiB or
+25 percent; override `postgres.memory_mb` for a shared host. PostgreSQL reserves
+25 percent of that budget for shared buffers, uses conservative work and
+maintenance memory, and sizes parallel workers from available CPUs. Database
+connection limits together leave five of `max_connections` for administration.
+Configure `connection_limit`, `statement_timeout_ms` (default 30000),
+`lock_timeout_ms` (5000), or `idle_transaction_timeout_ms` (60000) per database.
+Timeout zero disables that timeout. Start rejects overcommitted connection/work
+memory budgets. Named storage keeps data/WAL outside the container writable layer;
+CPU quotas are unrestricted, health checks run every 30 seconds, and the local
+logging driver rotates three 10 MiB files with compression disabled. Durable
+writes remain enabled. Query statistics are available through `pg_stat_statements`.
+These defaults are a starting point for workload measurements, not an automatic
+guarantee against every query's memory usage.
+
+Both payloads expose `start`, `status`, `verify`, and `stop`, with `start` as the
+default. PostgreSQL's `start` starts the service, reconciles databases and runs
+verification. Its `verify` checks TLS/password authentication, migration rights, isolation, rejected
+plaintext/admin TCP connections and effective settings; `status` inspects the
+service; `stop` stops it while preserving the volume and credentials. Changed
+configuration or TLS material causes start to recreate the container, interrupting
+connections briefly. Push excludes credentials and generated runtime files.
 Version `0.6.0` replaces the host PostgreSQL package role; existing package-managed
 databases require a separate data migration before switching. Existing Instances
 keep their original blueprint snapshots.
@@ -166,23 +237,23 @@ persistent data volume. The example names are numbered; names themselves do not
 select services.
 
 Configure `inframill.image` with a compatible Kit image tag or digest and put your
-public PEM certificate chain in `inframill.tls_cert`. Replace the example's
+public PEM certificate chain in `tls.certificate`. Replace the example's
 placeholder certificate before deployment and preserve its PEM line breaks. The
 current schema marks this string with `x-inframill-ui: {widget: textarea}` for
 clients supporting multiline input. Until the UI supports this hint, edit Values
 JSON with `\n` escapes instead of pasting into a single-line Form field. Its subject
-names must cover every worker endpoint you intend to use, such as the generated
+names must cover every worker and data endpoint you intend to use, such as the generated
 Cloudflare hostname.
 Supply the private key and root token through the namespace secrets
-`inframill-tls-key` and `inframill-root-token` before Instance creation:
+`pv-cloud-tls-private-key` and `inframill-root-token` before Instance creation:
 
 ```sh
-inframill secret upsert --namespace production --file /private/path/inframill-tls-key.json
+inframill secret upsert --namespace production --file /private/path/pv-cloud-tls-private-key.json
 inframill secret upsert --namespace production --file /private/path/inframill-root-token.json
 inframill instance exec example dispatch.push --namespace production \
   --arguments '{"directory":"inframill"}' --stream --timeout 15m
 inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"inframill","target":"install"}' --stream --timeout 15m
+  --arguments '{"directory":"inframill","target":"start"}' --stream --timeout 15m
 ```
 
 Each secret input is a JSON object with `name` and `value`; use your credential
@@ -194,15 +265,16 @@ with `secret_files` support; for native development run
 Kit image when running the controlling daemon in Docker.
 
 Dispatch writes these two secret files with mode `0600` under
-`/opt/pv-cloud/inframill/secrets/`, then runs the payload's `install` target. The
-certificate chain is rendered to `tls/fullchain.pem`. Installation checks the
+`/opt/pv-cloud/inframill/secrets/`. The certificate chain is rendered to
+`tls/fullchain.pem`. The subsequent `start` target checks the
 certificate/key pair, recreates the container to load configuration and credential
 changes, and waits for an authenticated HTTPS API probe. Inframill serves native
 TLS directly on port `443` using Docker host networking on the Linux worker.
 The service shares the worker network stack and does not publish Docker ports.
 Port `443` must be available on each selected worker; only HTTPS is served. The
 root token is loaded from a Compose secret into the server process environment
-at startup.
+at startup. The `verify` target runs the same authenticated HTTPS probe against
+the running container.
 
 For private container images, add the optional `registry` Values group:
 
@@ -221,8 +293,8 @@ above. The token is never included in Values or rendered configuration. When
 presence is required before Instance creation even when the `registry` group is
 omitted. An empty `registry` group is invalid.
 
-Both payloads provide a `login` target. Their `install` target runs it before
-starting Compose and stops if login fails. Login reads the injected token through
+Both payloads' `start` targets log into the configured registry before
+starting Compose and stop if login fails. Login reads the injected token through
 `docker login --password-stdin`; the host and username come from `registry.json`.
 Login and Compose run as root through the mapping's `become: true` and use root's
 Docker credential configuration. Omitting `registry` skips login, including when
@@ -232,12 +304,13 @@ are used for Blueprint fetching and are not forwarded to worker Docker clients.
 After adding registry settings to the Blueprint sources, fetch the updated tag
 and initialize a new Instance; existing Instances retain their saved Blueprint
 schema and templates. Repeat `dispatch.push`, then run `dispatch.make` with
-`target: "install"` to refresh the registry token and log in before starting
-services. A `dispatch.make` invocation of `login` or `install` uses the existing
+`target: "start"` to refresh the registry token and log in before starting
+services. A `dispatch.make` invocation of `start` uses the existing
 remote token file.
 
 Repeat the push to rotate the certificate, key or token. `dispatch.make` targets
-`status` and `stop` inspect or stop existing deployments without fetching secrets.
+`verify`, `status` and `stop` check, inspect or stop existing deployments without
+fetching secrets.
 Stop retains data and credential files. To narrow operations to a worker, set
 `"select":{"names":["worker-2"]}` in the directory mapping; the default mapping
 targets every `worker` node.
@@ -277,6 +350,8 @@ blueprints/
   pv-cloud/0.7.0/templates/...
   pv-cloud/0.8.0/blueprint.yaml
   pv-cloud/0.8.0/templates/...
+  pv-cloud/0.9.0/blueprint.yaml
+  pv-cloud/0.9.0/templates/...
 ```
 
 `built.in/pv-cloud` is shorthand for `built.in/pv-cloud:latest`. To maintain another
@@ -309,6 +384,8 @@ task inframill:copy
 BLUEPRINT=hello-world python3 tests/check.py blueprint:check
 # Requires task setup and task providers:build -- --native:
 BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check
+# Disposable real PostgreSQL containers; requires Docker and openssl:
+python3 tests/pv_postgres_check.py
 # All native workflows, including revision and cache checks:
 python3 tests/check.py native
 ```
