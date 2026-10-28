@@ -59,7 +59,7 @@ if args[0] == 'login' and pathlib.Path('fail-login').exists():
                     installed = self.make(payload, env)
                     self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
                     self.assertNotIn(token.strip(), installed.stdout + installed.stderr)
-                    records = self.records(commands)[-4 if prepare is prepare_millway else -3:]
+                    records = self.records(commands)[-5 if prepare is prepare_millway else -3:]
                     self.assertEqual(records[0], {
                         'args': ['login', 'registry.example.invalid:5000', '--username',
                                  'robot$pv-cloud', '--password-stdin'],
@@ -67,7 +67,11 @@ if args[0] == 'login' and pathlib.Path('fail-login').exists():
                     })
                     self.assertEqual(records[1]['args'][0], 'compose')
                     self.assertEqual(records[1]['args'][5:], ['config', '--quiet'])
-                    self.assertEqual(records[-1]['args'][5], 'up')
+                    startup = records[-2] if prepare is prepare_millway else records[-1]
+                    self.assertEqual(startup['args'][5], 'up')
+                    if prepare is prepare_millway:
+                        self.assertEqual(records[-1]['args'][5:], ['exec', '--no-TTY', 'millway',
+                            '/millway', 'verify', '-config', '/etc/millway/millway.json'])
 
     def test_login_failure_stops_compose(self):
         for prepare in (prepare_inframill, prepare_postgres, prepare_millway):
@@ -101,4 +105,4 @@ if args[0] == 'login' and pathlib.Path('fail-login').exists():
                 (payload / 'registry.json').write_text('{}\n')
                 installed = self.make(payload, env)
                 self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
-                self.assertEqual([record['args'][0] for record in self.records(commands)], ['compose'] * (3 if prepare is prepare_millway else 2))
+                self.assertEqual([record['args'][0] for record in self.records(commands)], ['compose'] * (4 if prepare is prepare_millway else 2))

@@ -61,6 +61,7 @@ def settings():
                                        {'name': 'app2', 'password_secret': 'app2-password'}])
     if not isinstance(databases, list) or not 1 <= len(databases) <= 20:
         raise SetupError('Configure between one and twenty databases')
+    default_limit = min(20, (config['max_connections'] - 5) // len(databases))
     names, normalized = set(), []
     for database in databases:
         fields = {'name', 'password_secret', 'connection_limit', 'statement_timeout_ms',
@@ -76,7 +77,6 @@ def settings():
         reference = database.get('password_secret')
         if not isinstance(reference, str) or not SECRET_NAME.fullmatch(reference):
             raise SetupError(f'Database {name} requires a valid password_secret reference')
-        default_limit = min(20, (config['max_connections'] - 5) // len(databases))
         database['connection_limit'] = integer(database.get('connection_limit', default_limit), 'connection_limit', 1, 495)
         for field, default in [('statement_timeout_ms', 30000), ('lock_timeout_ms', 5000),
                                ('idle_transaction_timeout_ms', 60000)]:
@@ -242,19 +242,22 @@ def reconcile(config, passwords):
     for database in config['databases']:
         name = database['name']
         identifier = '"' + name + '"'
+        statements = []
         if name not in roles:
-            admin(f'CREATE ROLE {identifier} LOGIN PASSWORD {quote(scram(passwords[name]))};')
+            statements.append(f'CREATE ROLE {identifier} LOGIN PASSWORD {quote(scram(passwords[name]))};')
         elif not matches(passwords[name], roles[name]['password']):
-            admin(f'ALTER ROLE {identifier} PASSWORD {quote(scram(passwords[name]))};')
+            statements.append(f'ALTER ROLE {identifier} PASSWORD {quote(scram(passwords[name]))};')
         if name not in catalog['databases']:
-            admin(f'CREATE DATABASE {identifier} OWNER {identifier};')
-        admin(f"""ALTER ROLE {identifier} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
+            statements.append(f'CREATE DATABASE {identifier} OWNER {identifier};')
+        statements.append(f"""ALTER ROLE {identifier} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
           CONNECTION LIMIT {database['connection_limit']};
           ALTER DATABASE {identifier} CONNECTION LIMIT {database['connection_limit']};
           REVOKE ALL ON DATABASE {identifier} FROM PUBLIC;
           ALTER ROLE {identifier} IN DATABASE {identifier} SET statement_timeout = '{database['statement_timeout_ms']}ms';
           ALTER ROLE {identifier} IN DATABASE {identifier} SET lock_timeout = '{database['lock_timeout_ms']}ms';
           ALTER ROLE {identifier} IN DATABASE {identifier} SET idle_in_transaction_session_timeout = '{database['idle_transaction_timeout_ms']}ms';""")
+        # psql reads stdin with autocommit, so CREATE DATABASE remains outside a transaction.
+        admin('\n'.join(statements))
         # The database owner is pg_database_owner in newly created PostgreSQL 16 databases.
         execute(COMPOSE + ['exec', '--no-TTY', '--user', 'postgres', 'postgres', 'psql', '-X', '-q',
                           '--set', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', name],

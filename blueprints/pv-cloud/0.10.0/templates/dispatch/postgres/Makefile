@@ -1,4 +1,5 @@
 COMPOSE_PROJECT_NAME ?= pv-cloud-postgres
+PYTHON ?= python3
 export COMPOSE_PROJECT_NAME
 COMPOSE := docker compose --project-name $(COMPOSE_PROJECT_NAME) --file compose.yaml
 
@@ -6,13 +7,13 @@ COMPOSE := docker compose --project-name $(COMPOSE_PROJECT_NAME) --file compose.
 .PHONY: start status verify stop
 
 start:
-	@python3 manage.py start
+	@$(PYTHON) manage.py start
 
 status:
 	$(COMPOSE) ps
 
 verify:
-	@python3 manage.py verify
+	@$(PYTHON) manage.py verify
 
 stop:
 	$(COMPOSE) down

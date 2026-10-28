@@ -224,8 +224,14 @@ These defaults are a starting point for workload measurements, not an automatic
 guarantee against every query's memory usage.
 
 All three payloads expose `start`, `status`, `verify`, and `stop`, with `start` as the
-default. PostgreSQL's `start` starts the service, reconciles databases and runs
-verification. Its `verify` checks TLS/password authentication, migration rights, isolation, rejected
+default. These targets also run directly on the node, for example
+`sudo make -C /opt/pv-cloud/millway start`; Dispatch invokes the same Makefile.
+The delivered files and credentials are sufficient for manual operation.
+Use `make PYTHON=/path/to/python3 start` to select a host interpreter.
+Python handles configuration preparation and PostgreSQL reconciliation, while
+Compose runs the services. PostgreSQL's `start` starts the service, reconciles
+databases and runs verification. Its `verify` checks TLS/password authentication,
+migration rights, isolation, rejected
 plaintext/admin TCP connections and effective settings; `status` inspects the
 service; `stop` stops it while preserving the volume and credentials. Changed
 configuration or TLS material causes start to recreate the container, interrupting

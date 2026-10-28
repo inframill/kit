@@ -43,6 +43,8 @@ def integer(value, name, low, high):
 
 def settings():
     document = json.loads(Path('settings.json').read_text())
+    if not isinstance(document, dict) or not isinstance(document.get('millway'), dict):
+        raise DeploymentError('settings.json must contain a millway object')
     config = dict(document['millway'])
     fields = {'image', 'web_node', 'database_node', 'worker_node', 'database_host',
               'inframill_endpoint', 'google_client_ids', 'admin_emails', 'max_connections', 'port'}
@@ -110,27 +112,17 @@ def write(path, content, mode=0o600):
     temporary.replace(path)
 
 
-def prepare(config):
-    try:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.load_cert_chain('tls/fullchain.pem', 'secrets/tls_private_key', password=lambda: '')
-    except (OSError, ssl.SSLError):
-        raise DeploymentError('Millway requires a matching, unencrypted shared TLS certificate/key') from None
-    if sys.platform.startswith('linux'):
-        threshold = int(Path('/proc/sys/net/ipv4/ip_unprivileged_port_start').read_text())
-        if threshold > config['port']:
-            raise DeploymentError('Apply the Ansible web role before starting Millway on this port')
-    runtime = Path('runtime')
-    runtime.mkdir(mode=0o700, exist_ok=True)
-    runtime.chmod(0o700)
-    certificate = Path('tls/fullchain.pem').read_text()
-    ca_path = ssl.get_default_verify_paths().cafile
-    ca = (Path(ca_path).read_text() if ca_path else '') + '\n' + certificate
+def literal_secret(name):
+    """Escape credentials that Millway would otherwise expand as environment references."""
+    value = secret(name)
+    return '$' + value if REFERENCE.fullmatch(value) else value
+
+
+def application_config(config):
     password = urllib.parse.quote(secret('database_password', password=True), safe='')
     url = f"postgresql://app1:{password}@{config['database_host']}:{config['database_port']}/app1?sslmode=verify-full&sslrootcert=/etc/millway/ca.pem"
-    literal = lambda value: '$' + value if REFERENCE.fullmatch(value) else value
-    token = literal(secret('root_token'))
-    application = {
+    token = literal_secret('root_token')
+    return {
         'main': {'port': config['port'], 'databaseUrl': url,
                  'tls': {'certFile': '/etc/millway/fullchain.pem', 'keyFile': '/etc/millway/server.key'}},
         'logger': {'type': 'slog', 'settings': {'level': 'info', 'format': 'json'}},
@@ -144,11 +136,31 @@ def prepare(config):
         ],
         'access': {'adminEmails': config['admin_emails']}, 'workers': [],
         'inframill': {'hosts': [{'id': config['worker_node'], 'endpoint': config['inframill_endpoint'],
-                               'rootToken': literal(secret('inframill_root_token'))}],
+                               'rootToken': literal_secret('inframill_root_token')}],
                       'timeout': '5s', 'proxyTimeout': '2m', 'checkInterval': '10s'},
     }
+
+
+def prepare(config):
+    # Read and validate every credential before writing any generated files.
+    application = application_config(config)
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain('tls/fullchain.pem', 'secrets/tls_private_key', password=lambda: '')
+    except (OSError, ssl.SSLError):
+        raise DeploymentError('Millway requires a matching, unencrypted shared TLS certificate/key') from None
+    if sys.platform.startswith('linux'):
+        threshold = int(Path('/proc/sys/net/ipv4/ip_unprivileged_port_start').read_text())
+        if threshold > config['port']:
+            raise DeploymentError('Apply the Ansible web role before starting Millway on this port')
+    certificate = Path('tls/fullchain.pem').read_text()
+    ca_path = ssl.get_default_verify_paths().cafile
+    ca = (Path(ca_path).read_text() if ca_path else '') + '\n' + certificate
     files = {'millway.json': json.dumps(application, indent=2) + '\n', 'ca.pem': ca,
              'fullchain.pem': certificate, 'server.key': Path('secrets/tls_private_key').read_text()}
+    runtime = Path('runtime')
+    runtime.mkdir(mode=0o700, exist_ok=True)
+    runtime.chmod(0o700)
     digest = hashlib.sha256()
     for name, content in files.items():
         write(runtime / name, content, mode=0o644 if name == 'ca.pem' else 0o600)
@@ -164,8 +176,6 @@ def main():
     with Path('.start.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         config = settings()
-        for name in ['root_token', 'inframill_root_token', 'database_password']:
-            secret(name, password=name == 'database_password')
         prepare(config)
         execute([sys.executable, 'registry_login.py'], 'Docker registry login failed')
         execute(COMPOSE + ['config', '--quiet'], 'Invalid Millway Compose configuration')

@@ -1,4 +1,5 @@
 COMPOSE_PROJECT_NAME ?= pv-cloud-millway
+PYTHON ?= python3
 export COMPOSE_PROJECT_NAME
 COMPOSE := docker compose --project-name $(COMPOSE_PROJECT_NAME) --file compose.yaml
 
@@ -6,7 +7,7 @@ COMPOSE := docker compose --project-name $(COMPOSE_PROJECT_NAME) --file compose.
 .PHONY: start status verify stop
 
 start:
-	@python3 manage.py start
+	@$(PYTHON) manage.py start
 	@$(MAKE) --no-print-directory verify
 
 status:

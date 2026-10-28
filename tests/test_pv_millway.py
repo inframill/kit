@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import secrets
 import shutil
@@ -50,7 +51,7 @@ def prepare_payload(root, database_payload=None):
 
 
 def run_start(payload, env):
-    return subprocess.run([sys.executable, 'manage.py', 'start'], cwd=payload, env=env,
+    return subprocess.run(['make', '-j4', 'start', 'PYTHON=' + sys.executable], cwd=payload, env=env,
                           capture_output=True, text=True)
 
 
@@ -77,6 +78,46 @@ class MillwayPayloadTests(unittest.TestCase):
                 for value in [millway.secret('database_password'), millway.secret('root_token'), millway.secret('inframill_root_token')]:
                     self.assertNotIn(value, before.decode())
 
+    def test_credentials_are_literal_and_database_password_is_url_encoded(self):
+        with tempfile.TemporaryDirectory() as td:
+            payload = prepare_payload(td)
+            with working_directory(payload):
+                Path('secrets/database_password').write_text("aB:cD\\eF'gH$iJkLmN\n")
+                Path('secrets/root_token').write_text('${ROOT_TOKEN}\n')
+                Path('secrets/inframill_root_token').write_text('${WORKER_TOKEN}\n')
+                millway.prepare(millway.settings())
+                runtime = json.loads(Path('runtime/millway.json').read_text())
+                connection = urllib.parse.urlsplit(runtime['main']['databaseUrl'])
+                self.assertEqual(urllib.parse.unquote(connection.password), "aB:cD\\eF'gH$iJkLmN")
+                for handler in runtime['handlers'][:3]:
+                    self.assertEqual(handler['settings']['rootToken'], '$${ROOT_TOKEN}')
+                self.assertEqual(runtime['inframill']['hosts'][0]['rootToken'], '$${WORKER_TOKEN}')
+
+    def test_invalid_credentials_fail_before_runtime_files_or_docker(self):
+        with tempfile.TemporaryDirectory() as td:
+            payload = prepare_payload(td)
+            docker = Path(td) / 'docker'
+            marker = Path(td) / 'docker-called'
+            docker.write_text('#!/bin/sh\ntouch "$DOCKER_CALLED"\n')
+            docker.chmod(0o700)
+            env = {**os.environ, 'PATH': td + os.pathsep + os.environ['PATH'],
+                   'DOCKER_CALLED': str(marker)}
+            for name in ['root_token', 'inframill_root_token', 'database_password']:
+                credential = payload / 'secrets' / name
+                original = credential.read_bytes()
+                for value in [None, '', ' \n']:
+                    with self.subTest(credential=name, value=value):
+                        if value is None:
+                            credential.unlink()
+                        else:
+                            credential.write_text(value)
+                        result = run_start(payload, env)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(marker.exists())
+                        self.assertFalse((payload / 'runtime').exists())
+                        self.assertFalse((payload / '.env').exists())
+                credential.write_bytes(original)
+
     def test_invalid_roles_pool_and_urls_fail_before_effects(self):
         with tempfile.TemporaryDirectory() as td:
             payload = prepare_payload(td)
@@ -92,6 +133,7 @@ class MillwayPayloadTests(unittest.TestCase):
                 changed = copy.deepcopy(original)
                 changed['nodes']['web-1']['roles'] = ['web']
                 cases.append(changed)
+                cases.extend([[], {'millway': []}, {}])
                 for document in cases:
                     Path('settings.json').write_text(json.dumps(document))
                     with self.assertRaises(millway.DeploymentError):

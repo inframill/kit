@@ -158,7 +158,7 @@ values_schema:
       properties:
         image:
           title: Published Millway UI/API image
-          description: Must match the bundled migration manifest and node architecture, and contain the configured Google IDs in its exported UI.
+          description: Must match the node architecture and contain the configured Google IDs in its exported UI.
           type: string
           minLength: 1
           pattern: '^\S+$'
