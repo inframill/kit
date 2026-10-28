@@ -1,9 +1,6 @@
-import contextlib
 import copy
 import importlib.util
-import io
 import json
-import os
 from pathlib import Path
 import secrets
 import shutil
@@ -11,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 import urllib.parse
 
 from build import ROOT
@@ -46,7 +42,7 @@ def prepare_payload(root, database_payload=None):
         'nodes': {name: {'roles': ['common', 'docker', role]} for name, role in
                   [('data-1', 'data'), ('worker-1', 'worker'), ('web-1', 'web')]},
         'postgres': {},
-        'millway': {'image': 'ghcr.io/inframill/millway:0.1.4-dev',
+        'millway': {'image': 'ghcr.io/inframill/millway:0.1.5-dev',
                     'google_client_ids': {'web': 'test-web.apps.googleusercontent.com'}},
     }
     (payload / 'settings.json').write_text(json.dumps(document))
@@ -54,15 +50,8 @@ def prepare_payload(root, database_payload=None):
 
 
 def run_start(payload, env):
-    with working_directory(payload), patch.dict(os.environ, env), \
-            patch.object(millway, '__file__', str(payload / 'manage.py')), \
-            patch.object(sys, 'argv', ['manage.py', 'start']), \
-            patch.object(millway, 'verify'), patch.object(millway, 'request', return_value=b'{}'):
-        try:
-            millway.main()
-        except millway.DeploymentError as error:
-            return subprocess.CompletedProcess(['start'], 1, '', str(error))
-    return subprocess.CompletedProcess(['start'], 0, '', '')
+    return subprocess.run([sys.executable, 'manage.py', 'start'], cwd=payload, env=env,
+                          capture_output=True, text=True)
 
 
 class MillwayPayloadTests(unittest.TestCase):
@@ -73,7 +62,6 @@ class MillwayPayloadTests(unittest.TestCase):
                 config = millway.settings()
                 self.assertEqual(config['database_host'], 'data-1-01arz3ndektsv4rrffq69g5fav.example.test')
                 self.assertEqual(config['inframill_endpoint'], 'https://worker-1-01arz3ndektsv4rrffq69g5fav.example.test')
-                self.assertEqual(config['hostname'], 'web-1-01arz3ndektsv4rrffq69g5fav.example.test')
                 millway.prepare(config)
                 runtime = json.loads(Path('runtime/millway.json').read_text())
                 connection = urllib.parse.urlsplit(runtime['main']['databaseUrl'])
@@ -108,52 +96,3 @@ class MillwayPayloadTests(unittest.TestCase):
                     Path('settings.json').write_text(json.dumps(document))
                     with self.assertRaises(millway.DeploymentError):
                         millway.settings()
-
-    def test_verification_checks_exact_migration_set_and_fresh_versions(self):
-        with tempfile.TemporaryDirectory() as td:
-            payload = prepare_payload(td)
-            with working_directory(payload):
-                config = millway.settings()
-                contract = json.loads(Path('migrations.json').read_text())
-
-                def request(config, endpoint, path, *args):
-                    if path == '/':
-                        return b'<html>Millway</html>'
-                    version = contract['version'] if path.startswith('/api/') else contract['inframill_version']
-                    return json.dumps({'version': version}).encode()
-
-                for migrations, valid in [(contract['migrations'], True), ({}, False),
-                                           ({**contract['migrations'], 'unexpected.sql': 'changed'}, False),
-                                           ({**contract['migrations'], next(iter(contract['migrations'])): 'changed'}, False)]:
-                    with self.subTest(valid=valid), patch.object(millway, 'request', side_effect=request), \
-                            patch.object(millway, 'database', side_effect=['app1|app1|1', json.dumps(migrations)]) as database, \
-                            contextlib.redirect_stdout(io.StringIO()) as output:
-                        if valid:
-                            millway.verify(config)
-                        else:
-                            with self.assertRaisesRegex(millway.DeploymentError, 'migrations'):
-                                millway.verify(config)
-                        self.assertIn('BEGIN READ ONLY', database.call_args_list[1].args[1])
-                        self.assertIn('inframill: worker-1', output.getvalue())
-
-    def test_non_object_version_responses_fail_cleanly(self):
-        with tempfile.TemporaryDirectory() as td:
-            payload = prepare_payload(td)
-            with working_directory(payload):
-                contract = json.loads(Path('migrations.json').read_text())
-                with patch.object(millway, 'database', side_effect=['app1|app1|1', json.dumps(contract['migrations'])]), \
-                        patch.object(millway, 'request', return_value=b'[]'), contextlib.redirect_stdout(io.StringIO()):
-                    with self.assertRaisesRegex(millway.DeploymentError, 'inframill, millway'):
-                        millway.verify(millway.settings())
-
-    def test_failed_database_still_pings_inframill_and_hides_credentials(self):
-        with tempfile.TemporaryDirectory() as td:
-            payload = prepare_payload(td)
-            with working_directory(payload), patch.object(millway, 'database', side_effect=millway.DeploymentError('secret database URL')), \
-                    patch.object(millway, 'request', side_effect=OSError('secret token')), \
-                    contextlib.redirect_stdout(io.StringIO()) as output:
-                with self.assertRaisesRegex(millway.DeploymentError, 'database, inframill, millway'):
-                    millway.verify(millway.settings())
-                self.assertNotIn('secret database URL', output.getvalue())
-                self.assertNotIn('secret token', output.getvalue())
-                self.assertIn('migrations: skipped', output.getvalue())

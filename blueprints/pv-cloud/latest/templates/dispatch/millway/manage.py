@@ -1,4 +1,4 @@
-"""Deploy the unchanged non-root Millway image and verify its dependencies."""
+"""Prepare configuration and start the non-root Millway image."""
 import fcntl
 import hashlib
 import json
@@ -8,13 +8,10 @@ import re
 import ssl
 import subprocess
 import sys
-import time
 import urllib.parse
-import urllib.request
 
 COMPOSE = ['docker', 'compose', '--project-name',
            os.environ.get('COMPOSE_PROJECT_NAME', 'pv-cloud-millway'), '--file', 'compose.yaml']
-VERSION = re.compile(r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$')
 REFERENCE = re.compile(r'^\$\{[A-Za-z_][A-Za-z0-9_]*\}$')
 IDENTIFIER = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 HOSTNAME = re.compile(r'^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$')
@@ -24,16 +21,10 @@ class DeploymentError(Exception):
     pass
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-def execute(argv, label, data=None, check=True):
-    result = subprocess.run(argv, input=data, capture_output=True, text=True, timeout=240)
-    if check and result.returncode:
+def execute(argv, label):
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=240)
+    if result.returncode:
         raise DeploymentError(label)
-    return result
 
 
 def secret(name, password=False):
@@ -79,11 +70,9 @@ def settings():
     def node_host(field):
         return f'{config[field]}-{instance_id.lower()}.{zone}'
 
-    config['hostname'] = node_host('web_node')
     config['database_host'] = config.get('database_host', node_host('database_node'))
-    for field in ['hostname', 'database_host']:
-        if not isinstance(config[field], str) or not HOSTNAME.fullmatch(config[field]):
-            raise DeploymentError(f'Invalid {field}')
+    if not isinstance(config['database_host'], str) or not HOSTNAME.fullmatch(config['database_host']):
+        raise DeploymentError('Invalid database_host')
     config['inframill_endpoint'] = config.get('inframill_endpoint', 'https://' + node_host('worker_node'))
     endpoint = urllib.parse.urlsplit(config['inframill_endpoint'])
     if (endpoint.scheme != 'https' or not endpoint.hostname or endpoint.username or endpoint.password
@@ -167,128 +156,21 @@ def prepare(config):
     write('.env', f"MILLWAY_IMAGE={config['image']}\nMILLWAY_DB_MAX_CONNS={config['max_connections']}\nMILLWAY_CONFIG_SHA={digest.hexdigest()}\n")
 
 
-def request(config, origin, path, header=None, token=None):
-    headers = {'Content-Type': 'application/json', 'Connect-Protocol-Version': '1'}
-    if header:
-        headers[header] = token
-    context = ssl.create_default_context(cafile='runtime/ca.pem')
-    data = b'{}' if path != '/' else None
-    query = urllib.request.Request(origin + path, data=data, headers=headers)
-    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context), NoRedirect())
-    with opener.open(query, timeout=5) as response:
-        return response.read()
-
-
-def origin(config):
-    suffix = '' if config['port'] == 443 else ':' + str(config['port'])
-    return 'https://' + config['hostname'] + suffix
-
-
-def database(config, sql):
-    escape = lambda value: value.replace('\\', '\\\\').replace(':', '\\:')
-    credential = ':'.join(escape(value) for value in [config['database_host'], str(config['database_port']),
-                         'app1', 'app1', secret('database_password', password=True)])
-    script = """set -eu
-umask 077
-passfile=$(mktemp)
-trap 'rm -f "$passfile"' EXIT HUP INT TERM
-IFS= read -r credential
-printf '%s\\n' "$credential" > "$passfile"
-PGPASSFILE="$passfile" PGHOST="$1" PGPORT="$2" PGUSER=app1 PGDATABASE=app1 \
- PGSSLMODE=verify-full PGSSLROOTCERT=/ca.pem PGCONNECT_TIMEOUT=5 psql -X -qAt --set ON_ERROR_STOP=1
-"""
-    result = execute(['docker', 'run', '--rm', '--interactive', '--network', 'host',
-                      '--user', '65532:65532', '--read-only', '--cap-drop', 'ALL',
-                      '--security-opt', 'no-new-privileges:true', '--tmpfs', '/tmp:rw,noexec,nosuid,size=4m,mode=1777',
-                      '--mount', f'type=bind,source={Path("runtime/ca.pem").resolve()},target=/ca.pem,readonly',
-                      '--entrypoint', '/bin/sh', 'postgres:16', '-c', script, 'client',
-                      config['database_host'], str(config['database_port'])],
-                     'Database connection failed', credential + '\n' + sql, check=False)
-    if result.returncode:
-        raise DeploymentError('Database query failed')
-    return result.stdout.strip()
-
-
-def verify(config):
-    contract = json.loads(Path('migrations.json').read_text())
-    if contract['schema'] != 1 or contract['ledger'] != 'millway_schema_migrations':
-        raise DeploymentError('Invalid pinned Millway migration contract')
-    failures = []
-    connected = False
-    try:
-        if database(config, 'SELECT current_database(), current_user, 1;') != 'app1|app1|1':
-            raise DeploymentError('Unexpected database identity')
-        connected = True
-        print('database: app1 connection and TLS OK')
-    except DeploymentError:
-        failures.append('database')
-        print('database: connection failed')
-    if connected:
-        try:
-            applied = json.loads(database(config, "BEGIN READ ONLY; SELECT coalesce(json_object_agg(version, checksum), '{}'::json) FROM millway_schema_migrations; ROLLBACK;"))
-            if applied != contract['migrations']:
-                raise DeploymentError('Migrations differ from the pinned image contract')
-            print(f"migrations: {len(applied)} applied; checksums OK")
-        except (DeploymentError, ValueError, TypeError):
-            failures.append('migrations')
-            print('migrations: missing, changed or unexpected migrations')
-    else:
-        print('migrations: skipped because database connection failed')
-    try:
-        result = json.loads(request(config, config['inframill_endpoint'], '/inframill.v1.EngineService/GetServerVersion',
-                                    'X-Root-Password', secret('inframill_root_token')))
-        if not isinstance(result, dict):
-            raise DeploymentError('Invalid Inframill version response')
-        version = result.get('version', '')
-        if not isinstance(version, str) or not VERSION.fullmatch(version) or version.split('.')[:2] != contract['inframill_version'].split('.')[:2]:
-            raise DeploymentError('Inframill version is incompatible')
-        print(f"inframill: {config['worker_node']} {version} compatible")
-    except (OSError, ValueError, TypeError, DeploymentError):
-        failures.append('inframill')
-        print('inframill: authenticated version ping failed or incompatible version')
-    try:
-        result = json.loads(request(config, origin(config), '/api/millway.v1.SystemService/GetVersion',
-                                    'X-Root-Token', secret('root_token')))
-        if not isinstance(result, dict):
-            raise DeploymentError('Invalid Millway version response')
-        if result.get('version') != contract['version']:
-            raise DeploymentError('Running Millway image does not match its migration contract')
-        if b'<html' not in request(config, origin(config), '/').lower():
-            raise DeploymentError('Millway web UI is unavailable')
-        print(f"millway: {contract['version']} HTTPS, API and UI OK")
-    except (OSError, ValueError, TypeError, DeploymentError):
-        failures.append('millway')
-        print('millway: HTTPS, API version or UI verification failed')
-    if failures:
-        raise DeploymentError('Verification failed: ' + ', '.join(failures))
-
-
 def main():
     os.chdir(Path(__file__).resolve().parent)
     command = sys.argv[1] if len(sys.argv) == 2 else ''
-    if command not in {'start', 'verify'}:
-        raise DeploymentError('Expected start or verify')
+    if command != 'start':
+        raise DeploymentError('Expected start')
     with Path('.start.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         config = settings()
         for name in ['root_token', 'inframill_root_token', 'database_password']:
             secret(name, password=name == 'database_password')
-        if command == 'start':
-            prepare(config)
-            execute([sys.executable, 'registry_login.py'], 'Docker registry login failed')
-            execute(COMPOSE + ['config', '--quiet'], 'Invalid Millway Compose configuration')
-            execute(COMPOSE + ['--profile', 'tools', 'run', '--rm', '--no-deps', '--no-TTY', 'stage'], 'Millway credential staging failed')
-            execute(COMPOSE + ['up', '--detach', '--no-deps', 'millway'], 'Millway startup failed')
-            for attempt in range(30):
-                try:
-                    request(config, origin(config), '/api/millway.v1.SystemService/GetVersion',
-                            'X-Root-Token', secret('root_token'))
-                    break
-                except (OSError, ValueError):
-                    if attempt == 29:
-                        raise DeploymentError('Millway did not become ready') from None
-                    time.sleep(2)
-        verify(config)
+        prepare(config)
+        execute([sys.executable, 'registry_login.py'], 'Docker registry login failed')
+        execute(COMPOSE + ['config', '--quiet'], 'Invalid Millway Compose configuration')
+        execute(COMPOSE + ['--profile', 'tools', 'run', '--rm', '--no-deps', '--no-TTY', 'stage'], 'Millway credential staging failed')
+        execute(COMPOSE + ['up', '--detach', '--no-deps', 'millway'], 'Millway startup failed')
 
 
 if __name__ == '__main__':

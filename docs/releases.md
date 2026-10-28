@@ -12,9 +12,11 @@ DNS names. Millway uses the generated web-node DNS name.
 The web role replaces Nginx installation with a web-node kernel port threshold
 of 443, permitting non-root HTTPS with host networking. Protected configuration
 is staged into a private volume for UID/GID 65532. No Millway source changes are
-required. Verification tests database connectivity, migration checksums, fresh
-authenticated Inframill version pings and the Millway HTTPS API/UI. The pinned
-migration manifest must be refreshed alongside matching image changes.
+required. Millway `0.1.5-dev` runs with its explicit `start` command; the native
+`verify` CLI checks database connectivity and fresh authenticated Inframill
+version pings. Kit delegates verification entirely to that CLI, reporting its
+output and failing when it fails. Kit migration manifests and additional probes
+are removed.
 
 `0.9.0` and existing Instance snapshots keep their prior sources and behavior.
 

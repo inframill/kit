@@ -136,17 +136,18 @@ determines which targets it supports:
 | `millway` | `start`, `status`, `verify`, `stop` |
 
 All three payloads default to `start`, which validates inputs, logs into the configured
-registry, starts the service and waits for readiness. `verify` checks the running
+registry, starts the service and runs verification. `verify` checks the running
 service, `status` reports its Compose status, and `stop` preserves data and
 credentials. After changing namespace secrets and repeating the push, `start`
 applies the supplied application passwords or Inframill credentials and verifies
 the service. PostgreSQL preserves its administrator password.
 
 The Millway mapping selects `web` nodes and uses the data node's `app1` database
-and worker Inframill endpoint. Its verification checks real database TLS access,
-the migration ledger against the pinned image manifest, fresh authenticated
-Inframill version responses, and the application's HTTPS API and UI. Host-side
-helpers preserve the unchanged non-root Millway image.
+and worker Inframill endpoint. Millway's native `verify` CLI checks database TLS
+access and fresh authenticated Inframill version responses inside the running
+container. Make and Dispatch report the CLI output and fail when it fails, without
+additional checks. The service uses Millway's explicit `start` CLI command and preserves
+the non-root image.
 
 Sources are clean relative directories beneath the provider-supplied root;
 `.` and paths escaping that root are rejected. Destinations are clean absolute

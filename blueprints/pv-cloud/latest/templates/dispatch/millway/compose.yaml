@@ -7,7 +7,7 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    command: ["-config", "/etc/millway/millway.json"]
+    command: ["start", "-config", "/etc/millway/millway.json"]
     environment:
       SSL_CERT_FILE: /etc/millway/ca.pem
       DB_MAX_CONNS: "${MILLWAY_DB_MAX_CONNS:-10}"

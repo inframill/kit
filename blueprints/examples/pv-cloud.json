@@ -86,7 +86,7 @@
     "work_mem_mb": 4
   },
   "millway": {
-    "image": "ghcr.io/inframill/millway:0.1.4-dev",
+    "image": "ghcr.io/inframill/millway:0.1.5-dev",
     "google_client_ids": {
       "web": "REPLACE_WITH_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com"
     },

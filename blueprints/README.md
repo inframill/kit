@@ -292,12 +292,13 @@ Configure Millway in Values:
 
 ```json
 "millway": {
-  "image": "ghcr.io/inframill/millway:0.1.4-dev",
+  "image": "ghcr.io/inframill/millway:0.1.5-dev",
   "google_client_ids": {"web": "YOUR_CLIENT_ID.apps.googleusercontent.com"},
   "admin_emails": ["admin@example.com"]
 }
 ```
 
+Use Millway `0.1.5-dev` or later with the `start` and `verify` CLI commands.
 The image must contain both UI and API, match the web node architecture, and have
 the same Google client IDs embedded in its exported UI. `admin_emails` controls
 new-account administrator assignment. Optional `web_node`, `database_node` and
@@ -326,27 +327,18 @@ inframill instance exec example dispatch.make --namespace production \
 The host helper builds protected runtime configuration from namespace secrets.
 A temporary PostgreSQL-image helper stages it in a private volume owned by
 Millway's UID. No shell, Python, entrypoint or code changes are required in the
-Millway image or sibling repository. `start` applies migrations through Millway's
-existing startup behavior, then verifies dependencies. `stop` preserves the
-runtime volume and database. Push excludes generated configuration and credentials.
+Millway image or sibling repository. `start` runs `millway start -config` to apply
+migrations through normal application startup, then verifies dependencies. `stop`
+preserves the runtime volume and database. Push excludes generated configuration
+and credentials.
 
-Millway's `verify` checks an authenticated TLS database connection and `SELECT 1`
-as app1, compares its migration ledger with a pinned checksum manifest in a
-read-only transaction, sends a fresh authenticated Inframill version RPC and
-checks major/minor compatibility, and verifies Millway's image version, HTTPS API
-and UI. It prints component summaries and fails if any check fails. A temporary
-`postgres:16` client runs SQL with a private passfile supplied through stdin;
-credentials never enter command arguments or verification output. The normal
-Millway health endpoint reports versions only and cannot replace these checks.
-
-`migrations.json` pins Millway's version, source revision, migration filenames and
-SHA-256 checksums. Before changing the image, refresh the contract with
-`task millway:manifest MILLWAY_SOURCE=../millway` from its matching clean checkout,
-review the manifest and verify the new image. The task only reads the sibling
-project. Unknown, missing or changed migrations fail verification; `verify`
-never applies migrations or resets data. The current manifest matches Millway
-`0.1.4-dev`; use an image built from that matching source, preferably pinned by
-digest for deployment.
+Millway's `verify` executes `/millway verify -config /etc/millway/millway.json`
+inside the running container. The native CLI checks the application's actual
+database configuration and makes fresh authenticated Inframill version probes
+using Millway's compatibility policy. Make and Dispatch report its output and
+fail when the CLI fails. All Millway verification belongs to that CLI; Kit
+adds no database, migration, version or HTTP probes. Millway's `verify` does not
+apply migrations or start HTTP handlers or workers.
 
 For private container images, add the optional `registry` Values group:
 

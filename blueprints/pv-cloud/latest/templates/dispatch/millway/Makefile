@@ -7,12 +7,13 @@ COMPOSE := docker compose --project-name $(COMPOSE_PROJECT_NAME) --file compose.
 
 start:
 	@python3 manage.py start
+	@$(MAKE) --no-print-directory verify
 
 status:
 	$(COMPOSE) ps
 
 verify:
-	@python3 manage.py verify
+	$(COMPOSE) exec --no-TTY millway /millway verify -config /etc/millway/millway.json
 
 stop:
 	$(COMPOSE) down

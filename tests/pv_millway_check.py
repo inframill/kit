@@ -1,6 +1,4 @@
 """Exercise the unchanged Millway image against real PostgreSQL and Inframill."""
-import contextlib
-import io
 import json
 import os
 from pathlib import Path
@@ -10,13 +8,12 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build import ROOT
-from test_pv_postgres import prepare_payload as prepare_postgres, postgres, working_directory
+from test_pv_postgres import prepare_payload as prepare_postgres
 from test_pv_inframill import prepare_payload as prepare_inframill
-from test_pv_millway import prepare_payload as prepare_millway, millway
+from test_pv_millway import prepare_payload as prepare_millway
 
 
 def check():
@@ -38,35 +35,7 @@ def check():
             return result
 
         def make(payload, target, success=True):
-            if payload == web and target in {'start', 'verify'}:
-                # Docker host networking is the Linux VM's network namespace on
-                # macOS. Run the unchanged HTTPS transport there, resolving the
-                # generated web-node DNS name to the test service's loopback.
-                def request(config, origin, path, header=None, token=None):
-                    code = "import json,os,sys;sys.path.insert(0,'/payload');import manage;os.chdir('/payload');sys.stdout.buffer.write(manage.request(**json.load(sys.stdin)))"
-                    response = run(web, ['docker', 'run', '--rm', '-i', '--network', 'host',
-                                         '--add-host', config['hostname'] + ':127.0.0.1',
-                                         '--mount', f'type=bind,source={web},target=/payload,readonly',
-                                         '--entrypoint', 'python3', 'ghcr.io/inframill/kit:' + (ROOT / 'VERSION').read_text().strip(),
-                                         '-c', code], data=json.dumps({'config': config, 'origin': origin, 'path': path,
-                                                                      'header': header, 'token': token}), success=False)
-                    if response.returncode:
-                        raise OSError('HTTPS probe failed')
-                    return response.stdout.encode()
-
-                with working_directory(web), patch.dict(os.environ, {'COMPOSE_PROJECT_NAME': projects[web]}), \
-                        patch.object(millway, '__file__', str(web / 'manage.py')), patch.object(millway, 'COMPOSE', compose(web)), \
-                        patch.object(millway, 'request', side_effect=request), patch.object(sys, 'argv', ['manage.py', target]), \
-                        contextlib.redirect_stdout(io.StringIO()) as output:
-                    try:
-                        millway.main()
-                        result = subprocess.CompletedProcess(['make', target], 0, output.getvalue(), '')
-                    except millway.DeploymentError as error:
-                        result = subprocess.CompletedProcess(['make', target], 1, output.getvalue(), str(error))
-                if success:
-                    assert result.returncode == 0, result.stdout + result.stderr
-            else:
-                result = run(payload, ['make', target], success=success)
+            result = run(payload, ['make', target], success=success)
             for name in ['root_token', 'inframill_root_token', 'database_password', 'app1_password', 'app2_password', 'postgres_password']:
                 path = payload / 'secrets' / name
                 if path.exists():
@@ -89,12 +58,11 @@ def check():
         document['millway'].update({'database_host': '127.0.0.1',
                                    'inframill_endpoint': f'https://127.0.0.1:{worker_port}', 'port': web_port})
         (web / 'settings.json').write_text(json.dumps(document))
-        postgres.COMPOSE = compose(database)
         try:
             make(database, 'start')
             make(worker, 'start')
             make(web, 'start')
-            print('Three-service start: unchanged Millway image, PostgreSQL 16 migrations and authenticated Inframill version ping passed', flush=True)
+            print('Three-service start: Millway 0.1.5-dev native verification passed', flush=True)
             container = run(web, compose(web) + ['ps', '--quiet', 'millway']).stdout.strip()
             inspected = json.loads(run(web, ['docker', 'inspect', '--format', '{{json .}}', container]).stdout)
             assert inspected['Config']['User'] == '65532:65532'
@@ -108,29 +76,27 @@ def check():
                       '--entrypoint', 'python3', 'ghcr.io/inframill/kit:' + (ROOT / 'VERSION').read_text().strip(),
                       '-c', "import os,socket;assert os.getuid()==65532;s=socket.socket();s.bind(('0.0.0.0',443));print('Non-root port 443 binding passed')"])
             make(web, 'verify')
-            with working_directory(database):
-                execute = postgres.COMPOSE + ['exec', '--no-TTY', '--user', 'postgres', 'postgres',
-                                             'psql', '-X', '-qAt', '--set', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'app1']
-                run(database, execute, "UPDATE millway_schema_migrations SET checksum = 'changed' WHERE version = '000001_initial.sql';")
+            make(database, 'stop')
             failed = make(web, 'verify', success=False)
-            assert failed.returncode != 0 and 'migrations:' in failed.stdout
-            manifest = json.loads((web / 'migrations.json').read_text())
-            with working_directory(database):
-                run(database, execute, "UPDATE millway_schema_migrations SET checksum = '" + manifest['migrations']['000001_initial.sql'] + "' WHERE version = '000001_initial.sql';")
+            assert failed.returncode != 0 and 'database FAILED' in failed.stdout
+            assert 'inframill "worker-1" READY' in failed.stdout
+            make(database, 'start')
             make(web, 'verify')
-            print('Migration checksum mismatch rejected without applying or resetting schema', flush=True)
-            token = web / 'secrets/inframill_root_token'
+            print('Native verification rejects an unavailable database and still probes Inframill', flush=True)
+            token = worker / 'secrets/root_token'
             original = token.read_bytes()
             token.write_text('incorrect-upstream-root-token')
+            make(worker, 'start')
             failed = make(web, 'verify', success=False)
-            assert failed.returncode != 0 and 'inframill:' in failed.stdout
+            assert failed.returncode != 0 and 'inframill "worker-1"' in failed.stdout
             token.write_bytes(original)
+            make(worker, 'start')
             make(web, 'verify')
             print('Incorrect Inframill credentials rejected', flush=True)
             make(web, 'stop')
             make(web, 'start')
             make(web, 'verify')
-            print('Non-root restart retained application data and passed full dependency verification', flush=True)
+            print('Non-root restart passed native Millway verification', flush=True)
         except Exception:
             logs = run(web, compose(web) + ['logs', '--no-color', '--tail', '30', 'millway'], success=False)
             for line in logs.stdout.splitlines():
