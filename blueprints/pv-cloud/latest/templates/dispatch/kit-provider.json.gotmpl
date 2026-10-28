@@ -11,7 +11,6 @@
       "source": "postgres",
       "destination": "/opt/pv-cloud/postgres",
       "select": {"roles": ["data"]},
-      "exclude": ["secrets/**", "runtime/**", ".env", ".setup.lock"],
       "secret_files": {
         "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},
         "secrets/registry_token": "pv-cloud-registry-token"{{ end }}{{ if $databases }}{{ range $databases }},
@@ -25,7 +24,6 @@
       "source": "millway",
       "destination": "/opt/pv-cloud/millway",
       "select": {"roles": ["web"]},
-      "exclude": ["secrets/**", "runtime/**", ".env", ".start.lock"],
       "secret_files": {
         "secrets/root_token": "millway-root-token",
         "secrets/database_password": {{ toJSON $appPassword }},
@@ -39,7 +37,6 @@
       "source": "inframill",
       "destination": "/opt/pv-cloud/inframill",
       "select": {"roles": ["worker"]},
-      "exclude": ["secrets/**", "ssh/**", "blueprints/**"],
       "secret_files": {
         "secrets/root_token": "inframill-root-token",
         "secrets/tls_private_key": "pv-cloud-tls-private-key"{{ with index . "registry" }},

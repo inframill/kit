@@ -1,9 +1,9 @@
 # Dispatch provider
 
 Dispatch 0.1.0 pushes directories from its Instance workspace to selected nodes
-and runs Make targets there. It invokes the bundled Ansible Core 2.20.1 executable
-directly; it does not call or require the Ansible provider. Kit registers the
-independent `dispatch` executable alongside OpenTofu and Ansible.
+with recursive SCP and runs Make targets over SSH. Kit registers the independent
+`dispatch` executable alongside OpenTofu and Ansible. Dispatch uses system OpenSSH
+clients and has no pinned Ansible tool dependency.
 
 ## Workspace and host input
 
@@ -37,16 +37,24 @@ command_arguments:
     required: [directory]
     properties:
       directory:
-        type: string
-        enum: [api, worker]
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          enum: [api, worker]
   dispatch.make:
     type: object
     additionalProperties: false
     required: [directory, target]
     properties:
       directory:
-        type: string
-        enum: [api, worker]
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          enum: [api, worker]
       target:
         type: string
         pattern: '^[a-zA-Z0-9_][a-zA-Z0-9_./-]{0,127}$'
@@ -89,7 +97,6 @@ The engine renders `.gotmpl` files and copies ordinary files into
       "source": "api",
       "destination": "/opt/myapp/api",
       "select": {"roles": ["web"]},
-      "exclude": [".git/**", "node_modules/**", "**/*.env"],
       "become": true
     },
     "worker": {
@@ -109,9 +116,9 @@ After OpenTofu apply and Ansible guest preparation, install it with:
 
 ```sh
 bin/inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"postgres"}' --stream --timeout 15m
+  --arguments '{"directory":["postgres"]}' --stream --timeout 15m
 bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"postgres","target":"start"}' --stream --timeout 15m
+  --arguments '{"directory":["postgres"],"target":"start"}' --stream --timeout 15m
 ```
 
 The current payload runs PostgreSQL through Compose with host networking in
@@ -177,21 +184,17 @@ remote effects. Missing, empty or whitespace-only secrets reject, as do values
 larger than 1 MiB. A mapping accepts at most 100 secret files. Secret files cannot
 also be parents of other secret files.
 
-Dispatch stages credentials in an execution-owned directory with mode `0700` and
-files with mode `0600`, then uses Ansible copy with `no_log` and disabled diffs.
-Secret bytes do not enter the source archive, generated playbook, command
-arguments or structured results. Local staging is removed when execution returns;
-an abrupt process kill can leave files until the workspace is cleaned.
+Dispatch sends credential bytes through SSH stdin during installation. Values
+never enter command arguments, generated scripts or structured results. A remote
+temporary directory has mode `0700` and is removed after installation.
 Remote parent directories use mode `0700` and files use `0600`, owned by the
-connecting user or the mapping's become user. Injection occurs after extraction
-and before Make, and preserves the exact secret bytes. Repeat pushes refresh the
+connecting user or root when `become` is enabled. Injection occurs after copying
+the source directory and preserves the exact secret bytes. Repeat pushes refresh the
 files from the current namespace secrets. Make-only commands use existing remote
 files and do not resolve or replace credentials.
 
-Use source excludes such as `secrets/**` to keep credentials accidentally placed
-in a payload directory out of the archive. Public certificates can be ordinary
-rendered configuration, as in pv-cloud's `tls.certificate`. Rebuild the Dispatch
-executable and controlling Kit image after adding this support.
+Public certificates can be ordinary rendered configuration, as in pv-cloud's
+`tls.certificate`. The complete source directory is copied, including dotfiles.
 
 ## Selectors
 
@@ -212,70 +215,74 @@ Unselected nodes do not need a usable address in that mode.
 
 ## Commands
 
-Push one configured directory:
+Push selected directories, each to its configured nodes:
 
 ```sh
 bin/inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"api"}' --stream --timeout 15m
+  --arguments '{"directory":["api","worker"]}' --stream --timeout 15m
 ```
 
 Run a target against the existing remote directory after pushing:
 
 ```sh
 bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"api","target":"deploy"}' --stream --timeout 15m
+  --arguments '{"directory":["api","worker"],"target":"deploy"}' --stream --timeout 15m
 ```
 
-`push` accepts only the required `directory` string. `make` accepts exactly two
-required strings: `directory` and `target`. Node selection comes from the directory
-mapping. Run `make` once for each desired target after a successful push.
+Both commands accept a required `directory` list of unique mapping names.
+`make` also requires one `target` string, applied to every selected directory.
+String directory inputs remain supported for saved Blueprints. Current pv-cloud
+forms expose multi-selection, including a one-element list for individual payloads.
+All selected mappings, sources and required push secrets are checked before
+remote changes. Node selection comes from each directory's own mapping.
 
-The command module uses `argv`, a fixed working directory and disabled
-argument-variable expansion. Targets cannot be command-line switches or shell
-fragments. Put Make variables and dependencies in the payload's Makefile.
+Make runs in the configured destination. Paths and targets are shell-quoted;
+targets cannot be command-line switches or shell fragments. Put Make variables
+and dependencies in the payload's Makefile.
 
-Ansible schedules nodes in parallel using its default forks. Other nodes may have
+Push processes up to eight directory/host transfers concurrently. Make processes
+directories in selection order, with up to eight hosts concurrently within each
+directory, and stops before the next directory if any target fails. For pv-cloud
+startup, select `postgres`, `inframill`, then `millway`. Other nodes may have
 completed their work when a node fails. Operations do not roll back completed
 transfers or target effects.
 
 ## Transfer and results
 
-Push creates one gzip-compressed tar snapshot and sends the same bytes to each
-selected node with `ansible.builtin.copy`. Ansible's command module extracts it
-inside the configured destination. A remote staging directory is cleaned with
-an Ansible `always` block, and local temporary files are removed when execution
-returns. Cancellation or an unreachable host can prevent remote cleanup.
+Push copies the entire source directory with `scp -p -r` into a private temporary
+directory on each selected node. A remote shell installs its contents into the
+configured destination using `cp -pR`, then writes the mapped secret files. The
+temporary directory is removed on completion. Failed transfers attempt cleanup;
+cancellation or an unreachable host can prevent remote cleanup.
 
 Push copies the **contents** of `source` into `destination`. It creates the
 destination with mode `0700`, preserves source permission bits and modification
-times, and extracts as the connecting user (or the become user). Additional
+times, and installs as the connecting user (or root with `become`). Additional
 remote files and build outputs are preserved. Source deletions do not remove
 remote files. There is no mirror/delete mode in this version. Preserving mtimes
 lets Make track updated inputs across pushes.
 
-Excludes are globs relative to the source root. `*`, `?` and character classes
-match within one path segment; `**` matches zero or more complete segments.
-Excluding a directory excludes its subtree. `.git/**` matches the root `.git`
-directory, while `**/.git/**` matches at any depth. No files are excluded
-implicitly. Links and special files are rejected unless excluded. Each source
-is limited to 10,000 entries, 256 MiB of file contents, and 32 MiB per file.
+There are no archive or exclusion steps. Links and special files are rejected.
+Legacy `exclude` entries in saved mappings are accepted and ignored.
+Each source is limited to 10,000 entries, 256 MiB of file contents, and 32 MiB per
+file. The directory must remain unchanged while a push is running.
 
-Managed nodes need SSH access, Python, `tar` with gzip and `--no-same-owner`
-support, and Make plus the dependencies used by their Makefiles. Dispatch does
-not install these tools. A mapping's optional `become` applies to its transfer
-and Make tasks; the default is false.
+Managed nodes need SSH/SFTP access, standard POSIX file utilities, and Make plus
+the dependencies used by their Makefiles. `become: true` uses noninteractive
+`sudo` for installation and Make. The default is false. `connection: local` uses
+local shell commands and recursive `cp` for development fixtures.
 
 Successful results contain the mapping name, destination, whether files were
-pushed, the SHA-256 of the transferred archive, per-host task counters and
-the requested target's exit code. Success requires the complete expected task count for every
-selected node and exit code zero for every requested target. Failed, unreachable,
-skipped, ignored or rescued tasks reject the execution.
+pushed, per-host exit codes and the requested Make target's exit code. Every
+selected host must finish successfully. Archive checksums and Ansible task
+counters are no longer returned.
+With multiple directories, `directories` contains these results keyed by mapping
+name; a single directory retains the original result shape.
 
-Make stdout/stderr are emitted as host-tagged JSON diagnostics when each target
-finishes, including failed targets. They are not streamed line by line while a
-target runs. Namespace secret values known to the runner are redacted; Ansible's
-`no_log` suppresses result details. Structured results contain no command output.
-Diagnostics and machine output retain the shared runner's 32 MiB limits.
+Make stdout/stderr stream as host-tagged JSON diagnostics while the target runs.
+Namespace secret values known to the runner are redacted. Structured results
+contain no command output. Diagnostics retain the shared runner's 32 MiB limit.
+`--tool /absolute/path/to/ssh` overrides the SSH client; SCP is resolved beside it.
 
 Both commands declare `read_write`, preserving whole-Instance scheduling with
 the other providers. Preparation only validates and reads inputs; temporary
@@ -285,17 +292,16 @@ files, tool execution and remote effects happen during Execute.
 
 ```sh
 python3 providers/build.py test
-DISPATCH_ANSIBLE_PATH="$PWD/.cache/ansible-2.20.1/bin/ansible-playbook" \
-  python3 providers/build.py test --name dispatch
+python3 providers/build.py test --name dispatch
 python3 providers/build.py build --name dispatch
 python3 providers/build.py build --name dispatch --native
 python3 tests/dispatch_check.py
 ```
 
-The opt-in real-tool test uses only temporary local source/destination directories
-through Ansible's local connection. It checks archive transfer, exclusions,
-permissions, literal paths and file contents, individual targets, failure
-diagnostics and secret redaction. The standard suite uses stubs and requires no remote nodes.
+The standard suite uses temporary local source/destination directories and real
+copy and Make commands. SSH-boundary fixtures execute the remote scripts locally.
+Tests check complete directory transfer, permissions, modification times, literal
+paths and file contents, individual targets, failure diagnostics and secret redaction.
 
 The daemon check additionally requires the native provider outputs, local tools
 and `bin/inframill`. It renders a temporary Blueprint, publishes real OpenTofu

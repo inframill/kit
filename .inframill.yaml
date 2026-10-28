@@ -34,9 +34,6 @@ engine:
         - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
     dispatch:
       path: /opt/inframill/providers/dispatch/0.1.0/provider
-      args:
-        - --tool
-        - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
 
 handlers:
   - type: connect-engine

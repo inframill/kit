@@ -151,9 +151,9 @@ After OpenTofu apply has published nodes, prepare the guests and install Postgre
 inframill instance exec example ansible.apply --namespace production \
   --stream --timeout 15m
 inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"postgres"}' --stream --timeout 15m
+  --arguments '{"directory":["postgres"]}' --stream --timeout 15m
 inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"postgres","target":"start"}' --stream --timeout 15m
+  --arguments '{"directory":["postgres"],"target":"start"}' --stream --timeout 15m
 ```
 
 Dispatch copies `templates/dispatch/postgres/` to `/opt/pv-cloud/postgres` with
@@ -224,7 +224,19 @@ These defaults are a starting point for workload measurements, not an automatic
 guarantee against every query's memory usage.
 
 All three payloads expose `start`, `status`, `verify`, and `stop`, with `start` as the
-default. These targets also run directly on the node, for example
+default. The `directory` field in both Dispatch forms supports multiple selections.
+Push all payloads and start them in dependency order with:
+
+```sh
+inframill instance exec example dispatch.push --namespace production \
+  --arguments '{"directory":["postgres","inframill","millway"]}' --stream --timeout 15m
+inframill instance exec example dispatch.make --namespace production \
+  --arguments '{"directory":["postgres","inframill","millway"],"target":"start"}' --stream --timeout 15m
+```
+
+Push transfers the selected mappings concurrently. Make runs directories in the
+given order and stops before the next one on failure. Use a one-element list for
+an individual payload. These targets also run directly on the node, for example
 `sudo make -C /opt/pv-cloud/millway start`; Dispatch invokes the same Makefile.
 The delivered files and credentials are sufficient for manual operation.
 Use `make PYTHON=/path/to/python3 start` to select a host interpreter.
@@ -235,7 +247,8 @@ migration rights, isolation, rejected
 plaintext/admin TCP connections and effective settings; `status` inspects the
 service; `stop` stops it while preserving the volume and credentials. Changed
 configuration or TLS material causes start to recreate the container, interrupting
-connections briefly. Push excludes credentials and generated runtime files.
+connections briefly. Push copies the entire source payload; credentials and
+generated runtime files on the node are preserved unless overwritten by source files.
 Version `0.6.0` replaces the host PostgreSQL package role; existing package-managed
 databases require a separate data migration before switching. Existing Instances
 keep their original blueprint snapshots.
@@ -261,9 +274,9 @@ inframill secret upsert --namespace production --file /private/path/pv-cloud-tls
 inframill secret upsert --namespace production --file /private/path/inframill-root-token.json
 inframill secret upsert --namespace production --file /private/path/millway-root-token.json
 inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"inframill"}' --stream --timeout 15m
+  --arguments '{"directory":["inframill"]}' --stream --timeout 15m
 inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"inframill","target":"start"}' --stream --timeout 15m
+  --arguments '{"directory":["inframill"],"target":"start"}' --stream --timeout 15m
 ```
 
 Each secret input is a JSON object with `name` and `value`; use your credential
@@ -325,9 +338,9 @@ Start PostgreSQL and Inframill first, then:
 
 ```sh
 inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"millway"}' --stream --timeout 15m
+  --arguments '{"directory":["millway"]}' --stream --timeout 15m
 inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"millway","target":"start"}' --stream --timeout 15m
+  --arguments '{"directory":["millway"],"target":"start"}' --stream --timeout 15m
 ```
 
 The host helper builds protected runtime configuration from namespace secrets.
@@ -335,8 +348,8 @@ A temporary PostgreSQL-image helper stages it in a private volume owned by
 Millway's UID. No shell, Python, entrypoint or code changes are required in the
 Millway image or sibling repository. `start` runs `millway start -config` to apply
 migrations through normal application startup, then verifies dependencies. `stop`
-preserves the runtime volume and database. Push excludes generated configuration
-and credentials.
+preserves the runtime volume and database. Push preserves remote generated
+configuration and credentials unless source files overwrite them.
 
 Millway's `verify` executes `/millway verify -config /etc/millway/millway.json`
 inside the running container. The native CLI checks the application's actual

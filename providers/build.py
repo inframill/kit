@@ -59,8 +59,10 @@ def releases(root=ROOT, name=None, version=None):
         release = json.loads((root / 'roots' / key[0] / key[1] / 'release.json').read_text())
         if (release['name'], release['version']) != key:
             raise ValueError('Provider release identity differs from its directory')
-        if release['protocol'] != 1 or set(release['platforms']) != set(LINUX) or not valid_version(release['tool_version']):
-            raise ValueError('Provider requires protocol 1, an exact tool version and both Linux platforms')
+        tool_version = release.get('tool_version')
+        if (release['protocol'] != 1 or set(release['platforms']) != set(LINUX)
+                or tool_version is not None and not valid_version(tool_version)):
+            raise ValueError('Provider requires protocol 1, both Linux platforms and an exact version for pinned tools')
         if (name is None or name == key[0]) and (version is None or version == key[1]):
             selected.append(release)
     if not selected:

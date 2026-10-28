@@ -374,7 +374,7 @@ to `strict`, which requires hosts to be trusted in `known_hosts` before connecti
 The pv-cloud blueprint explicitly sets `host_key_policy: accept-new` to
 automatically record unknown SSH hosts while still rejecting changed keys.
 
-Dispatch is a separate provider using the same Ansible runtime. Its `push` and
+Dispatch is a separate provider using system SSH and SCP clients. Its `push` and
 `make` commands read host records from shared artifacts, transfer directories
 from `workspace/dispatch/` and run Make targets on selected nodes. Configure
 payload mappings in `templates/dispatch/`; see [Dispatch usage](dispatch.md).
@@ -406,23 +406,15 @@ bin/inframill instance exec example ansible.apply --namespace production \
   --stream --timeout 15m
 ```
 
-For pv-cloud `0.7.0` and later, follow guest preparation with the Dispatch
-payloads. Both `data` and `worker` roles require `docker`; the example selects
-`data-1` for PostgreSQL and `worker-1` for Inframill:
+For current pv-cloud, follow guest preparation with the Dispatch payloads.
+Select all three directories to deliver them in one push, then start them in
+dependency order. Each payload still selects its own data, worker or web nodes:
 
 ```sh
 bin/inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"postgres"}' --stream --timeout 15m
+  --arguments '{"directory":["postgres","inframill","millway"]}' --stream --timeout 15m
 bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"postgres","target":"start"}' --stream --timeout 15m
-bin/inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"inframill"}' --stream --timeout 15m
-bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"inframill","target":"start"}' --stream --timeout 15m
-bin/inframill instance exec example dispatch.push --namespace production \
-  --arguments '{"directory":"millway"}' --stream --timeout 15m
-bin/inframill instance exec example dispatch.make --namespace production \
-  --arguments '{"directory":"millway","target":"start"}' --stream --timeout 15m
+  --arguments '{"directory":["postgres","inframill","millway"],"target":"start"}' --stream --timeout 15m
 ```
 
 The target waits for PostgreSQL readiness. Repeat pushes preserve its named volume

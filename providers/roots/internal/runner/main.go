@@ -16,7 +16,7 @@ import (
 type Release struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
-	ToolVersion string `json:"tool_version"`
+	ToolVersion string `json:"tool_version,omitempty"`
 	Protocol    int    `json:"protocol"`
 }
 

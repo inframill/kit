@@ -1,4 +1,4 @@
-// Package dispatch pushes provider workspace directories and runs Make through Ansible.
+// Package dispatch copies workspace directories with SCP and runs Make over SSH.
 package dispatch
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 
-type Provider struct{ Version, ToolVersion, Tool string }
+type Provider struct{ Version, Tool string }
 
 type StaticSettings struct {
 	ID              string `json:"id"`
@@ -36,9 +36,10 @@ type Directory struct {
 	Source      string            `json:"source"`
 	Destination string            `json:"destination"`
 	Select      Selector          `json:"select"`
-	Exclude     []string          `json:"exclude,omitempty"`
 	Become      bool              `json:"become,omitempty"`
 	SecretFiles map[string]string `json:"secret_files,omitempty"`
+	// Saved mappings can still contain this field; the entire source is copied.
+	LegacyExclude []string `json:"exclude,omitempty"`
 }
 
 // Lists match any entry; fields intersect. An empty selector matches all nodes.
@@ -49,8 +50,20 @@ type Selector struct {
 }
 
 type Arguments struct {
-	Directory string `json:"directory"`
-	Target    string `json:"target,omitempty"`
+	Directory DirectorySelection `json:"directory"`
+	Target    string             `json:"target,omitempty"`
+}
+
+// Keep string inputs working for saved Blueprints while new forms use a list.
+type DirectorySelection []string
+
+func (s *DirectorySelection) UnmarshalJSON(data []byte) error {
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*s = DirectorySelection{single}
+		return nil
+	}
+	return json.Unmarshal(data, (*[]string)(s))
 }
 
 type execution struct {
@@ -71,8 +84,8 @@ func (d Provider) Definition() (runmill.ProviderDefinition, error) {
 	commands := map[string]runmill.CommandDefinition{}
 	for _, name := range []string{"push", "make"} {
 		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: map[string]string{
-			"push": "Push a workspace directory through Ansible",
-			"make": "Run a Make target in a configured remote directory through Ansible",
+			"push": "Copy selected workspace directories with SCP",
+			"make": "Run a Make target in selected remote directories over SSH",
 		}[name]}
 	}
 	return runmill.ProviderDefinition{Name: "dispatch", Commands: commands}, nil
@@ -170,9 +183,6 @@ func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionCont
 		if err = directory.Select.validate(); err != nil {
 			return nil, err
 		}
-		if err = validateExcludes(directory.Exclude); err != nil {
-			return nil, err
-		}
 		if len(directory.SecretFiles) > 100 {
 			return nil, errors.New("too many secret files")
 		}
@@ -191,9 +201,15 @@ func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionCont
 	if err = artifacts.DecodeArguments(arguments, &args); err != nil {
 		return nil, err
 	}
-	directory, ok := settings.Directories[args.Directory]
-	if !ok {
-		return nil, errors.New("select a declared directory")
+	if len(args.Directory) == 0 || len(args.Directory) > 100 {
+		return nil, errors.New("select between one and one hundred directories")
+	}
+	seen := map[string]bool{}
+	for _, name := range args.Directory {
+		if _, ok := settings.Directories[name]; !ok || seen[name] {
+			return nil, errors.New("select unique declared directories")
+		}
+		seen[name] = true
 	}
 	for key := range arguments {
 		if key != "directory" && (command != "make" || key != "target") {
@@ -204,12 +220,16 @@ func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionCont
 		return nil, errors.New("select a valid Make target")
 	}
 	p := &execution{d, scope, static, settings, args, command}
-	if _, _, err = p.inventory(); err != nil {
-		return nil, err
-	}
-	if command == "push" {
-		if err = walkSource(ctx, scope.WorkspaceDir, directory, nil); err != nil {
+	for _, name := range args.Directory {
+		selected := *p
+		selected.args.Directory = DirectorySelection{name}
+		if _, err = selected.hosts(); err != nil {
 			return nil, err
+		}
+		if command == "push" {
+			if err = validateSource(ctx, scope.WorkspaceDir, settings.Directories[name].Source); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return p, nil

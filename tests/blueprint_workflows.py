@@ -276,18 +276,21 @@ def pv_flow(client, reference, tofu):
                     ('opentofu.apply', {'plan_id': ''}),
                     ('opentofu.plan', {'destroy': True, 'refresh_only': True}),
                     ('ansible.apply', {'playbook': 'missing'}),
-                    ('dispatch.push', {'directory': 'missing'}),
-                    ('dispatch.push', {'directory': 'postgres', 'target': 'install'}),
-                    ('dispatch.make', {'directory': 'postgres'}),
-                    ('dispatch.make', {'directory': 'inframill', 'target': None}),
-                    ('dispatch.make', {'directory': 'inframill', 'target': '-f'}),
-                    ('dispatch.make', {'directory': 'postgres', 'target': 'missing'}),
-                    ('dispatch.make', {'directory': 'postgres', 'target': 'install'}),
-                    ('dispatch.make', {'directory': 'postgres', 'target': 'password'}),
-                    ('dispatch.make', {'directory': 'inframill', 'target': 'validate'}),
-                    ('dispatch.make', {'directory': 'inframill', 'target': 'login'}),
-                    ('dispatch.make', {'directory': 'postgres', 'target': 'setup'}),
-                    ('dispatch.make', {'directory': 'postgres', 'target': 'rotate-credentials'}),
+                    ('dispatch.push', {'directory': ['missing']}),
+                    ('dispatch.push', {'directory': []}),
+                    ('dispatch.push', {'directory': ['postgres', 'postgres']}),
+                    ('dispatch.push', {'directory': ['postgres'], 'target': 'install'}),
+                    ('dispatch.make', {'directory': ['postgres', 'postgres'], 'target': 'start'}),
+                    ('dispatch.make', {'directory': ['postgres']}),
+                    ('dispatch.make', {'directory': ['inframill'], 'target': None}),
+                    ('dispatch.make', {'directory': ['inframill'], 'target': '-f'}),
+                    ('dispatch.make', {'directory': ['postgres'], 'target': 'missing'}),
+                    ('dispatch.make', {'directory': ['postgres'], 'target': 'install'}),
+                    ('dispatch.make', {'directory': ['postgres'], 'target': 'password'}),
+                    ('dispatch.make', {'directory': ['inframill'], 'target': 'validate'}),
+                    ('dispatch.make', {'directory': ['inframill'], 'target': 'login'}),
+                    ('dispatch.make', {'directory': ['postgres'], 'target': 'setup'}),
+                    ('dispatch.make', {'directory': ['postgres'], 'target': 'rotate-credentials'}),
                 ])
         work = pathlib.Path(client.config['engine']['dataDir']) / 'test/instances' / iid / 'workspace/opentofu'
         assert f'app    = {json.dumps("pv-" + name)}' in (work / 'main.tf').read_text()
@@ -313,7 +316,7 @@ def pv_flow(client, reference, tofu):
         postgres_mapping = {
             'source': 'postgres', 'destination': '/opt/pv-cloud/postgres',
             'select': {'roles': ['data']},
-            'exclude': ['secrets/**', 'runtime/**', '.env', '.setup.lock'], 'become': True,
+            'become': True,
             'secret_files': {'secrets/tls_private_key': 'pv-cloud-tls-private-key'},
         }
         databases = values.get('postgres', {}).get('databases', [
@@ -324,7 +327,7 @@ def pv_flow(client, reference, tofu):
             postgres_mapping['secret_files'][f"secrets/{database['name']}_password"] = database['password_secret']
         inframill_mapping = {
             'source': 'inframill', 'destination': '/opt/pv-cloud/inframill',
-            'select': {'roles': ['worker']}, 'exclude': ['secrets/**', 'ssh/**', 'blueprints/**'],
+            'select': {'roles': ['worker']},
             'secret_files': {'secrets/root_token': 'inframill-root-token',
                              'secrets/tls_private_key': 'pv-cloud-tls-private-key'},
             'become': True,
@@ -336,7 +339,7 @@ def pv_flow(client, reference, tofu):
         assert delivery['directories']['inframill'] == inframill_mapping
         millway_mapping = {
             'source': 'millway', 'destination': '/opt/pv-cloud/millway', 'select': {'roles': ['web']},
-            'exclude': ['secrets/**', 'runtime/**', '.env', '.start.lock'], 'become': True,
+            'become': True,
             'secret_files': {'secrets/root_token': 'millway-root-token', 'secrets/database_password':
                             next(database['password_secret'] for database in databases if database['name'] == 'app1'),
                             'secrets/inframill_root_token': 'inframill-root-token',

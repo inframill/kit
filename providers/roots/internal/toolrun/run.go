@@ -21,6 +21,7 @@ const Limit = 32 << 20
 type Runner struct {
 	Tool, Directory string
 	Environment     []string
+	Input           io.Reader
 	Logs            io.Writer
 	Secrets         map[string]string
 }
@@ -72,7 +73,7 @@ func (r Runner) Call(ctx context.Context, capture bool, args ...string) ([]byte,
 	cmd.Dir = r.Directory
 	cmd.Env = r.Environment
 	cmd.WaitDelay = 2 * time.Second
-	cmd.Stdin = nil
+	cmd.Stdin = r.Input
 	cmd.Stderr = filter
 	var output bounded
 	if capture {

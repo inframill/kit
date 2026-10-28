@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import pathlib
+import re
 import tempfile
 import unittest
 import zipfile
@@ -21,14 +22,25 @@ class RuntimeToolTests(unittest.TestCase):
             self.assertIn(settings[key], str(path))
         self.assertIn('ansible-core==' + settings['ANSIBLE_VERSION'], ansible_requirements(settings))
 
-    def test_dispatch_uses_the_same_ansible_runtime_in_native_and_image_config(self):
-        settings = runtime_settings()
+    def test_dispatch_uses_system_ssh_without_an_ansible_override(self):
         release = json.loads((ROOT / 'providers/roots/dispatch/0.1.0/release.json').read_text())
-        self.assertEqual(release['tool_version'], settings['ANSIBLE_VERSION'])
+        self.assertNotIn('tool_version', release)
         config = configuration('/providers', '/data', tools={'ansible': '/tools/ansible-playbook'})
         self.assertEqual(config['engine']['providers']['dispatch'], {
-            'path': '/providers/dispatch/0.1.0/provider', 'args': ['--tool', '/tools/ansible-playbook']})
+            'path': '/providers/dispatch/0.1.0/provider', 'args': []})
         self.assertIn({'name': 'dispatch', 'version': release['version']}, bundle_lock()['providers'])
+
+    def test_checked_in_dispatch_configs_do_not_override_ssh_with_ansible(self):
+        configs = [ROOT / '.inframill.yaml', ROOT / 'runtime/inframill.yaml']
+        configs.extend(sorted((ROOT / 'blueprints/pv-cloud').glob('*/templates/dispatch/inframill/inframill.yaml')))
+        for path in configs:
+            relative = str(path.relative_to(ROOT))
+            with self.subTest(config=relative):
+                document = path.read_text()
+                provider = re.search(r'(?ms)^    dispatch:\n(.*?)(?=^    \S|^\S|\Z)', document)
+                self.assertIsNotNone(provider, 'Missing Dispatch provider configuration')
+                self.assertNotIn('ansible-playbook', provider.group(1),
+                                 'Dispatch must use SSH rather than the obsolete Ansible tool override')
 
     def test_opentofu_checks_the_selected_platform_before_installing(self):
         archive = io.BytesIO()

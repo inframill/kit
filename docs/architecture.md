@@ -60,11 +60,10 @@ A successful process exit needs a complete successful host recap. Syntax-check d
 not require node artifacts; check mode reports prediction.
 
 Dispatch independently consumes the verified node artifact, selects hosts using
-the directory mapping, snapshots a directory under its supplied workspace and
-generates a private inventory/playbook. It invokes Ansible directly for SSH,
-archive transfer/extraction and individual Make targets. Success requires complete
-host/task counters and successful target exit codes. Shared artifacts remain
-input; Ansible workspace files are not a dependency. See [Dispatch](dispatch.md).
+the directory mapping, copies the entire directory with SCP and runs Make directly
+over SSH. Namespace secrets travel through SSH stdin into protected files.
+Hosts execute concurrently, and success requires every selected host to finish
+with exit code zero. Shared artifacts remain input. See [Dispatch](dispatch.md).
 
 ## Versions and publication
 

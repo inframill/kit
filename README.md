@@ -178,7 +178,7 @@ Provider sources, release metadata, the Python builder and tests live in the
 are fetched directly from their source directories.
 
 [Dispatch](docs/dispatch.md) pushes directories from `workspace/dispatch/` to
-nodes selected from shared artifacts and runs Make targets through Ansible.
+nodes selected from shared artifacts using SCP and runs Make targets over SSH.
 
 ```sh
 task providers:test

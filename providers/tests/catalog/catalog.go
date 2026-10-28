@@ -67,7 +67,7 @@ func ValidVersion(s string) bool {
 	return true
 }
 func Register(r Release) {
-	if !ValidName(r.Name) || !ValidVersion(r.Version) || r.ToolVersion == "" {
+	if !ValidName(r.Name) || !ValidVersion(r.Version) {
 		panic("invalid provider release")
 	}
 	key := r.Name + "@" + r.Version
@@ -100,7 +100,7 @@ func init() {
 			return ansible.Provider{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
 		},
 		"dispatch@0.1.0": func(r Release, tool string) runmill.Provider {
-			return dispatch.Provider{Version: r.Version, ToolVersion: r.ToolVersion, Tool: tool}
+			return dispatch.Provider{Version: r.Version, Tool: tool}
 		},
 	}
 	var selected struct{ Providers []Release }

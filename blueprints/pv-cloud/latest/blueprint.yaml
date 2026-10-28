@@ -123,16 +123,26 @@ command_arguments:
     required: [directory]
     properties:
       directory:
-        type: string
-        enum: [postgres, inframill, millway]
+        type: array
+        minItems: 1
+        maxItems: 3
+        uniqueItems: true
+        items:
+          type: string
+          enum: [postgres, inframill, millway]
   dispatch.make:
     type: object
     additionalProperties: false
     required: [directory, target]
     properties:
       directory:
-        type: string
-        enum: [postgres, inframill, millway]
+        type: array
+        minItems: 1
+        maxItems: 3
+        uniqueItems: true
+        items:
+          type: string
+          enum: [postgres, inframill, millway]
       target:
         type: string
         enum: [start, status, verify, stop]

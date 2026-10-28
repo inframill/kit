@@ -11,7 +11,7 @@ providers/
   go.mod, go.sum           # independent Go module
   roots/opentofu/0.4.0/           # implementation, release.json, tests and cmd/main.go
   roots/ansible/0.4.0/            # implementation, callback, tests and cmd/main.go
-  roots/dispatch/0.1.0/           # Ansible-backed directory transfer and Make execution
+  roots/dispatch/0.1.0/           # SCP directory transfer and SSH Make execution
   roots/internal/          # shared execution/artifact code and protocol runner
   tests/                   # builder tests and protocol integration tests
   dist/<name>/<version>/<os>/<arch>/
@@ -80,8 +80,9 @@ printf '%s\n' '{"protocol":1,"method":"info","params":{}}' \
 ```
 
 Use the executable matching your host architecture, or build with `--native`.
-`--tool /absolute/path` overrides the external OpenTofu or Ansible executable.
-The default tool paths are the versioned paths installed by the Kit image.
+`--tool /absolute/path` overrides the external OpenTofu, Ansible or SSH executable.
+OpenTofu and Ansible default to versioned paths installed by the Kit image.
+Dispatch finds SSH on `PATH` and resolves SCP beside it.
 Requests and responses use the Inframill JSON provider protocol.
 
 Inframill `0.1.22-dev` uses direct `Provider.Execute(ctx, scope, command, arguments,
@@ -98,8 +99,8 @@ publishes an invalid empty node artifact. All Ansible commands declare
 `read_write`: inventory writes a shared file and even syntax/check/ping commands
 create temporary files in the workspace. Inframill serializes writers across the
 whole Instance and allows consecutive readers to overlap without bypassing a writer.
-Dispatch `push` and `make` also declare `read_write`; they use the same Ansible
-runtime as the Ansible provider. See [Dispatch usage](../docs/dispatch.md) for its
+Dispatch `push` and `make` also declare `read_write`; they use system OpenSSH
+clients without an Ansible runtime dependency. See [Dispatch usage](../docs/dispatch.md) for its
 workspace mappings, selectors and command arguments.
 The SDK owns process observation and group signalling; child tools remain in the
 provider's process group.

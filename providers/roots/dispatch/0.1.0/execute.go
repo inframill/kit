@@ -2,256 +2,287 @@ package dispatch
 
 import (
 	"context"
-	"crypto/sha256"
-	_ "embed"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/inframill/kit/providers/roots/internal/artifacts"
 	"github.com/inframill/kit/providers/roots/internal/toolrun"
 )
-
-//go:embed callback.py
-var callback []byte
-
-type Stats struct {
-	OK          int `json:"ok"`
-	Changed     int `json:"changed"`
-	Failures    int `json:"failures"`
-	Unreachable int `json:"unreachable"`
-	Skipped     int `json:"skipped"`
-	Rescued     int `json:"rescued"`
-	Ignored     int `json:"ignored"`
-}
 
 type TargetResult struct {
 	Target   string `json:"target"`
 	ExitCode int    `json:"exit_code"`
 }
 
-func (r *TargetResult) UnmarshalJSON(data []byte) error {
-	var wire struct {
-		Target   string `json:"target"`
-		ExitCode *int   `json:"exit_code"`
-	}
-	if err := artifacts.Decode(data, &wire); err != nil {
-		return err
-	}
-	if wire.ExitCode == nil || wire.Target == "" {
-		return errors.New("Make result requires a target and exit code")
-	}
-	r.Target, r.ExitCode = wire.Target, *wire.ExitCode
-	return nil
-}
-
-type Recap struct {
-	Schema  int                       `json:"schema"`
-	Hosts   map[string]Stats          `json:"hosts"`
-	Targets map[string][]TargetResult `json:"targets"`
+type HostResult struct {
+	ExitCode int `json:"exit_code"`
 }
 
 type Result struct {
 	Directory       string                    `json:"directory"`
 	Destination     string                    `json:"destination"`
 	Pushed          bool                      `json:"pushed"`
-	ArchiveSHA256   string                    `json:"archive_sha256,omitempty"`
-	Hosts           map[string]Stats          `json:"hosts"`
+	Hosts           map[string]HostResult     `json:"hosts"`
 	Targets         map[string][]TargetResult `json:"targets"`
 	ProviderVersion string                    `json:"provider_version"`
 }
 
-// Values are decoded by a single trusted expression. Directory paths and Make
-// variable values containing Jinja syntax remain literal data, never templates.
-func literal(value any) string {
-	data, _ := json.Marshal(value)
-	return "{{ '" + base64.StdEncoding.EncodeToString(data) + "' | b64decode | from_json }}"
+type BatchResult struct {
+	Pushed          bool              `json:"pushed"`
+	Directories     map[string]Result `json:"directories"`
+	ProviderVersion string            `json:"provider_version"`
 }
 
-func (p *execution) playbook(archive string) []map[string]any {
-	directory := p.settings.Directories[p.args.Directory]
-	tasks := []map[string]any{}
-	if p.command == "push" {
-		tasks = append(tasks,
-			map[string]any{"name": "Create destination", "ansible.builtin.file": map[string]any{"path": literal(directory.Destination), "state": "directory", "mode": "0700"}},
-			map[string]any{"name": "Create transfer staging directory", "ansible.builtin.tempfile": map[string]any{"state": "directory", "suffix": ".dispatch"}, "register": "dispatch_stage"},
-			map[string]any{"name": "Push directory", "block": []map[string]any{
-				{"name": "Transfer archive", "ansible.builtin.copy": map[string]any{"src": literal(archive), "dest": "{{ dispatch_stage.path }}/source.tar.gz", "mode": "0600", "decrypt": false}},
-				{"name": "Extract directory", "ansible.builtin.command": map[string]any{"argv": []string{"tar", "-xzf", "{{ dispatch_stage.path }}/source.tar.gz", "-C", literal(directory.Destination), "--no-same-owner"}, "expand_argument_vars": false}},
-			}, "always": []map[string]any{
-				{"name": "Remove transfer staging directory", "ansible.builtin.file": map[string]any{"path": "{{ dispatch_stage.path }}", "state": "absent"}},
-			}},
-		)
-	}
-	if p.command == "push" {
-		tasks = append(tasks, p.secretTasks(filepath.Dir(archive))...)
-	}
-	if p.command == "make" {
-		argv := []string{"make", "--", p.args.Target}
-		tasks = append(tasks, map[string]any{
-			"name": "Run Make target", "vars": map[string]any{"dispatch_target": p.args.Target},
-			"ansible.builtin.command": map[string]any{"argv": literal(argv), "chdir": literal(directory.Destination), "expand_argument_vars": false},
-		})
-	}
-	return []map[string]any{{"name": "Dispatch workspace", "hosts": "all", "gather_facts": false, "become": directory.Become, "tasks": tasks}}
+// Quote remote shell arguments once; payload paths and Make targets stay literal.
+func quote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-// Only references and temporary paths enter the playbook. Copy suppresses both
-// result details and diffs; secret bytes never enter the source archive or argv.
-func (p *execution) secretTasks(tmp string) []map[string]any {
-	directory := p.settings.Directories[p.args.Directory]
-	keys := make([]string, 0, len(directory.SecretFiles))
-	for name := range directory.SecretFiles {
-		keys = append(keys, name)
+func command(argv ...string) string {
+	quoted := make([]string, len(argv))
+	for i, value := range argv {
+		quoted[i] = quote(value)
 	}
-	sort.Strings(keys)
-	parents := map[string]bool{}
-	tasks := []map[string]any{}
-	for index, name := range keys {
-		parent := path.Dir(name)
-		if parent != "." && !parents[parent] {
-			tasks = append(tasks, map[string]any{"name": "Create secret directory", "ansible.builtin.file": map[string]any{
-				"path": literal(path.Join(directory.Destination, parent)), "state": "directory", "mode": "0700",
-			}})
-			parents[parent] = true
+	return strings.Join(quoted, " ")
+}
+
+// One shared encoder keeps concurrent hosts' diagnostics from interleaving.
+type diagnostics struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (d *diagnostics) event(value any) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return json.NewEncoder(d.w).Encode(value)
+}
+
+type hostLog struct {
+	logs                    *diagnostics
+	directory, host, target string
+}
+
+func (w hostLog) Write(data []byte) (int, error) {
+	err := w.logs.event(map[string]any{"dispatch": "output", "directory": w.directory, "host": w.host, "target": w.target, "output": string(data)})
+	return len(data), err
+}
+
+type connection struct {
+	local   bool
+	address string
+	options []string
+	runner  toolrun.Runner
+}
+
+func (c connection) run(ctx context.Context, script string, input io.Reader, capture, become bool) ([]byte, int, error) {
+	runner := c.runner
+	runner.Input = input
+	if become {
+		script = command("sudo", "-n", "--", "sh", "-c", script)
+	}
+	if c.local {
+		runner.Tool = "/bin/sh"
+		return runner.Call(ctx, capture, "-c", script)
+	}
+	args := append(slices.Clone(c.options), "-T", "--", c.address, script)
+	return runner.Call(ctx, capture, args...)
+}
+
+func (c connection) copy(ctx context.Context, source, stage string) error {
+	runner := c.runner
+	var args []string
+	if c.local {
+		runner.Tool = "/bin/cp"
+		args = []string{"-pR", "--", source, stage + "/"}
+	} else {
+		runner.Tool = filepath.Join(filepath.Dir(runner.Tool), "scp")
+		args = append([]string{"-B", "-q", "-p", "-r", "-S", c.runner.Tool}, c.options...)
+		args = append(args, "--", source, c.address+":"+stage+"/")
+	}
+	_, code, err := runner.Call(ctx, false, args...)
+	return toolrun.Success(code, err)
+}
+
+var stagingDirectory = regexp.MustCompile(`^/tmp/inframill-dispatch\.[A-Za-z0-9]{10}$`)
+
+func (p *execution) push(ctx context.Context, c connection, keys []string, secrets map[string]string) error {
+	// SCP writes as the SSH user; only installation into destination needs sudo.
+	output, code, err := c.run(ctx, "mktemp -d /tmp/inframill-dispatch.XXXXXXXXXX", nil, true, false)
+	if err = toolrun.Success(code, err); err != nil {
+		return err
+	}
+	stage := strings.TrimSpace(string(output))
+	if !stagingDirectory.MatchString(stage) {
+		return errors.New("invalid remote staging directory")
+	}
+	cleanup := "rm -rf -- " + quote(stage)
+	defer func() {
+		if err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			_, _, _ = c.run(cleanupCtx, cleanup, nil, false, false)
 		}
-		tasks = append(tasks, map[string]any{"name": "Inject secret file", "no_log": true, "diff": false,
-			"ansible.builtin.copy": map[string]any{
-				"src":  literal(filepath.Join(tmp, "secret-"+strconv.Itoa(index))),
-				"dest": literal(path.Join(directory.Destination, name)), "mode": "0600", "decrypt": false,
-			},
-		})
+	}()
+	directory := p.settings.Directories[p.args.Directory[0]]
+	source := filepath.Join(p.scope.WorkspaceDir, directory.Source)
+	if err = c.copy(ctx, source, stage); err != nil {
+		return err
 	}
-	return tasks
+	script := "set -eu\numask 077\ntrap " + quote(cleanup) + " EXIT\n" +
+		command("mkdir", "-p", "--", directory.Destination) + "\n" +
+		command("cp", "-pR", "--", path.Join(stage, filepath.Base(source))+"/.", directory.Destination+"/") + "\n" +
+		command("chmod", "0700", directory.Destination) + "\n"
+	var input []io.Reader
+	for _, name := range keys {
+		value := secrets[directory.SecretFiles[name]]
+		input = append(input, strings.NewReader(base64.StdEncoding.EncodeToString([]byte(value))+"\n"))
+		destination := path.Join(directory.Destination, name)
+		script += command("install", "-d", "-m", "0700", "--", path.Dir(destination)) + "\n" +
+			"IFS= read -r credential\nprintf '%s' \"$credential\" | base64 -d > " + quote(path.Join(stage, "credential")) + "\n" +
+			command("install", "-m", "0600", "--", path.Join(stage, "credential"), destination) + "\n"
+	}
+	_, code, err = c.run(ctx, script, io.MultiReader(input...), false, directory.Become)
+	err = toolrun.Success(code, err)
+	return err
 }
 
 func (p *execution) run(ctx context.Context, secrets map[string]string) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	inventory, selected, err := p.inventory()
-	if err != nil {
+	if err := toolrun.Public(p.settings, secrets); err != nil {
 		return nil, err
 	}
-	if err = toolrun.Public(inventory, secrets); err != nil {
+	if err := toolrun.Public(p.args, secrets); err != nil {
 		return nil, err
 	}
-	directory := p.settings.Directories[p.args.Directory]
-	keys := make([]string, 0, len(directory.SecretFiles))
-	if p.command == "push" {
-		for name, reference := range directory.SecretFiles {
-			value, exists := secrets[reference]
-			if !exists || strings.TrimSpace(value) == "" || len(value) > artifacts.SettingsLimit {
-				return nil, errors.New("missing, empty or oversized namespace secret for Dispatch file")
-			}
-			keys = append(keys, name)
-		}
-		sort.Strings(keys)
+	type job struct {
+		directory, host, address string
+		keys                     []string
 	}
-	tmp, err := os.MkdirTemp(p.scope.WorkspaceDir, ".kit-dispatch-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tmp)
-	for index, name := range keys {
-		if err = artifacts.WriteBytes(tmp, "secret-"+strconv.Itoa(index), []byte(secrets[directory.SecretFiles[name]])); err != nil {
-			return nil, errors.New("could not stage Dispatch secret file")
-		}
-	}
-	archive := filepath.Join(tmp, "source.tar.gz")
-	digest := ""
-	if p.command == "push" {
-		file, err := os.OpenFile(archive, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	var jobs []job
+	results := map[string]Result{}
+	// Validate every selected mapping and its credentials before any host changes.
+	for _, name := range p.args.Directory {
+		selected := *p
+		selected.args.Directory = DirectorySelection{name}
+		hosts, err := selected.hosts() // Recheck the artifact immediately before effects.
 		if err != nil {
 			return nil, err
 		}
-		hash := sha256.New()
-		err = archiveSource(ctx, p.scope.WorkspaceDir, directory, io.MultiWriter(file, hash))
-		if err = errors.Join(err, file.Close()); err != nil {
+		if err = toolrun.Public(hosts, secrets); err != nil {
 			return nil, err
 		}
-		digest = hex.EncodeToString(hash.Sum(nil))
-	}
-	for name, data := range map[string][]byte{"callback.py": callback, "ansible.cfg": []byte("[defaults]\n")} {
-		if err = artifacts.WriteBytes(tmp, name, data); err != nil {
-			return nil, err
+		directory := p.settings.Directories[name]
+		var keys []string
+		if p.command == "push" {
+			for file, reference := range directory.SecretFiles {
+				value, exists := secrets[reference]
+				if !exists || strings.TrimSpace(value) == "" || len(value) > artifacts.SettingsLimit {
+					return nil, errors.New("missing, empty or oversized namespace secret for Dispatch file")
+				}
+				keys = append(keys, file)
+			}
+			sort.Strings(keys)
 		}
-	}
-	for name, value := range map[string]any{"inventory.json": inventory, "playbook.json": p.playbook(archive)} {
-		if err = artifacts.Write(tmp, name, value); err != nil {
-			return nil, err
+		results[name] = Result{Directory: name, Destination: directory.Destination, Pushed: p.command == "push",
+			Hosts: map[string]HostResult{}, Targets: map[string][]TargetResult{}, ProviderVersion: p.provider.Version}
+		for host, address := range hosts {
+			jobs = append(jobs, job{directory: name, host: host, address: address, keys: keys})
 		}
 	}
 	tool := p.provider.Tool
-	if tool == "" {
-		tool = "/opt/inframill/tools/ansible/" + p.provider.ToolVersion + "/bin/ansible-playbook"
+	var err error
+	if p.static.Connection == "ssh" && tool == "" {
+		if tool, err = exec.LookPath("ssh"); err != nil {
+			return nil, err
+		}
 	}
 	policy := "yes"
 	if p.static.HostKeyPolicy == "accept-new" {
 		policy = "accept-new"
 	}
-	env := append(toolrun.Environment(), "ANSIBLE_CONFIG="+filepath.Join(tmp, "ansible.cfg"), "ANSIBLE_CALLBACK_PLUGINS="+tmp,
-		"ANSIBLE_STDOUT_CALLBACK=callback", "ANSIBLE_HOST_KEY_CHECKING=True", "ANSIBLE_RETRY_FILES_ENABLED=False",
-		"ANSIBLE_SSH_ARGS=-o BatchMode=yes -o StrictHostKeyChecking="+policy)
-	if p.static.Connection == "local" {
-		env = append(env, "ANSIBLE_PYTHON_INTERPRETER="+filepath.Join(filepath.Dir(tool), "python3"))
+	sink := p.scope.Diagnostics
+	if sink == nil {
+		sink = io.Discard
 	}
-	run := toolrun.Runner{Tool: tool, Directory: p.scope.WorkspaceDir, Environment: env, Logs: p.scope.Diagnostics, Secrets: secrets}
-	if err = run.Verify(ctx, "ansible", p.provider.ToolVersion); err != nil {
-		return nil, err
-	}
+	logs := &diagnostics{w: sink}
 	if err = p.scope.Message("Dispatch " + p.command); err != nil {
 		return nil, err
 	}
-	data, code, err := run.Call(ctx, true, "-i", filepath.Join(tmp, "inventory.json"), filepath.Join(tmp, "playbook.json"))
-	if err = toolrun.Success(code, err); err != nil {
-		return nil, err
-	}
-	var recap Recap
-	if err = artifacts.Decode(data, &recap); err != nil {
-		return nil, errors.New("missing or malformed Dispatch recap")
-	}
-	if recap.Schema != 1 || len(recap.Hosts) != len(selected) {
-		return nil, errors.New("incomplete Dispatch host recap")
-	}
-	expectedTargets := 0
-	if p.command == "make" {
-		expectedTargets = 1
-	}
-	expectedOK := expectedTargets
-	if p.command == "push" {
-		expectedOK += 5 // Destination, staging, transfer, extraction and cleanup.
-		expectedOK += len(p.secretTasks(tmp))
-	}
-	for name := range recap.Targets {
-		if !slices.Contains(selected, name) {
-			return nil, errors.New("unexpected host in Make results")
-		}
-	}
-	for _, name := range selected {
-		stats, ok := recap.Hosts[name]
-		if !ok || stats.OK != expectedOK || stats.Changed < 0 || stats.Changed > stats.OK || stats.Skipped != 0 || stats.Failures != 0 || stats.Unreachable != 0 || stats.Rescued != 0 || stats.Ignored != 0 {
-			return nil, errors.New("Dispatch did not verify every selected host")
-		}
-		if len(recap.Targets[name]) != expectedTargets {
-			return nil, errors.New("incomplete Make results")
-		}
-		for _, result := range recap.Targets[name] {
-			if result.Target != p.args.Target || result.ExitCode != 0 {
-				return nil, errors.New("Make target did not succeed")
+	var mu sync.Mutex
+	var failures []error
+	var workers sync.WaitGroup
+	parallel := make(chan struct{}, 8)
+	previousDirectory := ""
+hostsLoop:
+	for _, task := range jobs {
+		if p.command == "make" && task.directory != previousDirectory {
+			workers.Wait()
+			if len(failures) > 0 {
+				break
 			}
 		}
+		previousDirectory = task.directory
+		select {
+		case parallel <- struct{}{}:
+		case <-ctx.Done():
+			break hostsLoop
+		}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			defer func() { <-parallel }()
+			selected := *p
+			selected.args.Directory = DirectorySelection{task.directory}
+			directory := p.settings.Directories[task.directory]
+			c := connection{local: p.static.Connection == "local", address: p.settings.SSHUser + "@" + task.address,
+				options: []string{"-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=" + policy, "-o", "ConnectTimeout=15"},
+				runner: toolrun.Runner{Tool: tool, Directory: p.scope.WorkspaceDir, Environment: toolrun.Environment(),
+					Logs: hostLog{logs: logs, directory: task.directory, host: task.host, target: p.args.Target}, Secrets: secrets}}
+			var hostErr error
+			code := 0
+			if p.command == "push" {
+				hostErr = selected.push(ctx, c, task.keys, secrets)
+			} else {
+				script := "cd -- " + quote(directory.Destination) + " && exec " + command("make", "--", p.args.Target)
+				_, code, hostErr = c.run(ctx, script, nil, false, directory.Become)
+				hostErr = errors.Join(toolrun.Success(code, hostErr), logs.event(map[string]any{
+					"dispatch": "make", "directory": task.directory, "host": task.host, "target": p.args.Target, "exit_code": code}))
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if hostErr != nil {
+				failures = append(failures, fmt.Errorf("%s/%s: %w", task.directory, task.host, hostErr))
+				return
+			}
+			results[task.directory].Hosts[task.host] = HostResult{ExitCode: 0}
+			if p.command == "make" {
+				results[task.directory].Targets[task.host] = []TargetResult{{Target: p.args.Target, ExitCode: code}}
+			}
+		}()
 	}
-	result := Result{p.args.Directory, directory.Destination, p.command == "push", digest, recap.Hosts, recap.Targets, p.provider.Version}
+	workers.Wait()
+	if err = errors.Join(append(failures, ctx.Err())...); err != nil {
+		return nil, err
+	}
+	var result any = BatchResult{Pushed: p.command == "push", Directories: results, ProviderVersion: p.provider.Version}
+	if len(p.args.Directory) == 1 {
+		result = results[p.args.Directory[0]]
+	}
 	if err = toolrun.Public(result, secrets); err != nil {
 		return nil, err
 	}
