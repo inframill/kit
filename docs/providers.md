@@ -25,65 +25,35 @@ are not embedded in the Go executable.
 
 ```text
 cmd/main.go                    one production entry point
-pkg/providers/<name>/v0_4_0/    versioned implementation, release.json and tests
+internal/providers/<name>/     implementation, release.json and tests
 internal/catalog/              exact selectors and provider factories
 internal/cli/                  argument handling and runmill.Serve
 internal/artifacts/            shared artifact integrity and rooted access
 internal/toolrun/              subprocesses and filtered diagnostics
 go.mod, go.sum                 one root Go module
-releases.json                  provider selections, Go version and SDK pin
-scripts/executable.py          executable builds and source snapshots
-scripts/artifacts.py           shared artifact verification
+toolai.json                    application version, Go builds and check steps
+scripts/kit/                   focused engine/runtime/bundle helpers
+runtime/dependencies.json      runtime tool versions and checksums
 tests/                         Python, protocol and acceptance tests
 ```
 
 The provider registry reads identity and requirements from each implementation's
 embedded `release.json`. Its factories explicitly import the corresponding Go
-packages. Tests verify the registry agrees with `releases.json`; provider versions
-are never simulated by relabeling production code.
+packages. Tests exercise the compiled registry and provider metadata; synthetic providers
+have their own implementations and identities.
 
-## Build and verify
+## Build and verification
 
-Use Python 3.9+, Git, the Go version pinned in `releases.json`, and a clean
-Inframill checkout matching its SDK revision. The default checkout is
-`../inframill`; set `INFRAMILL_SOURCE` or pass `--inframill-source` to override it.
-Builds use a temporary module override and leave the root `go.mod` unchanged.
-Docker is needed only for image assembly and container acceptance.
+The compiled catalog explicitly selects the implementations; their embedded release
+metadata is the provider-version source of truth. There is no repeated selection
+file. Source directories are unversioned while each provider has one implementation.
+Provider selectors retain their exact `NAME-VERSION` protocol identity.
 
-Run from the repository root:
+Use `toolai go compile`, `toolai check`, and `toolai build`. Standard binaries live in
+`bin/kit-exec-<os>-<arch>`; `bin/kit-exec` is native. Runtime/image packaging consumes
+those outputs. Native engine builds resolve the same SDK module as the provider
+binary. See [releases](releases.md) for bundle preparation and verification.
 
-```sh
-task providers:build                         # Linux AMD64 and ARM64
-task providers:build -- --native             # host OS/architecture
-task providers:build -- --platform linux/arm64
-task providers:build -- --refresh            # preserve stale output in a backup
-task providers:verify
-task test
-```
-
-The underlying commands are `python3 build.py build-exec`, `verify-exec` and
-`test`. Builds include every selected provider, so there are no per-provider
-`--name` or `--version` build flags. The root `VERSION` supplies the executable's
-Kit version. Output defaults to:
-
-```text
-dist/exec/<KIT-VERSION>/<os>/<arch>/
-  exec             shared executable
-  build.json       Kit version, included releases, pins and checksums
-  sources/         one corresponding source snapshot
-  notices/         one set of available dependency license notices
-```
-
-`EXEC_DIST_DIR` or `--dist` overrides the `dist/exec` directory. Existing outputs
-are reused only when sources, selections, dependency pins, checksums and
-architecture still match. `--refresh` replaces stale unpublished output after a
-successful build and saves the previous contents beside it under `.previous-*`.
-
-`task bundle` consumes these prebuilt outputs and the pinned engine binaries. It
-checks compatibility and integrity without compiling Go or reading the SDK
-checkout. The image installs the shared executable at `/usr/local/bin/exec` and
-its build record, source snapshot and notices under `/opt/inframill/providers/`.
-Old per-provider artifacts under `providers/dist` are no longer consumed.
 
 ## Inframill configuration
 
@@ -93,13 +63,13 @@ Each provider binding uses the same executable and its own prefix arguments:
 engine:
   providers:
     ansible:
-      path: /usr/local/bin/exec
+      path: /usr/local/bin/kit-exec
       args:
         - ansible-0.4.0
         - --tool
         - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
     dispatch:
-      path: /usr/local/bin/exec
+      path: /usr/local/bin/kit-exec
       args: [dispatch-0.1.0]
 ```
 
@@ -116,20 +86,17 @@ migrates existing workspace state when artifact state is absent. Run init before
 rerendering older Instances, then again afterward to restore backend/plugin
 metadata. State and backups remain in artifacts across partial applies and rerenders.
 
-## Add a version
+## Add or update a provider
 
-1. Add `pkg/providers/<name>/v<major>_<minor>_<patch>/` with the implementation,
-   tests and embedded `release.json`. Keep older packages when both versions must
-   ship. Replace version dots with underscores and preserve prerelease hyphens in the Go directory name.
-2. Register the package and its factory in `internal/catalog`. Identity comes
-   from its release metadata, including exact tool requirements and protocol.
-3. Add its name/version to root `releases.json` and select it in the image release
-   lock when preparing a new Kit release. Update configuration selectors as needed.
-4. Run tests, build both Linux architectures, and verify the artifacts.
+1. Add or update `internal/providers/<name>` and its tests and embedded metadata.
+2. Register its factory in `internal/catalog`. Identity and tool requirements come
+   from provider metadata; no separate selection list needs updating.
+3. Update runtime dependency pins and configuration selectors when requirements change.
+4. Run `toolai check`, build the release, and run the affected acceptance suites.
 
 ## Tests and protocol
 
-`task test` runs Python tooling/callback tests, Go implementation/shared-code tests,
+`toolai check` runs Python tooling/callback tests, Go implementation/shared-code tests,
 and subprocess tests of the production `cmd` entry point. Version-coexistence,
 secret handling and process cancellation tests add synthetic providers using the
 `testproviders` build tag. Normal builds exclude them; there is no separate test
@@ -141,6 +108,6 @@ protocol supports `info`, `validate_settings` and `run`; execution defensively
 checks inputs, artifacts, credentials and outcomes. The SDK owns process
 observation and group signalling; child tools stay in the provider process group.
 
-The optional `task check-full` suite exercises native tools, disposable daemons,
+The optional `toolai check full` suite exercises native tools, disposable daemons,
 local Blueprint workflows, registries and both container architectures. See
 [usage](usage.md), [architecture](architecture.md) and [releases](releases.md).

@@ -23,7 +23,8 @@ from query_check import query_check
 from process_check import process_check
 from image_check import image_check
 from dispatch_check import dispatch_check
-from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform
+from scripts.kit.bundle import load_image, verify, push
+from scripts.kit.project import runtime_settings, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform, image_reference
 
 
 def run(args, **kwargs):
@@ -162,11 +163,10 @@ def cache_check(tmp, env):
 
 
 def container_checks(tmp, network, env):
-    if not (bundle_output() / 'build.json').is_file():
-        raise RuntimeError('Run task bundle before check-full container verification')
-    verify_image()
-    run([sys.executable, ROOT / 'build.py', 'push'], cwd=ROOT,
-        env={**env, 'KIT_DIST_DIR': str(bundle_output().parent.parent)})
+    if not (bundle_output() / 'manifest.json').is_file():
+        raise RuntimeError('Run toolai build release before image checks')
+    verify(bundle_output())
+    run([sys.executable, '-m', 'scripts.kit.bundle', 'push', '--bundle', bundle_output()], cwd=ROOT, env=env)
     image = 'docker.io/library/inframill-kit-test:' + uuid.uuid4().hex
     load_image(bundle_output(), image)
     try:
@@ -275,7 +275,11 @@ def registry_check():
 
 def main():
     action = sys.argv[1]
-    if action in ('registry', 'full'):
+    if action == 'image':
+        with tempfile.TemporaryDirectory(prefix='kit-image-') as td:
+            with registry() as (_, network, push_address):
+                container_checks(pathlib.Path(td), network, registry_env(pathlib.Path(td), push_address))
+    elif action in ('registry', 'full'):
         registry_check()
     elif action == 'native':
         with tempfile.TemporaryDirectory(prefix='kit-native-') as td:

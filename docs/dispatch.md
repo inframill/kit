@@ -291,10 +291,9 @@ files, tool execution and remote effects happen during Execute.
 ## Development verification
 
 ```sh
-python3 build.py test
-go test ./pkg/providers/dispatch/...
-python3 build.py build-exec
-python3 build.py build-exec --native
+toolai check
+toolai go test --packages ./internal/providers/dispatch
+toolai build release
 python3 tests/dispatch_check.py
 ```
 

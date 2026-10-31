@@ -311,13 +311,13 @@ Configure Millway in Values:
 
 ```json
 "millway": {
-  "image": "ghcr.io/inframill/millway:0.1.5-dev",
+  "image": "ghcr.io/inframill/millway:0.1.6-dev",
   "google_client_ids": {"web": "YOUR_CLIENT_ID.apps.googleusercontent.com"},
   "admin_emails": ["admin@example.com"]
 }
 ```
 
-Use Millway `0.1.5-dev` or later with the `start` and `verify` CLI commands.
+Use Millway `0.1.6-dev` or later with the `start` and `verify` CLI commands.
 The image must contain both UI and API, match the web node architecture, and have
 the same Google client IDs embedded in its exported UI. `admin_emails` controls
 new-account administrator assignment. Optional `web_node`, `database_node` and
@@ -467,7 +467,7 @@ From the Kit root:
 ```sh
 task inframill:copy
 BLUEPRINT=hello-world python3 tests/check.py blueprint:check
-# Requires task setup and task providers:build -- --native:
+# Requires task setup and toolai build -- --native:
 BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check
 # Disposable real PostgreSQL containers; requires Docker and openssl:
 python3 tests/pv_postgres_check.py
@@ -479,7 +479,7 @@ python3 tests/check.py native
 
 Integration checks fetch local sources into disposable daemon data, render the
 examples and execute debug commands or Ansible syntax checks and OpenTofu mocks.
-They create no cloud resources and require no blueprint registry. `task check-full`
+They create no cloud resources and require no blueprint registry. `toolai check full`
 also exercises local fixtures through both Linux runtime images; its disposable
 registry is used only to verify Kit image publication.
 

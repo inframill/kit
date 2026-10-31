@@ -1,104 +1,77 @@
 version: '3'
 
-# Kit and image releases always use the root VERSION file.
+set: [pipefail]
+
 env:
-  EXEC_DIST_DIR: '{{default "dist/exec" .EXEC_DIST_DIR}}'
-  INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
-  KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
-  REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
-  NAMESPACE: '{{default "inframill" .NAMESPACE}}'
-  REFERENCE: '{{default "" .REFERENCE}}'
+  PYTHONDONTWRITEBYTECODE: '1'
 
 tasks:
   default:
-    aliases: [help]
-    desc: Show tasks, examples and version selectors
+    desc: List focused external jobs and local operations
     silent: true
-    cmds:
-      - task --list --sort none
-      - |
-        printf '%s\n' \
-          '' \
-          'Start:     task providers:build && task bundle' \
-          'Check:     task check-fast' \
-          'Image:     task bundle && task check-full' \
-          'Run:       task docker:up' \
-          'Stop:      task docker:down' \
-          'Publish:   docker login ghcr.io && task bundle:push' \
-          'Release:   task release (prepare metadata, build and check; then bundle:push)' \
-          'Blueprint: inframill blueprint fetch built.in/pv-cloud --namespace production' \
-          '' \
-          'Versions: root VERSION file=Kit/image; blueprints are local source directories;' \
-          '          releases.json=providers. Kit/image version overrides are ignored.' \
-          'Registry: REGISTRY=ghcr.io NAMESPACE=inframill; image repository is /kit.' \
-          'Builds stay local. Push tasks upload existing artifacts.' \
-          '' \
-          'Details: task --summary TASK; docs/usage.md; docs/releases.md'
+    cmds: ['task --list']
 
-  # Local development.
   setup:
-    desc: Install pinned tools in .cache; automatically find Python 3.12–3.14
-    summary: |
-      Finds a supported Python for Ansible even if python3 is the system Python 3.9.
-      Uses the current interpreter when supported, otherwise tries python3.14,
-      python3.13 and python3.12 on PATH. Set PYTHON=/path/to/python to override.
-      Installs tools locally in .cache; leaves the system Python unchanged.
-    cmds: ['python3 build.py setup']
-  inframill:copy:
-    desc: Generate a missing release lock, then verify and copy the prebuilt host engine
-    cmds: ['python3 build.py copy-engine']
-  providers:build:
-    desc: Build one executable containing all providers for Linux AMD64 and ARM64
-    cmds: ['python3 build.py build-exec {{.CLI_ARGS}}']
-  providers:verify:
-    desc: Verify executable artifacts against current sources and release selections
-    cmds: ['python3 build.py verify-exec {{.CLI_ARGS}}']
+    desc: Install pinned OpenTofu and Ansible into .cache
+    cmds: ['python3 -m scripts.kit.runtime setup']
+
   config:
-    desc: Print local engine JSON configuration using native dist/exec outputs
-    cmds: ['python3 build.py config']
-  completion:zsh:
-    desc: Install Inframill zsh completion and enable it in ~/.zshrc
-    summary: |
-      Requires inframill on PATH. Regenerates ~/.zsh/completions/_inframill
-      and adds its source line to ~/.zshrc once. Open a new shell or run
-      source ~/.zshrc to activate completion. Run again after upgrading Inframill.
-    preconditions:
-      - sh: command -v inframill >/dev/null 2>&1
-        msg: Install inframill and add it to PATH first.
+    desc: Print native configuration using prepared binaries and local tools
+    cmds: ['python3 -m scripts.kit.runtime config']
+
+  build:prepare:
+    desc: Record the source inputs before Toolai builds binaries
+    cmds: ['python3 -m scripts.kit.bundle capture']
+
+  build:engine:
+    desc: Build the resolved Inframill module using Toolai
+    cmds: ['python3 -m scripts.kit.engine']
+
+  build:image:
+    desc: Package prepared provider/engine binaries and load the local image
+    cmds: ['python3 -m scripts.kit.bundle image']
+
+  build:release:
+    desc: Assemble a self-contained release bundle from the prepared image
+    cmds: ['python3 -m scripts.kit.bundle release']
+
+  release:verify:
+    desc: Verify an existing release bundle without source or engine checkouts
+    cmds: ['python3 -m scripts.kit.bundle verify {{.CLI_ARGS}}']
+
+  release:load:
+    desc: Verify and load an existing release bundle
+    cmds: ['python3 -m scripts.kit.bundle load {{.CLI_ARGS}}']
+
+  release:push:
+    desc: Verify and publish the existing bundle (requires registry login)
+    cmds: ['python3 -m scripts.kit.bundle push {{.CLI_ARGS}}']
+
+  check:python:
+    desc: Run Python packaging, runtime, and blueprint unit tests
+    cmds: ['python3 -B -m unittest discover -s tests -p "test_*.py"']
+
+  test:native:
+    desc: Run native acceptance against prepared binaries and installed local tools
     cmds:
-      - |
-        set -eu
-        completion=$(inframill completion zsh)
-        mkdir -p "$HOME/.zsh/completions"
-        printf '%s\n' "$completion" > "$HOME/.zsh/completions/_inframill"
-        touch "$HOME/.zshrc"
-        line='source "$HOME/.zsh/completions/_inframill"'
-        if ! grep -Fqx "$line" "$HOME/.zshrc"; then
-          printf '\n# Inframill zsh completion\nautoload -Uz compinit\n(( ${+_comps} )) || compinit\n%s\n' "$line" >> "$HOME/.zshrc"
-        fi
+      - python3 tests/check.py native
+      - python3 tests/pv_postgres_check.py
+      - python3 tests/pv_millway_check.py
+
+  test:image:
+    desc: Verify the prepared release in a disposable registry and both Linux runtimes
+    cmds: ['python3 tests/check.py image']
 
   docker:up:
-    desc: Run the current Kit image and recreate the local Inframill container
-    dir: '{{.ROOT_DIR}}'
-    summary: |
-      Uses the local REGISTRY/NAMESPACE/kit image tagged with the root VERSION file.
-      Pulls only when the image is missing, before stopping Inframill.
-      Binds .inframill, .inframill.yaml and local blueprints from the repository root; publishes
-      port 8080 on loopback. Creates the data directory if needed.
-      Mounts project ssh/ at /root/.ssh for provider SSH keys, config and known_hosts.
-      Creates ssh/ with owner-only access if missing; SSH can persist known_hosts there.
-      Forwards the SSH agent when SSH_AUTH_SOCK is set (Docker Desktop on macOS).
-      KIT_SSH_AUTH_SOCK overrides the Docker-host socket path; set it empty to disable.
+    desc: Start the prepared local Kit image with persistent repository data
     preconditions:
       - sh: test -f .inframill.yaml
-        msg: Create .inframill.yaml before running task docker:up.
+        msg: Create .inframill.yaml first.
     cmds:
       - |
         set -eu
-        image=$(python3 -c 'from build import image_reference, project_version; print(image_reference(project_version()))')
-        if ! docker image inspect "$image" >/dev/null 2>&1; then
-          docker pull "$image"
-        fi
+        image=$(python3 -c 'from scripts.kit.project import image_reference; print(image_reference())')
+        docker image inspect "$image" >/dev/null
         agent="${SSH_AUTH_SOCK:-}"
         if [ -n "$agent" ] && [ "$(uname -s)" = Darwin ]; then
           agent=/run/host-services/ssh-auth.sock
@@ -106,8 +79,7 @@ tasks:
         agent="${KIT_SSH_AUTH_SOCK-$agent}"
         set --
         if [ -n "$agent" ]; then
-          set -- --mount "type=bind,src=$agent,dst=/run/kit-ssh-agent.sock" \
-            -e SSH_AUTH_SOCK=/run/kit-ssh-agent.sock
+          set -- --mount "type=bind,src=$agent,dst=/run/kit-ssh-agent.sock" -e SSH_AUTH_SOCK=/run/kit-ssh-agent.sock
         fi
         mkdir -p .inframill
         mkdir -p -m 700 ssh
@@ -115,20 +87,12 @@ tasks:
           docker stop inframill
           docker rm inframill
         fi
-        docker run -d --pull=never --name inframill --restart unless-stopped \
-          -p 127.0.0.1:8080:8080 \
-          -v "$PWD/.inframill:/var/lib/inframill" \
-          -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
-          -v "$PWD/blueprints:/opt/inframill/blueprints:ro" \
-          -v "$PWD/ssh:/root/.ssh" \
-          "$@" \
-          "$image"
+        docker run -d --pull=never --name inframill --restart unless-stopped -p 127.0.0.1:8080:8080 \
+          -v "$PWD/.inframill:/var/lib/inframill" -v "$PWD/.inframill.yaml:/etc/inframill/inframill.yaml" \
+          -v "$PWD/blueprints:/opt/inframill/blueprints:ro" -v "$PWD/ssh:/root/.ssh" "$@" "$image"
 
   docker:down:
-    desc: Stop and remove the local Inframill container, preserving its data
-    summary: |
-      Stops and removes the inframill container if it exists.
-      Keeps .inframill/, .inframill.yaml and the downloaded image.
+    desc: Stop the local container and preserve its data
     cmds:
       - |
         set -eu
@@ -137,75 +101,3 @@ tasks:
           docker stop inframill
           docker rm inframill
         fi
-
-  # Verification: full checks require an already-built image.
-  check-fast:
-    desc: Run image tooling and provider tests and validate release versions
-    cmds:
-      - task: test
-      - task: release:check
-  check-full:
-    desc: Run fast checks, native workflows and both Linux images in a disposable registry
-    summary: |
-      Prerequisites: task setup, task providers:build -- --native, Docker, openssl, task bundle,
-      and the Millway 0.1.5-dev UI/API image for the Docker host architecture.
-      Runs local resources, provider mocks, disposable PostgreSQL/Millway, daemon and registry checks, then
-      ARM64/AMD64 image workflows. Creates no cloud resources or GHCR packages.
-    cmds:
-      - task: check-fast
-      - task: inframill:copy
-      - python3 tests/check.py full
-  release:check:
-    desc: Validate the selected image release and provider selections
-    cmds: ['python3 build.py validate']
-  release:prepare:
-    desc: Generate VERSION, image lock and SDK pin from the sibling Inframill release
-    summary: |
-      Requires a clean Inframill checkout and its four prebuilt release binaries.
-      Defaults Kit's version to Inframill VERSION; override with -- --version X.Y.Z.
-      Refuses to replace an existing lock with different inputs. Does not pull or publish.
-    cmds: ['python3 build.py prepare-release {{.CLI_ARGS}}']
-  release:
-    desc: Prepare release metadata, refresh providers, build the image and run full checks
-    summary: |
-      First build the new release in ../inframill and run task setup once in Kit.
-      Requires Docker. Updates release metadata, rebuilds stale provider outputs with
-      backups, builds the image and runs check-full. Publish with task bundle:push.
-    cmds:
-      - task: release:prepare
-        vars: {CLI_ARGS: '{{.CLI_ARGS}}'}
-      - python3 build.py build-exec --refresh --dist "$EXEC_DIST_DIR"
-      - python3 build.py build-exec --native --refresh --dist "$EXEC_DIST_DIR"
-      - task: build
-      - task: check-full
-  # The bundle is the Kit image: engine, providers and pinned tools for both platforms.
-  build:
-    aliases: [bundle]
-    desc: Build the local Linux AMD64/ARM64 Kit image (VERSION file)
-    summary: |
-      Requires Docker Buildx, the prebuilt executable under EXEC_DIST_DIR (dist/exec),
-      and Linux engine binaries under INFRAMILL_DIST_DIR. Never compiles providers.
-      Includes /etc/inframill/inframill.yaml; mount data at /var/lib/inframill.
-      Writes KIT_DIST_DIR/bundles/<VERSION> and loads REGISTRY/NAMESPACE/kit:<VERSION>
-      into Docker (default ghcr.io/inframill/kit). Never pushes or replaces an output.
-    cmds: ['python3 build.py build']
-  push:
-    aliases: [bundle:push]
-    desc: Push the existing Kit image to REGISTRY/NAMESPACE/kit (VERSION file)
-    summary: |
-      Authenticate first with docker login REGISTRY, then run task bundle:push.
-      Validates release versions and the build lock, uploads existing OCI bytes,
-      and rejects a version tag that already points to different content.
-    cmds: ['python3 build.py push']
-  verify:
-    aliases: [bundle:verify]
-    desc: Check published image platforms and provider discovery (REFERENCE)
-    summary: |
-      Uses Docker to inspect and run the published image. REFERENCE must be pinned:
-        task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
-    cmds: ['python3 build.py verify --reference "{{.REFERENCE}}"']
-
-  test:
-    desc: Run Python, Go, executable protocol and provider tests
-    aliases: [providers:test]
-    cmds: ['python3 build.py test {{.CLI_ARGS}}']

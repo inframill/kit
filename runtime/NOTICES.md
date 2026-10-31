@@ -1,25 +1,22 @@
 # Kit image distribution notices
 
-This image combines separately licensed programs. It is not an all-MIT product.
+The image combines separately licensed programs. Kit and the resolved engine's
+corresponding sources are in `/usr/share/inframill/sources/kit.tar.gz`; available Go
+dependency notices are under `/usr/share/inframill/notices/`. The shared provider
+executable is `/usr/local/bin/kit-exec`. `/usr/share/inframill/manifest.json` records
+engine/provider identity and binary checksums.
 
-* Kit's image assembly sources and LICENSE are under `/usr/share/inframill/sources/kit/`.
-  The shared provider executable is `/usr/local/bin/exec`. Its corresponding
-  sources and LICENSE are under `/opt/inframill/providers/sources/`. Available Go
-  dependency notices, including those for the pinned engine, are in the adjacent `notices/`.
-  Inframill is copied from its prebuilt release. The bundle lock records its
-  version, source revision and binary checksums; its source tree is not embedded.
-* OpenTofu is MPL-2.0. Its matching source archive and license accompany the image.
-* Ansible Core is GPL-3.0-or-later. Its matching source distribution is included
-  under `/usr/share/inframill/sources/`, together with the source distributions of
-  its pinned Python dependencies. The callback is Kit-authored MIT code.
-* Python and Debian retain the copyright/license files shipped in the base image.
-  Debian package identities are recorded in `/usr/share/inframill/os-packages.txt`;
-  matching package sources are available from the signed snapshot repositories
-  configured in `/etc/apt/sources.list`. Python's version and immutable base image
-  digest are pinned in the included `runtime/Dockerfile`; upstream source: https://www.python.org/ftp/python/.
+OpenTofu is MPL-2.0. Its matching source archive and license accompany the image.
+Ansible Core is GPL-3.0-or-later. Its matching source distribution and the sources
+of its pinned Python dependencies are under `/usr/share/inframill/sources/`.
+The callback is Kit-authored MIT code. Installed Python packages and source checksums
+are recorded in `python-packages.json` and `sources/python-sources.json` respectively.
 
-The bundle lock records engine and provider selections. The Dockerfile pins runtime
-tools; `/usr/share/inframill/python-packages.json` records installed Python packages
-and download hashes, and `sources/python-sources.json` records their source checksums.
-Review changes to these materials and dependency license terms before distributing
-new versions. Guest packages installed by a blueprint are separate from the Kit image.
+Python and Debian retain their shipped license/copyright files. The base image,
+Debian snapshot, external tool versions and download hashes are recorded in the
+included `runtime/dependencies.json`. OS packages are listed in
+`/usr/share/inframill/os-packages.txt`; package sources are available through the
+configured signed snapshot repositories. Python source: https://www.python.org/ftp/python/.
+
+Guest packages installed by blueprints are separate from the Kit image. Review
+updated dependency terms when distributing new runtime versions.

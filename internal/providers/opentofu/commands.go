@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/inframill/inframill/pkg/runmill"
 	"github.com/inframill/kit/internal/artifacts"
 	"github.com/inframill/kit/internal/toolrun"
-	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 
 type Plan struct {

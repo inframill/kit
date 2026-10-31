@@ -23,19 +23,19 @@ engine:
       path: /usr/local/bin/inframill
       args: [debug, provider]
     opentofu:
-      path: /usr/local/bin/exec
+      path: /usr/local/bin/kit-exec
       args:
         - opentofu-0.4.0
         - --tool
         - /opt/inframill/tools/opentofu/1.11.5/tofu
     ansible:
-      path: /usr/local/bin/exec
+      path: /usr/local/bin/kit-exec
       args:
         - ansible-0.4.0
         - --tool
         - /opt/inframill/tools/ansible/2.20.1/bin/ansible-playbook
     dispatch:
-      path: /usr/local/bin/exec
+      path: /usr/local/bin/kit-exec
       args: [dispatch-0.1.0]
 
 handlers:

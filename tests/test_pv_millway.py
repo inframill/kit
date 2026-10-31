@@ -11,7 +11,7 @@ import tempfile
 import unittest
 import urllib.parse
 
-from build import ROOT
+from scripts.kit.project import ROOT
 from test_pv_postgres import prepare_payload as prepare_postgres, working_directory
 
 SOURCE = ROOT / 'blueprints/pv-cloud/latest/templates/dispatch/millway'
@@ -43,7 +43,7 @@ def prepare_payload(root, database_payload=None):
         'nodes': {name: {'roles': ['common', 'docker', role]} for name, role in
                   [('data-1', 'data'), ('worker-1', 'worker'), ('web-1', 'web')]},
         'postgres': {},
-        'millway': {'image': 'ghcr.io/inframill/millway:0.1.5-dev',
+        'millway': {'image': 'ghcr.io/inframill/millway:0.1.6-dev',
                     'google_client_ids': {'web': 'test-web.apps.googleusercontent.com'}},
     }
     (payload / 'settings.json').write_text(json.dumps(document))

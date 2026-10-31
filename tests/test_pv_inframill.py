@@ -1,12 +1,15 @@
 import json
+import io
+import runpy
 import os
 import pathlib
 import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from build import ROOT
+from scripts.kit.project import ROOT, project_version
 
 
 def prepare_payload(root):
@@ -15,7 +18,7 @@ def prepare_payload(root):
     shutil.copytree(ROOT / 'blueprints/pv-cloud/latest/templates/dispatch/inframill', payload)
     compose = payload / 'compose.yaml.gotmpl'
     (payload / 'compose.yaml').write_text(compose.read_text().replace(
-        '{{ toJSON .inframill.image }}', json.dumps('ghcr.io/inframill/kit:' + (ROOT / 'VERSION').read_text().strip())))
+        '{{ toJSON .inframill.image }}', json.dumps('ghcr.io/inframill/kit:' + project_version())))
     compose.unlink()
     (payload / 'registry.json.gotmpl').unlink()
     (payload / 'registry.json').write_text('{}\n')
@@ -78,3 +81,14 @@ class InframillPayloadTests(unittest.TestCase):
             self.assertEqual((payload / 'ssh').stat().st_mode & 0o777, 0o700)
             self.assertEqual(commands.read_text().splitlines()[-1],
                              'compose --project-name pv-cloud-inframill --file compose.yaml down')
+
+    def test_https_healthcheck_uses_current_root_token_header(self):
+        for source in (ROOT / 'blueprints/pv-cloud').glob('*/templates/dispatch/inframill/healthcheck.py'):
+            with self.subTest(source=str(source)), patch('ssl.create_default_context'), \
+                    patch('pathlib.Path.read_text', return_value='synthetic-token\n'), \
+                    patch('urllib.request.urlopen') as request:
+                request.return_value.__enter__.return_value = io.StringIO('{"version":"0.1.25-dev"}')
+                runpy.run_path(str(source))
+                headers = dict(request.call_args.args[0].header_items())
+                self.assertEqual(headers['X-root-token'], 'synthetic-token')
+                self.assertNotIn('X-root-password', headers)

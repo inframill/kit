@@ -1,37 +1,31 @@
 package catalog
 
 import (
-	"encoding/json"
-	"os"
 	"testing"
 
-	"github.com/sir-hassan/inframill/pkg/runmill"
+	"github.com/inframill/inframill/pkg/runmill"
 )
 
-func TestRegistryMatchesReleaseSelections(t *testing.T) {
+func TestBuiltinRegistry(t *testing.T) {
 	c, err := Builtin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile("../../releases.json")
-	if err != nil {
-		t.Fatal(err)
+	releases := c.List()
+	if len(releases) != 3 {
+		t.Fatalf("provider count = %d", len(releases))
 	}
-	var config struct{ Providers []Release }
-	if err := json.Unmarshal(data, &config); err != nil {
-		t.Fatal(err)
-	}
-	if len(c.List()) != len(config.Providers) {
-		t.Fatal("compiled registry differs from releases.json")
-	}
-	for _, r := range config.Providers {
+	for _, r := range releases {
+		if r.Version == "" || r.Protocol != 1 {
+			t.Fatalf("invalid release: %+v", r)
+		}
 		provider, err := c.Provider(r.Selector(), "/unused")
 		if err != nil {
 			t.Fatal(err)
 		}
 		definition, err := provider.Definition()
 		if err != nil || definition.Name != r.Name {
-			t.Fatal(definition, err)
+			t.Fatalf("provider metadata: %+v, %v", definition, err)
 		}
 	}
 }

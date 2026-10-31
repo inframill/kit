@@ -13,8 +13,7 @@ import urllib.error
 import urllib.request
 
 from blueprint_workflows import protocol_fixture, local_paths, LOCAL_REFERENCE
-from build import ROOT, configuration, local_tools, bundle_lock, local_executable
-from scripts.executable import go_environment, releases
+from scripts.kit.project import ROOT, configuration, local_tools, engine_version, local_executable
 from engine_client import namespaces_ready
 
 
@@ -22,10 +21,7 @@ def daemon_check(tmp, env):
     tmp = pathlib.Path(tmp) / 'daemon'
     tmp.mkdir()
     binary = tmp / 'kit-fixtures'
-    source = pathlib.Path(env.get('INFRAMILL_SOURCE', ROOT.parent / 'inframill')).resolve()
-    with go_environment(ROOT, source, releases()[0]) as build_env:
-        subprocess.run(['go', 'build', '-tags=testproviders', '-o', str(binary), './cmd'],
-                       cwd=ROOT, env={**env, **build_env}, check=True)
+    subprocess.run(['go', 'build', '-tags=testproviders', '-o', str(binary), './cmd'], cwd=ROOT, env=env, check=True)
     fixture_root = protocol_fixture(tmp)
     tofu, ansible = local_tools()
     data_root = tmp / 'data'
@@ -73,7 +69,7 @@ def daemon_check(tmp, env):
                 return None
         poll(ready)
         poll(lambda: namespaces_ready(rpc))
-        assert rpc('GetServerVersion') == {'version': bundle_lock()['inframill']['version']}
+        assert rpc('GetServerVersion') == {'version': engine_version()}
 
     def stop():
         nonlocal process

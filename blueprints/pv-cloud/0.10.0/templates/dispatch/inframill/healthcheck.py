@@ -15,7 +15,7 @@ try:
     request = urllib.request.Request(
         "https://127.0.0.1:443/inframill.v1.EngineService/GetServerVersion",
         data=b"{}", headers={"Content-Type": "application/json",
-                              "Connect-Protocol-Version": "1", "X-Root-Password": token})
+                              "Connect-Protocol-Version": "1", "X-Root-Token": token})
     with urllib.request.urlopen(request, context=context, timeout=3) as response:
         if not json.load(response).get("version"):
             raise ValueError("missing server version")

@@ -9,3 +9,9 @@ __pycache__/
 registries.json
 secrets.json
 ssh
+
+# Local build staging and optional sibling development workspace
+/.build/
+/go.work
+/go.work.sum
+/coverage.out

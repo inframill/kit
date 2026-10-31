@@ -13,7 +13,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/sir-hassan/inframill/pkg/runmill"
+	"github.com/inframill/inframill/pkg/runmill"
 )
 
 const Limit = 32 << 20
@@ -126,7 +126,7 @@ func (r Runner) Verify(ctx context.Context, name, version string) error {
 	} else if bytes.Contains(data, []byte("[core "+version+"]")) {
 		return nil
 	}
-	return &runmill.ProviderError{Code: "TOOL_VERSION", Message: "tool does not match release lock"}
+	return &runmill.ProviderError{Code: "TOOL_VERSION", Message: "tool version does not match provider requirements"}
 }
 func Public(value any, secrets map[string]string) error {
 	data, err := json.Marshal(value)

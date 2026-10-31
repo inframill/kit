@@ -10,44 +10,48 @@ ready-to-run image for Inframill.
 The Kit image supports Linux AMD64 and ARM64. Blueprint sources are architecture
 independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 
-## Release versions
+## Development and releases
 
-[`VERSION`](VERSION) selects the Kit image; its record under [`releases/`](releases/)
-pins the engine and providers. [`releases.json`](releases.json)
-pins provider selections and the Go/SDK dependency. Tool versions live in
-[`runtime/Dockerfile`](runtime/Dockerfile). Local blueprints are selected by name
-and content digest.
-
-Blueprints declare their supported commands and argument schemas in
-`command_arguments`. Inspect the complete contract with
-`inframill instance commands NAME --namespace ID -o json`. See the
-[Blueprint upgrade notes](blueprints/README.md) for saved revision compatibility.
-
-For a new release, prepare the sibling Inframill release binaries, then run:
+Toolai owns Go compilation, builds, tests, and aggregate workflows. Task owns focused
+external jobs and local operations. Kit's version lives in `toolai.json`; `go.mod`
+and `go.sum` select the Inframill SDK/engine source. Runtime dependencies have one
+source of truth in `runtime/dependencies.json`. Provider metadata lives alongside
+each implementation in `internal/providers/<name>/release.json`.
 
 ```sh
-task release
-# After successful checks and docker login:
-task bundle:push
+toolai doctor
+toolai check
+task setup                 # install local OpenTofu and Ansible for native acceptance
+toolai build               # provider binaries, resolved engine, local multi-platform image
+toolai build release       # also create dist/kit/<version>/
+toolai check full          # native, registry and both Linux runtime acceptance suites
+# After reviewing the bundle and logging into the intended registry:
+task release:push
 ```
 
-`task release` generates the version/pins/checksums, refreshes providers, builds the
-image and runs full checks. Routine engine version changes need no documentation
-edits. See [releasing Kit](docs/releases.md) for prerequisites and independent Kit versions.
+Go lint is separately selected with `toolai check lint`; no lint rewrites run in
+checks. See [the release guide](docs/releases.md) for inputs, output layout and
+artifact verification. Builds stay local; publishing is always explicit.
+
+The current SDK revision is a local upstream commit. It must be pushed to the
+Inframill repository before other machines can fetch the module pin. For local
+cross-project work, create an ignored Go workspace with `go work init . ../inframill`.
+Use `GOPRIVATE=github.com/inframill/*` and authenticated Git access for private modules.
+Release engine builds require the workspace checkout to match the pinned SDK revision.
 
 ## Run with Docker
 
 The image includes [`runtime/inframill.yaml`](runtime/inframill.yaml) unchanged at
 `/etc/inframill/inframill.yaml` and starts the server with all Kit providers configured. Docker
 selects the AMD64 or ARM64 variant for your machine. No local Go or Python setup is
-needed to use the image. Run the examples from this checkout; `cat VERSION` selects
+needed to use the image. Run the examples from this checkout; `toolai.json` selects
 its release tag. Without a checkout, substitute the desired published tag.
 
 ```sh
 docker run -d --name inframill --rm \
   -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=inframill-data,dst=/var/lib/inframill \
-  "ghcr.io/inframill/kit:$(cat VERSION)"
+  "ghcr.io/inframill/kit:$(python3 -c 'from scripts.kit.project import project_version; print(project_version())')"
 ```
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
@@ -81,7 +85,7 @@ daemon to probe providers again.
 | `/etc/inframill/inframill.yaml` | Default configuration; replace with a read-only file mount |
 | `/opt/inframill/blueprints` | Optional read-only mount for local blueprint sources |
 | `/var/lib/inframill` | Persistent blueprint cache, Instances, workspaces and command history |
-| `/usr/local/bin/exec` | Shared provider executable selected with a `NAME-VERSION` argument |
+| `/usr/local/bin/kit-exec` | Shared provider executable selected with a `NAME-VERSION` argument |
 
 ### Use your own configuration
 
@@ -96,7 +100,7 @@ cp runtime/inframill.yaml inframill.yaml
 Extract the complete default configuration from the image, then edit it:
 
 ```sh
-docker run --rm --entrypoint cat "ghcr.io/inframill/kit:$(cat VERSION)" \
+docker run --rm --entrypoint cat "ghcr.io/inframill/kit:$(python3 -c 'from scripts.kit.project import project_version; print(project_version())')" \
   /etc/inframill/inframill.yaml > inframill.yaml
 ```
 
@@ -112,9 +116,8 @@ task docker:up
 ```
 
 This uses the locally available `REGISTRY/NAMESPACE/kit:<VERSION>` image
-(default `ghcr.io/inframill/kit:<VERSION>`), including images loaded by `task build`.
-It pulls only if the image is missing, before replacing any existing `inframill`
-container. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
+(default `ghcr.io/inframill/kit:<VERSION>`), including images loaded by `toolai build`.
+Prepare the image with `toolai build` before starting it; startup does not build or pull prerequisites. It creates `.inframill/` if needed and binds those paths plus `blueprints/` from
 the repository root. The checked-in configuration enables debug, OpenTofu,
 Ansible and Dispatch; the image default enables OpenTofu, Ansible and Dispatch.
 
@@ -170,81 +173,35 @@ Without a data mount, data is lost when the container is removed. Namespace secr
 and registry credentials persist unencrypted in `data.sqlite` and its sidecars,
 including across restarts and namespace deletion.
 
-## Build the executable and image
+## Build and verification
 
-Provider implementations live under `pkg/providers/<name>/v<major>_<minor>_<patch>/`.
-One root Go module and `cmd/main.go` build the shared executable.
-See the [provider guide](docs/providers.md) for the CLI, layout and versioning. The [local blueprints](blueprints/README.md)
-are fetched directly from their source directories.
-
-[Dispatch](docs/dispatch.md) pushes directories from `workspace/dispatch/` to
-nodes selected from shared artifacts using SCP and runs Make targets over SSH.
-
-```sh
-task test
-task providers:build         # one executable per Linux architecture
-task bundle                # assemble the image from dist/exec
-```
-
-The root [`build.py`](build.py) builds the provider executable, runs tests, and
-assembles, verifies and pushes the Kit Docker image. Image assembly consumes
-prebuilt executable artifacts without implicitly compiling Go. It checks the prebuilt binaries, the source snapshot,
-checksums, platforms and engine/tool compatibility before copying them into the image. Task wraps these commands (`task bundle` remains an alias for `task build`):
+Provider implementations live in `internal/providers/{opentofu,ansible,dispatch}`.
+One Go module and `cmd/main.go` produce the `kit-exec` binary. Toolai builds all
+Linux/macOS AMD64/ARM64 binaries under `bin/` and a native `bin/kit-exec`.
+The engine builder resolves the SDK module through Go, stages its sources under
+`.build/engine`, invokes Toolai, and prepares `bin/inframill` for native tests.
+It never changes the SDK pin or prepares a release implicitly.
 
 ```sh
-python3 build.py build-exec # shared executable for both Linux architectures
-python3 build.py build     # assemble both image architectures, load into local Docker
-python3 build.py verify    # verify the existing local image
-python3 build.py push      # push that image; run docker login yourself first
-python3 build.py test      # Python, Go and executable protocol tests
+toolai go compile
+toolai check
+toolai build release
+task release:verify
+toolai check full
 ```
 
-`build` saves the OCI bundle and loads it into Docker as
-`REGISTRY/NAMESPACE/kit:<VERSION>` (default `ghcr.io/inframill/kit:<VERSION>`),
-without pushing. `publish` runs build then push; `push` uses the existing image. The root script
-also provides `validate`, `setup`, `config` and `copy-engine` for release checks
-and local acceptance setup. Executable build and artifact helpers live under `scripts/`; blueprints need no build step.
+Default checks need Go and Python 3.9+, with no Docker or installed infrastructure
+tools. Protocol tests build temporary test fixtures with local tool stubs. Full
+checks require Docker/Buildx, OpenSSL, Python 3.12–3.14 for Ansible, `task setup`,
+and prepared native binaries and release bundle. They use disposable resources,
+not cloud accounts. The pv-cloud payload suite requires the Millway 0.1.6-dev image
+for the Docker host architecture. Focus acceptance with `toolai check native` or
+`toolai check image`; tags add to the default checks.
 
-Provider builds need Python 3.9+, the Go version in `releases.json`, and the pinned Inframill SDK checkout
-(default `../inframill` beside this repository). Image assembly needs Docker Buildx
-with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
-prebuilt engine binaries in `../inframill/dist/<engine-version>/`. The image assembly step does not need provider sources or the SDK checkout. Set `EXEC_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
-other prebuilt artifact locations.
-
-For local blueprint development, `task config` configures the repository's source
-path. `task docker:up` mounts `blueprints/` read-only at `/opt/inframill/blueprints`.
-Fetch with `inframill blueprint fetch built.in/pv-cloud --namespace production` or
-`built.in/hello-world`. These default to the `latest/` source directories. After editing
-sources, fetch again and initialize a new Instance. Add `:TAG` to select another tag.
-See [local blueprint usage](blueprints/README.md) for provider configuration and examples.
-
-The Kit image defaults to `ghcr.io/inframill/kit:<VERSION>`. Builds do not publish
-automatically. See [releases](docs/releases.md) for image inputs and publishing.
-
-## Verification
-
-```sh
-task check-fast
-```
-
-Fast checks run image tooling and provider tests. For optional full
-acceptance, install Python 3.12–3.14 for Ansible and prepare native outputs:
-
-```sh
-task setup
-task providers:build -- --native
-task inframill:copy
-task bundle                # requires prior task providers:build for both Linux architectures
-task check-full
-```
-
-Full checks exercise native tools, blueprint workflows, disposable registries and
-both Linux runtime images. AMD64 can run under emulation. Use `task config` to
-print a local configuration pointing at native provider outputs in `dist/exec`.
-Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides select installed tools matching
-the tool versions in [`runtime/Dockerfile`](runtime/Dockerfile). `task setup` uses
-those same pins. The image release lock selects only the engine, providers and
-platforms. Run `task check-full` to verify the current source and artifacts.
+Generation, builds, checks, installation and publishing are explicit operations.
+There are no SQL or RPC generators in Kit. Local runtime configuration is printed
+with `task config`. `task docker:up` and `task docker:down` manage the repository's
+persistent development daemon; tests use separate disposable processes/containers.
 
 ## Documentation
 

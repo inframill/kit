@@ -3,25 +3,30 @@ import hashlib
 import json
 import os
 import pathlib
-import re
 import shlex
+import subprocess
 import sys
 import tempfile
 import urllib.request
 import zipfile
 
 
-def docker_defaults(path):
-    """Read literal, single-line ARG defaults for native setup and build checks."""
-    values = {}
-    for name, raw in re.findall(r'^ARG ([A-Z][A-Z0-9_]*)=(.+)$', pathlib.Path(path).read_text(), re.MULTILINE):
-        value, = shlex.split(raw)
-        values[name] = value
-    return values
+def dependencies(path=None):
+    return json.loads(pathlib.Path(path or pathlib.Path(__file__).with_name('dependencies.json')).read_text())
 
 
 def ansible_requirements(settings):
     return ['ansible-core==' + settings['ANSIBLE_VERSION'], *shlex.split(settings['ANSIBLE_DEPENDENCIES'])]
+
+
+def install_ansible(python, settings, output, report):
+    """Use the same installation contract for native setup and Docker."""
+    output = pathlib.Path(output)
+    subprocess.run([str(python), '-m', 'venv', str(output)], check=True)
+    pip = str(output / 'bin/pip')
+    subprocess.run([pip, 'install', '--no-cache-dir', '--report', str(report),
+                    *ansible_requirements(settings)], check=True)
+    subprocess.run([pip, 'check'], check=True)
 
 
 def download(url, checksum, destination):
@@ -72,10 +77,14 @@ def fetch_sources(settings, report, output):
 
 
 if __name__ == '__main__':
-    if sys.argv[1] == 'opentofu':
-        install_opentofu('linux/' + os.environ['TARGETARCH'], os.environ,
-                         '/opt/inframill/tools/opentofu/' + os.environ['OPENTOFU_VERSION'])
+    if sys.argv[1] == 'ansible':
+        settings = dependencies()
+        install_ansible(sys.executable, settings, '/opt/inframill/tools/ansible/' + settings['ANSIBLE_VERSION'],
+                        '/usr/share/inframill/python-packages.json')
+    elif sys.argv[1] == 'opentofu':
+        install_opentofu('linux/' + os.environ['TARGETARCH'], dependencies(),
+                         '/opt/inframill/tools/opentofu/' + dependencies()['OPENTOFU_VERSION'])
     elif sys.argv[1] == 'sources':
-        fetch_sources(os.environ, '/usr/share/inframill/python-packages.json', '/usr/share/inframill/sources')
+        fetch_sources(dependencies(), '/usr/share/inframill/python-packages.json', '/usr/share/inframill/sources')
     else:
-        sys.exit('Expected opentofu or sources')
+        sys.exit('Expected ansible, opentofu or sources')

@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/inframill/inframill/pkg/runmill"
 	"github.com/inframill/kit/internal/artifacts"
-	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 
 type Provider struct{ Version, Tool string }

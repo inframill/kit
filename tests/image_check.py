@@ -11,7 +11,7 @@ import uuid
 
 from blueprint_workflows import provider_ids, FIXTURES, LOCAL_REFERENCE
 from engine_client import assert_namespace_ready, namespaces_ready
-from build import runtime_settings, ROOT, bundle_lock, configuration
+from scripts.kit.project import runtime_settings, ROOT, bundle_output, configuration
 
 CONFIG = '/etc/inframill/inframill.yaml'
 DATA = '/var/lib/inframill'
@@ -20,7 +20,7 @@ DATA = '/var/lib/inframill'
 def image_check(tmp, image, arch, network):
     root = pathlib.Path(tmp) / ('image-' + arch)
     root.mkdir()
-    lock = bundle_lock()
+    lock = json.loads((bundle_output() / 'manifest.json').read_text())
     python = '/opt/inframill/tools/ansible/' + runtime_settings()['ANSIBLE_VERSION'] + '/bin/python3'
     prefix = ['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch]
     containers = set()
@@ -143,7 +143,7 @@ def image_check(tmp, image, arch, network):
         config = json.loads(raw)
         assert config['handlers'] == [{'type': 'connect-engine'}], config
         assert config['engine']['dataDir'] == DATA and config['main']['port'] == 8080, config
-        assert {d['path'] for d in config['engine']['providers'].values()} == {'/usr/local/bin/exec'}
+        assert {d['path'] for d in config['engine']['providers'].values()} == {'/usr/local/bin/kit-exec'}
         assert {d['args'][0] for d in config['engine']['providers'].values()} == {
             d['name'] + '-' + d['version'] for d in lock['providers']}
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
@@ -151,7 +151,7 @@ def image_check(tmp, image, arch, network):
 
         # A different working directory proves the config-relative data rule.
         custom = root / 'inframill.yaml'
-        custom_config = configuration('/usr/local/bin/exec', './data', providers=lock['providers'])
+        custom_config = configuration('/usr/local/bin/kit-exec', './data')
         custom_config['main']['port'] = 8081
         custom_config['engine']['localBlueprintPaths'] = ['/opt/inframill/blueprints']
         custom.write_text(json.dumps(custom_config))

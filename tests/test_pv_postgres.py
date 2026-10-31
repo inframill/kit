@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from build import ROOT
+from scripts.kit.project import ROOT
 
 SOURCE = ROOT / 'blueprints/pv-cloud/latest/templates/dispatch/postgres'
 SPEC = importlib.util.spec_from_file_location('pv_postgres', SOURCE / 'manage.py')

@@ -10,7 +10,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from build import ROOT, configuration, local_tools, native_platform, local_executable
+from scripts.kit.project import ROOT, configuration, local_tools, native_platform, local_executable
 from engine_client import Engine
 from blueprint_workflows import command_contract_check
 

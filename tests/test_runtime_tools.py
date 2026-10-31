@@ -8,7 +8,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
-from build import ROOT, bundle_lock, configuration, local_tools, runtime_settings
+from scripts.kit.project import ROOT, provider_releases, configuration, local_tools, runtime_settings
 from runtime.tools import ansible_requirements, fetch_sources, install_opentofu
 
 
@@ -17,18 +17,18 @@ class RuntimeToolTests(unittest.TestCase):
         settings = runtime_settings()
         tofu, ansible = local_tools()
         for name, key, path in [('opentofu', 'OPENTOFU_VERSION', tofu), ('ansible', 'ANSIBLE_VERSION', ansible)]:
-            release = json.loads((ROOT / 'pkg/providers' / name / 'v0_4_0/release.json').read_text())
+            release = json.loads((ROOT / 'internal/providers' / name / 'release.json').read_text())
             self.assertEqual(settings[key], release['tool_version'])
             self.assertIn(settings[key], str(path))
         self.assertIn('ansible-core==' + settings['ANSIBLE_VERSION'], ansible_requirements(settings))
 
     def test_dispatch_uses_system_ssh_without_an_ansible_override(self):
-        release = json.loads((ROOT / 'pkg/providers/dispatch/v0_1_0/release.json').read_text())
+        release = json.loads((ROOT / 'internal/providers/dispatch/release.json').read_text())
         self.assertNotIn('tool_version', release)
         config = configuration('/bin/exec', '/data', tools={'ansible': '/tools/ansible-playbook'})
         self.assertEqual(config['engine']['providers']['dispatch'], {
             'path': '/bin/exec', 'args': ['dispatch-0.1.0']})
-        self.assertIn({'name': 'dispatch', 'version': release['version']}, bundle_lock()['providers'])
+        self.assertIn(release, provider_releases())
 
     def test_checked_in_dispatch_configs_do_not_override_ssh_with_ansible(self):
         configs = [ROOT / '.inframill.yaml', ROOT / 'runtime/inframill.yaml']

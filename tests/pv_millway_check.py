@@ -10,7 +10,7 @@ import tempfile
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from build import ROOT
+from scripts.kit.project import ROOT, project_version
 from test_pv_postgres import prepare_payload as prepare_postgres
 from test_pv_inframill import prepare_payload as prepare_inframill
 from test_pv_millway import prepare_payload as prepare_millway
@@ -62,7 +62,7 @@ def check():
             make(database, 'start')
             make(worker, 'start')
             make(web, 'start')
-            print('Three-service start: Millway 0.1.5-dev native verification passed', flush=True)
+            print('Three-service start: Millway 0.1.6-dev native verification passed', flush=True)
             container = run(web, compose(web) + ['ps', '--quiet', 'millway']).stdout.strip()
             inspected = json.loads(run(web, ['docker', 'inspect', '--format', '{{json .}}', container]).stdout)
             assert inspected['Config']['User'] == '65532:65532'
@@ -73,7 +73,7 @@ def check():
             # namespace, without changing the workstation/VM host's sysctl.
             run(web, ['docker', 'run', '--rm', '--user', '65532:65532', '--cap-drop', 'ALL',
                       '--security-opt', 'no-new-privileges:true', '--sysctl', 'net.ipv4.ip_unprivileged_port_start=443',
-                      '--entrypoint', 'python3', 'ghcr.io/inframill/kit:' + (ROOT / 'VERSION').read_text().strip(),
+                      '--entrypoint', 'python3', 'ghcr.io/inframill/kit:' + project_version(),
                       '-c', "import os,socket;assert os.getuid()==65532;s=socket.socket();s.bind(('0.0.0.0',443));print('Non-root port 443 binding passed')"])
             make(web, 'verify')
             make(database, 'stop')

@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/inframill/inframill/pkg/runmill"
 	"github.com/inframill/kit/internal/catalog"
-	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 
-const usage = `usage: exec list | version | NAME-VERSION [--tool ABSOLUTE_PATH] | NAME-VERSION version
+const usage = `usage: kit-exec list | version | NAME-VERSION [--tool ABSOLUTE_PATH] | NAME-VERSION version
 Provider requests use the Inframill JSON protocol on stdin.
 `
 

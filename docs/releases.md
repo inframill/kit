@@ -1,335 +1,87 @@
 # Releasing Kit
 
-## pv-cloud 0.10.0
+Kit, the engine and provider implementations have independent versions. Kit's
+version is `toolai.json.version`; normal Go module requirements select the SDK.
+Runtime versions and download checksums are in `runtime/dependencies.json`, including
+the immutable base image and signed Debian snapshot. Provider metadata describes
+implementation/protocol versions and required external tool versions.
 
-The fresh-instance example adds `web-1` with `common`, `docker` and `web` roles.
-A Millway Dispatch payload runs the unchanged non-root UI/API image, connects to
-`app1` on `data-1`, and authenticates to Inframill on `worker-1`. It uses the same
-`start`, `status`, `verify` and `stop` targets. `millway-root-token` is an additional
-required namespace secret; `cloudflare.zone_name` derives and validates service
-DNS names. Millway uses the generated web-node DNS name.
+There is no root VERSION file, releases.json, checked-in release-lock history,
+shared engine/Kit major-minor requirement, or private executable build format.
+OpenTofu dependency locks inside blueprints remain owned by those blueprints.
 
-The web role replaces Nginx installation with a web-node kernel port threshold
-of 443, permitting non-root HTTPS with host networking. Protected configuration
-is staged into a private volume for UID/GID 65532. No Millway source changes are
-required. Millway `0.1.5-dev` runs with its explicit `start` command; the native
-`verify` CLI checks database connectivity and fresh authenticated Inframill
-version pings. Kit delegates verification entirely to that CLI, reporting its
-output and failing when it fails. Kit migration manifests and additional probes
-are removed.
+## Prepare inputs
 
-`0.9.0` and existing Instance snapshots keep their prior sources and behavior.
+Update SDK imports and the normal Go module pin together. Use `toolai go mod tidy`
+and review go.mod/go.sum. The engine comes from that same resolved module, not an
+independently selected prebuilt sibling binary. A Go workspace can select the
+sibling checkout during development; engine packaging checks its revision against
+the module pin and rejects dirty or mismatched upstream sources.
 
-## pv-cloud 0.9.0
+The current module revision must be published upstream before a fresh machine can
+fetch it. Private module access needs GOPRIVATE and authenticated Git. No credentials
+belong in project configuration or release archives.
 
-The `0.9.0` Blueprint introduced shared TLS settings as `tls.certificate` and
-the `pv-cloud-tls-private-key` namespace secret. Move the old `inframill.tls_cert`
-value and upsert the same private key under the new name. The `0.8.0` tag and
-existing Instance snapshots retain their prior names and behavior.
+Update provider/tool metadata when implementation requirements change. Native setup
+and the Docker image read the same runtime dependency JSON; the Dockerfile no longer
+acts as a configuration database. Bump Kit's version independently as appropriate.
 
-PostgreSQL's `start` Dispatch Make target creates `app1` and `app2` by default,
-with one owner/login and independent password per database. Namespace secrets
-`app1-password` and `app2-password` are required before Instance creation;
-application passwords are never generated automatically. It supports a
-configurable database list with required password references, credential updates
-and verification against initialized storage. The service uses host
-networking, external TLS/SCRAM access, a data-node-only firewall, budgeted memory,
-bounded local logging and persistent storage. See the
-[blueprint guide](../blueprints/README.md#pv-cloud) for inputs and lifecycle targets.
-
-Both payloads use exactly four Make targets: `start` (the default), `status`,
-`verify`, and `stop`. Start handles preparation, registry login, credential updates,
-service startup and verification. Push updated secrets and run `start` to rotate
-application credentials; PostgreSQL's administrator password is preserved.
-
-## 0.1.22-dev
-
-Kit uses Inframill `0.1.22-dev` (`887ffb1e628e`). OpenTofu 0.4.0, Ansible 0.4.0
-and Dispatch 0.1.0 now implement direct `Execute`; their metadata supplies command
-descriptions and access modes without argument schemas. The `Prepare` API and
-`validate_command` protocol method are removed. Provider execution still checks
-arguments, credentials, artifact identity and actual tool outcomes before reporting
-success.
-
-`hello-world`, pv-cloud `0.8.0` and `latest`, and local test Blueprints declare
-`command_arguments`. Blueprints select supported Provider commands and validate
-their arguments before admission. Blueprint and Instance discovery publish those
-schemas; global Provider discovery publishes capabilities. Built-in cancel, delete
-and rerender remain engine-owned and appear in Instance discovery. pv-cloud worker
-image examples select the matching Kit release.
-
-Existing saved revisions without `command_arguments` are unsupported by this
-engine. Fetching updated sources does not rewrite existing Instances. Preserve
-their saved sources and infrastructure state; no automatic migration is performed.
-
-## 0.1.20-dev
-
-Kit uses Inframill `0.1.20-dev` (`8ac633923bfa`), including required namespace
-secrets at Instance creation. The release lock pins all four engine binaries and
-the provider SDK selection follows the same revision. Provider and tool versions
-are unchanged.
-
-pv-cloud `0.8.0` and `latest` declare `hetzner`, `cloudflare`,
-`inframill-root-token`, and `inframill-tls-key` as required secrets. Store all four
-before initialization. Secret names are now fixed; remove the old secret-reference
-Values fields as described in the [blueprint guide](../blueprints/README.md#pv-cloud).
-Older tags and existing Instance snapshots retain their sources.
-
-## 0.1.17-dev
-
-Kit now includes Dispatch 0.1.0, an independent provider backed by the existing
-Ansible Core runtime. `dispatch.push` transfers directories from its provider
-workspace to nodes selected by name, role or architecture; `dispatch.make` runs
-one Make target per command in a configured remote destination. Run Make after
-a successful push to execute payload targets. Shared OpenTofu node artifacts
-supply host records.
-See [Dispatch usage](dispatch.md) for Blueprint configuration and examples.
-
-The provider selection and default runtime configurations include Dispatch.
-Rebuild provider artifacts and the Kit image to include its executable. Existing
-Blueprints opt in by adding a Dispatch binding and `templates/dispatch/` payloads.
-
-## 0.1.14-dev
-
-Kit uses Inframill 0.1.14-dev (`6d9e0857fded`), including the `instance`
-template function exposing the immutable Instance name and ID. pv-cloud uses
-the Instance name directly and no longer requires `instance_name` in Values.
-The release lock pins all four Linux and macOS binaries. OpenTofu and Ansible
-remain at 0.4.0, with the updated SDK revision; tool pins are unchanged.
-
-## 0.1.13-dev
-
-Kit uses Inframill 0.1.13-dev (`5c7e5f1a9053`). The release lock pins the
-prebuilt Linux and macOS binaries. OpenTofu and Ansible remain at 0.4.0 and
-must be rebuilt against the updated SDK revision; tool pins are unchanged.
-
-## 0.1.11-dev
-
-Kit uses Inframill 0.1.11-dev (`7f60b1e8e527`). OpenTofu and Ansible providers
-remain at 0.4.0, rebuilt against this SDK revision; tool pins are unchanged.
-
-Namespace metadata, blueprint indexes, events and credentials now share
-`data.sqlite`; execution history remains in per-Instance `commands.sqlite`.
-Existing namespaces initialize in the background with `loading`/`ready`/`failed`
-status and backend diagnostics. History recovery and execution counts initialize
-before the namespace becomes ready. Namespace deletion waits for admitted work
-to drain and retains stored data.
-
-Secrets and registry credentials use individual `upsert`/`delete` commands and
-single-entry JSON files. They persist unencrypted across restarts and namespace
-deletion. Credential lists include creation timestamps; events contain entry
-identifiers without values. Event retention bounds logical event bytes, not the
-physical SQLite file size.
-
-Cancelled running and queued commands both report `cancelled`. Execution records
-and events expose reasons and cancellation timestamps; uncancelled signal death
-reports `interrupted/process_signalled`. Native HTTPS is available through
-`main.tls.certFile` and `main.tls.keyFile`; use absolute paths to mounted PEM files.
-The default Kit configuration continues to use HTTP on port 8080.
-
-Prior storage formats are unsupported. Preserve existing infrastructure state and
-use a fresh data directory for this release. Updating Kit does not migrate data.
-
-## 0.1.10-dev
-
-Kit follows Inframill's version reset to 0.1.10-dev (`d0632d90a02b`), replacing
-the previous Kit 0.26.1-dev / engine 0.26.0-dev selection. OpenTofu and Ansible
-providers remain at 0.4.0, rebuilt against the new SDK; their API and tool pins
-are unchanged.
-
-Local Blueprint references now use `built.in`; the former `build.in` spelling has
-no local alias. Instance metadata moves to the namespace's authoritative
-`instances.sqlite`, with `ready`/`running`/`failed` status and lifecycle timestamps.
-Startup performs shallow checks and isolates Instance failures; command/history
-resources initialize on first use. The engine also separates backend service
-ownership and coordinates namespace admission and shutdown.
-
-Instance cancel kills running commands and cancels queued commands. Instance
-deletion adds a timestamp and hides the Instance while retaining its files; names
-can be reused with new IDs. Namespace deletion hides scoped data and drains
-admitted work, retaining files and reserving its ID. Rerender replaces Values and
-workspace from the retained Blueprint, including removal of Provider-created
-workspace files such as local OpenTofu state.
-
-Prior storage schemas are unsupported and preserved without migration. Use a
-fresh data directory for this release and retain existing state needed to manage
-live infrastructure. Kit's update does not restart the local daemon or modify its
-stored data.
-
-## 0.26.1-dev
-
-This Kit patch keeps Inframill 0.26.0-dev and providers 0.4.0. Ansible defaults
-to the `strict` host-key policy when omitted; pv-cloud explicitly selects
-`accept-new`. Connection diagnostics now distinguish changed SSH host keys from
-other host-key verification failures.
-
-## 0.26.0-dev
-
-This release uses Inframill 0.26.0-dev (`8c69c3fbf0ac`). OpenTofu and Ansible
-remain at provider version 0.4.0 and are rebuilt against this exact SDK revision;
-the Runmill provider API, tool pins and Blueprint requirements are unchanged.
-
-The engine adds persistent per-namespace resource events, read/replay and watch
-APIs, JSON CLI commands, and optional size-based journal retention. Execution
-events carry status, revision and optional PID/exit code. Credential events contain
-counts only. Restart and expired replay positions explicitly require a refresh
-of current resources; the feed is not a complete audit history.
-
-Existing 0.25 command databases keep their schema. Missing event journals initialize
-on open without reconstructing prior events. The older-schema restriction noted
-for 0.25 still applies to upgrades from earlier releases. Retention stays disabled
-by default; setting `engine.eventJournalMaxBytes` explicitly enables pruning.
-
-Release checks exercise both providers' event summaries, CLI live streaming and
-replay, namespace/credential isolation, bounded retention and restart refresh,
-alongside the existing native and Linux AMD64/ARM64 workflows.
-
-## 0.25.0-dev
-
-This release uses Inframill 0.25.0-dev (`6efa420`) and OpenTofu/Ansible
-providers 0.4.0. Compared with Kit 0.23.0-dev, the engine adds namespace-owned
-scheduling and lifecycle management, tighter namespace/registry/secret isolation,
-required command access modes, process-group signalling, PID/OS exit-code records,
-and durable per-Instance execution revisions. The provider access modes reflect
-actual workspace/artifact writes; only OpenTofu `validate` is read-only.
-
-Runtime paths and the local pv-cloud Blueprint now select providers 0.4.0. Fetch
-the updated Blueprint before creating new Instances. Existing Instance snapshots
-retain their old provider requirements and rendered settings.
-
-The engine rejects previous `commands.sqlite` schemas intact; it does not migrate
-them. Preserve existing data and use a new empty data directory for this release.
-Saved OpenTofu plans and node artifacts are bound to their producer version and
-must be recreated with the new provider. For live infrastructure, retain the
-existing state/backend and follow its normal recovery/import procedure before
-any apply; a new Instance does not automatically adopt infrastructure.
-
-Release acceptance includes native and Linux ARM64/AMD64 provider workflows,
-reader overlap and writer fairness, scoped process-group kills, nullable PID/exit
-outcomes, and revisions/history surviving daemon restart.
-
-## Prepare, build and verify
-
-Build the desired Inframill release in its checkout first. Kit consumes that
-checkout's `VERSION`, Git revision and prebuilt binaries; it never pulls upstream
-or changes the upstream version as part of a Kit release.
-
-From Kit, after the one-time `task setup` for native test tools:
+## Build and check
 
 ```sh
-task release
+toolai doctor
+toolai check
+task setup
+toolai build release
+toolai check full
+task release:verify
 ```
 
-This prepares release metadata, refreshes Linux AMD64/ARM64 and native providers,
-builds the Kit image and runs `check-full`. Docker must be running. Provider outputs
-that no longer match their sources or SDK pin are rebuilt; previous outputs are
-preserved in `.previous-*` directories beside the replaced platform directory.
-Unchanged provider outputs are reused. Failed provider builds preserve the previous output.
+The default build prepares standard provider binaries, builds the resolved engine,
+and packages/loads a local image for Linux AMD64 and ARM64. The release tag adds
+bundle assembly. Builds do not run checks, fetch a newer SDK, change versions, or
+publish. Checks consume existing artifacts; missing prerequisites fail clearly.
+`toolai check lint` is separate and does not apply rewrites.
 
-The Kit version defaults to the sibling Inframill `VERSION`. For an independent
-Kit patch or prerelease on the same major/minor line:
+```text
+bin/                         Toolai provider binaries and native engine
+.build/                      Disposable engine/image staging and input fingerprint
+dist/kit/<version>/
+  image.oci.tar              Exact multi-platform OCI image
+  manifest.json              Resolved inputs, versions, binary hashes and image digest
+  SHA256SUMS                 Complete bundle file checksums
+  sources.tar.gz             Corresponding Kit and engine source snapshot
+  notices/                   Available dependency distribution notices
+```
+
+Development outputs can be rebuilt normally. Source inputs are captured once before
+building and checked during packaging, preventing mixed-source bundles. Temporary
+staging prevents a failed assembly from replacing a completed bundle. Image assembly
+checks binary architecture, embedded versions, SDK identity, provider registry and
+tool compatibility. Docker/Buildx handle OCI export/load; no custom OCI graph or tar
+index rewriting is required. Loading checks that Docker retained the recorded digest.
+
+## Verify and publish prepared bytes
 
 ```sh
-task release -- --version 0.21.1-dev
+task release:verify -- --bundle /path/to/bundle
+task release:load -- --bundle /path/to/bundle
+# Authenticate to the intended registry first:
+task release:push -- --bundle /path/to/bundle
 ```
 
-To prepare only the metadata for review, without building or publishing:
+With an explicit bundle path, verification and publication use its metadata and
+checksums without consulting source or sibling checkouts. Verification rejects
+corrupt, missing, extra, or symlinked files. The OCI archive checksum covers all
+image content. Runtime manifest data records installed engine/provider binary hashes;
+the outer manifest additionally records the completed image digest.
 
-```sh
-task release:prepare
-# Or: task release:prepare -- --version 0.21.1-dev
-```
+REGISTRY and NAMESPACE select the publication destination (default ghcr.io/inframill).
+The version comes from the bundle. Publishing loads and tags the verified archive,
+rejects an existing different digest, and verifies the published digest. It never
+builds. A matching published digest is idempotent. Registry-side immutable tags are
+the final protection against simultaneous publications from different machines.
 
-Preparation updates only these release records:
-
-- `VERSION`: the selected Kit/image version.
-- `releases/<version>.lock.json`: engine revision, four binary checksums, provider
-  selections and Linux image platforms.
-- `releases.json`: the matching Inframill SDK version and revision.
-
-`task inframill:copy` also generates a missing lock automatically before copying
-the native binary, creating `releases/` if needed. It keeps the Kit version in
-`VERSION` and reuses an existing lock. Use `task release:prepare` to select a new
-upstream release or an independent Kit version.
-
-Provider selections come from `releases.json`. The upstream checkout
-must have clean build inputs and all four macOS/Linux AMD64/ARM64 release binaries.
-Preparation validates architectures and the native engine version before writing.
-Existing release locks are immutable: identical inputs are safe to prepare again;
-changed inputs require a new Kit version. Historical locks remain release records.
-
-Routine engine releases need no README, blueprint or provider implementation version
-edits. API or tool changes can still require code/configuration updates and tests.
-The Go compiler pin remains explicit in `releases.json`.
-
-## Publish
-
-Review the generated metadata and successful checks, then publish explicitly:
-
-```sh
-docker login ghcr.io
-task bundle:push
-```
-
-This publishes the existing image to `REGISTRY/NAMESPACE/kit:<VERSION>`. Publication
-verifies its OCI graph and release lock, uses `docker push`, and rejects a remote tag
-pointing to different content. The builder never logs in or publishes automatically.
-Verify a published image by its immutable reference:
-
-```sh
-task bundle:verify REFERENCE=ghcr.io/inframill/kit@sha256:...
-```
-
-An existing `dist/bundles/<VERSION>/` is immutable. Resume with checks or push after a
-successful build; choose a new version for changed published content. If discarding
-an unpublished build, move it aside explicitly before rebuilding.
-
-## Build inputs
-
-Root image assembly consumes prebuilt providers and engines. It does not compile
-providers or read the SDK checkout. Provider records contain source/binary checksums,
-platforms, tool requirements and the exact SDK pin; incompatible or corrupt inputs reject.
-
-| Setting | Purpose | Default |
-| --- | --- | --- |
-| `INFRAMILL_SOURCE` | Clean checkout for preparation and provider builds | `../inframill` |
-| `INFRAMILL_DIST_DIR` | Prebuilt engine binaries | `../inframill/dist` |
-| `EXEC_DIST_DIR` | Prebuilt provider inputs for image assembly | `dist/exec` |
-| `KIT_DIST_DIR` | Image output directory | `dist` |
-| `REGISTRY` | Publication registry | `ghcr.io` |
-| `NAMESPACE` | Publication namespace | `inframill` |
-
-For a non-default checkout, set both `INFRAMILL_SOURCE` and `INFRAMILL_DIST_DIR`.
-The full `task release` workflow writes providers to `EXEC_DIST_DIR` and uses
-those same outputs for image assembly. Executable builds accept `--dist`; all providers share one output per platform.
-
-Individual steps remain available:
-
-```sh
-task release:prepare
-task providers:build -- --refresh
-task providers:build -- --native --refresh
-task inframill:copy
-task check-fast
-task bundle
-task check-full
-```
-
-## Ownership of version pins
-
-`VERSION` selects one self-contained image lock. Kit and its engine share major/minor;
-patches and prereleases can differ. Environment variables never override `VERSION`.
-Normal build/push commands do not infer versions from Git or modify release metadata.
-
-Provider versions change independently. See [provider versioning](providers.md#add-a-version)
-when changing provider implementations. Local blueprints have no release manifest;
-edit sources and fetch `built.in/pv-cloud` or `built.in/hello-world` again.
-
-[`runtime/Dockerfile`](../runtime/Dockerfile) owns tool, base image, Debian and Python
-dependency pins. Tool changes also need matching provider `release.json` requirements
-and paths in `runtime/inframill.yaml`. `task setup` reads these same tool pins.
-
-The image carries its lock at `/usr/share/inframill/bundle.lock.json`, provider build
-records and source/license notices. Python package versions/download hashes live in
-`/usr/share/inframill/python-packages.json`; matching source archives and checksums
-live in `/usr/share/inframill/sources/`.
+Full acceptance publishes only to a disposable local registry, then exercises
+persistent storage, configuration, providers, blueprints and lifecycle on both Linux
+architectures. No GHCR publication or cloud resource creation occurs in checks.

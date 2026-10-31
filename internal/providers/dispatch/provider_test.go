@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inframill/inframill/pkg/runmill"
 	"github.com/inframill/kit/internal/artifacts"
-	"github.com/sir-hassan/inframill/pkg/runmill"
 )
 
 func fixture(t *testing.T) (Provider, runmill.ExecutionContext, Settings, artifacts.Nodes) {
