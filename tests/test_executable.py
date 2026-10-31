@@ -34,7 +34,7 @@ class ProviderBuildTests(unittest.TestCase):
         return folder, record
 
     def test_selected_versions_have_metadata_and_share_one_entrypoint(self):
-        self.assertEqual(list((build.ROOT / 'cmd').glob('*/main.go')), [build.ROOT / 'cmd/exec/main.go'])
+        self.assertEqual(list((build.ROOT / 'cmd').rglob('main.go')), [build.ROOT / 'cmd/main.go'])
         for release in self.selected:
             folder = build.ROOT / 'pkg/providers' / release['name'] / ('v' + release['version'].replace('.', '_'))
             self.assertTrue((folder / 'provider_test.go').is_file())
@@ -84,7 +84,7 @@ class ProviderBuildTests(unittest.TestCase):
 
     def test_one_snapshot_contains_all_implementations_and_the_dispatcher(self):
         sources = build.source_files(build.ROOT)
-        self.assertIn('cmd/exec/main.go', sources)
+        self.assertIn('cmd/main.go', sources)
         for release in self.selected:
             directory = 'v' + release['version'].replace('.', '_')
             self.assertIn('pkg/providers/' + release['name'] + '/' + directory + '/provider.go', sources)

@@ -121,7 +121,7 @@ def build(root, dist, version, target, config, selected, source, env, refresh=Fa
         stage = Path(td)
         system, arch = target.split('/')
         env = {**env, 'GOOS': system, 'GOARCH': arch, 'CGO_ENABLED': '0'}
-        package = './cmd/exec'
+        package = './cmd'
         run(['go', 'build', '-trimpath', '-buildvcs=false', '-ldflags=-X main.version=' + version,
              '-o', stage / 'exec', package], cwd=root, env=env)
         verify_binary((stage / 'exec').read_bytes(), target)

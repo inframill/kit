@@ -10,7 +10,7 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
   Blueprint-owned Values and command argument validation, rendering, namespace secret snapshots,
   queues, persistence, history and the external provider transport.
 - `pkg/providers/<name>/v<major>_<minor>_<patch>/` owns each implementation,
-  embedded release metadata and tests. `cmd/exec/main.go` is the only entry point.
+  embedded release metadata and tests. `cmd/main.go` is the only entry point.
 - `internal/catalog` maps exact `NAME-VERSION` selectors to implementations.
   `internal/cli` consumes prefix arguments and calls upstream `runmill.Serve`.
 - `internal/artifacts` owns rooted file access, hashes and shared node records.

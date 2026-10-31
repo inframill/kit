@@ -21,7 +21,7 @@ func build(t *testing.T, fixtures bool) string {
 	if fixtures {
 		args = append(args, "-tags=testproviders")
 	}
-	cmd := exec.Command("go", append(args, "./cmd/exec")...)
+	cmd := exec.Command("go", append(args, "./cmd")...)
 	cmd.Dir = root
 	if b, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("%s: %v", b, e)

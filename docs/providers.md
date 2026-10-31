@@ -24,7 +24,7 @@ are not embedded in the Go executable.
 ## Source layout
 
 ```text
-cmd/exec/main.go                one production entry point
+cmd/main.go                    one production entry point
 pkg/providers/<name>/v0_4_0/    versioned implementation, release.json and tests
 internal/catalog/              exact selectors and provider factories
 internal/cli/                  argument handling and runmill.Serve
@@ -130,7 +130,7 @@ metadata. State and backups remain in artifacts across partial applies and reren
 ## Tests and protocol
 
 `task test` runs Python tooling/callback tests, Go implementation/shared-code tests,
-and subprocess tests of the production `cmd/exec` entry point. Version-coexistence,
+and subprocess tests of the production `cmd` entry point. Version-coexistence,
 secret handling and process cancellation tests add synthetic providers using the
 `testproviders` build tag. Normal builds exclude them; there is no separate test
 dispatcher. Test tools are temporary stubs and create no cloud resources.

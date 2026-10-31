@@ -173,7 +173,7 @@ including across restarts and namespace deletion.
 ## Build the executable and image
 
 Provider implementations live under `pkg/providers/<name>/v<major>_<minor>_<patch>/`.
-One root Go module and `cmd/exec/main.go` build the shared executable.
+One root Go module and `cmd/main.go` build the shared executable.
 See the [provider guide](docs/providers.md) for the CLI, layout and versioning. The [local blueprints](blueprints/README.md)
 are fetched directly from their source directories.
 

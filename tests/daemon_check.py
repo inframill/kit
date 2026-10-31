@@ -24,7 +24,7 @@ def daemon_check(tmp, env):
     binary = tmp / 'kit-fixtures'
     source = pathlib.Path(env.get('INFRAMILL_SOURCE', ROOT.parent / 'inframill')).resolve()
     with go_environment(ROOT, source, releases()[0]) as build_env:
-        subprocess.run(['go', 'build', '-tags=testproviders', '-o', str(binary), './cmd/exec'],
+        subprocess.run(['go', 'build', '-tags=testproviders', '-o', str(binary), './cmd'],
                        cwd=ROOT, env={**env, **build_env}, check=True)
     fixture_root = protocol_fixture(tmp)
     tofu, ansible = local_tools()
