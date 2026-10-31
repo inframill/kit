@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 
-from .project import ROOT, engine_module, native_platform, run
+from .project import ROOT, engine_module, run
 
 
 def build():

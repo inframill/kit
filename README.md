@@ -3,7 +3,7 @@
 Kit provides versioned OpenTofu, Ansible and Dispatch providers, reusable blueprints, and a
 ready-to-run image for Inframill.
 
-- **[`exec`](docs/providers.md)** runs all provider implementations from one binary per platform.
+- **[`kit-exec`](docs/providers.md)** runs all provider implementations from one binary per platform.
 - **`ghcr.io/inframill/kit`** bundles Inframill, the providers, OpenTofu and Ansible.
 - **[`blueprints/`](blueprints/README.md)** contains local `pv-cloud` and `hello-world` sources.
 
@@ -22,8 +22,7 @@ each implementation in `internal/providers/<name>/release.json`.
 toolai doctor
 toolai check
 task setup                 # install local OpenTofu and Ansible for native acceptance
-toolai build               # provider binaries, resolved engine, local multi-platform image
-toolai build release       # also create dist/kit/<version>/
+toolai build release       # provider/engine binaries, local image and dist/kit/<version>/
 toolai check full          # native, registry and both Linux runtime acceptance suites
 # After reviewing the bundle and logging into the intended registry:
 task release:push
@@ -33,9 +32,9 @@ Go lint is separately selected with `toolai check lint`; no lint rewrites run in
 checks. See [the release guide](docs/releases.md) for inputs, output layout and
 artifact verification. Builds stay local; publishing is always explicit.
 
-The current SDK revision is a local upstream commit. It must be pushed to the
-Inframill repository before other machines can fetch the module pin. For local
-cross-project work, create an ignored Go workspace with `go work init . ../inframill`.
+The SDK module pin must be available from the Inframill repository for fresh
+checkouts to resolve it. For local cross-project work, create an ignored Go
+workspace with `go work init . ../inframill`.
 Use `GOPRIVATE=github.com/inframill/*` and authenticated Git access for private modules.
 Release engine builds require the workspace checkout to match the pinned SDK revision.
 
@@ -56,8 +55,9 @@ docker run -d --name inframill --rm \
 
 This uses the bundled YAML and persists data in the named volume `inframill-data`.
 Connect your Inframill CLI or API client to `http://localhost:8080`. The port is
-published on loopback because the engine has no built-in authentication; remote
-access requires an authenticated gateway or private tunnel.
+published on loopback because the default configuration serves unauthenticated
+HTTP. For remote access, configure root-token authentication and TLS, or use an
+authenticated gateway or private tunnel. See [daemon authentication](docs/usage.md#daemon-authentication).
 
 The default command is `inframill server start --config /etc/inframill/inframill.yaml`.
 With the matching Inframill CLI installed locally, query the running server with:
@@ -91,7 +91,7 @@ daemon to probe providers again.
 
 The checked-in [default configuration](runtime/inframill.yaml) includes HTTP port
 and timeouts, JSON logging, the data directory, and executable/tool paths for
-OpenTofu 0.4.0 and Ansible 0.4.0. Copy it to start a custom configuration:
+OpenTofu 0.4.0, Ansible 0.4.0 and Dispatch 0.1.0. Copy it to start a custom configuration:
 
 ```sh
 cp runtime/inframill.yaml inframill.yaml
@@ -106,8 +106,9 @@ docker run --rm --entrypoint cat "ghcr.io/inframill/kit:$(python3 -c 'from scrip
 
 Keep `engine.dataDir: /var/lib/inframill` and the absolute provider executable paths
 unless you also change the corresponding mounts. The supplied file replaces the
-whole default configuration; it is not merged or rewritten. Keep the
-`connect-engine` handler without settings; the RPC route is fixed by Inframill.
+whole default configuration; it is not merged or rewritten. Keep exactly one
+`connect-engine` handler; its optional `rootToken` setting controls authentication
+and its RPC route is fixed by Inframill.
 
 To use the repository's `.inframill.yaml` and persist data in `.inframill/`, run:
 
@@ -197,6 +198,24 @@ and prepared native binaries and release bundle. They use disposable resources,
 not cloud accounts. The pv-cloud payload suite requires the Millway 0.1.6-dev image
 for the Docker host architecture. Focus acceptance with `toolai check native` or
 `toolai check image`; tags add to the default checks.
+
+For native development without image packaging:
+
+```sh
+toolai go build --native --output bin/kit-exec
+task build:engine
+task setup
+task --silent config > /tmp/kit-config.json
+bin/inframill server start --config /tmp/kit-config.json
+```
+
+`task setup` supports Linux AMD64/ARM64 and macOS ARM64 using the checked-in
+download hashes. `OPENTOFU_PATH` and `ANSIBLE_PATH` override local tool paths;
+`PYTHON` selects a Python 3.12–3.14 interpreter for setup. `task build:engine`
+prepares both platform binaries and the native `bin/inframill` from the module pin.
+`toolai build` additionally prepares and loads the local multi-platform image;
+`toolai build release` adds the distributable bundle. See [validation commands](docs/releases.md#build-and-check)
+for the prerequisites of each acceptance suite.
 
 Generation, builds, checks, installation and publishing are explicit operations.
 There are no SQL or RPC generators in Kit. Local runtime configuration is printed

@@ -1,9 +1,9 @@
 # Dispatch provider
 
 Dispatch 0.1.0 pushes directories from its Instance workspace to selected nodes
-with recursive SCP and runs Make targets over SSH. Kit registers the independent
-`dispatch` executable alongside OpenTofu and Ansible. Dispatch uses system OpenSSH
-clients and has no pinned Ansible tool dependency.
+with recursive SCP and runs Make targets over SSH. Kit registers the
+`dispatch-0.1.0` selector in the shared `kit-exec` binary alongside OpenTofu and
+Ansible. Dispatch uses system OpenSSH clients and has no pinned Ansible tool dependency.
 
 ## Workspace and host input
 
@@ -109,9 +109,9 @@ The engine renders `.gotmpl` files and copies ordinary files into
 ```
 
 This example uses the pv-cloud Values fields `ansible.address_mode` and
-`ssh.user`; adapt the template to your Blueprint's schema. Built-in pv-cloud
-`0.6.0` and later include a `postgres` mapping for `data` nodes; `0.7.0` and
-`latest` also include an `inframill` mapping for `worker` nodes.
+`ssh.user`; adapt the template to your Blueprint's schema. The checked-in pv-cloud
+`0.10.0` and `latest` sources include `postgres`, `inframill` and `millway` mappings
+for `data`, `worker` and `web` nodes, respectively.
 After OpenTofu apply and Ansible guest preparation, install it with:
 
 ```sh
@@ -129,7 +129,7 @@ and database isolation. All services use the shared `tls.certificate` and
 `pv-cloud-tls-private-key` namespace secret. External PostgreSQL ingress is
 configured by OpenTofu specifically for data nodes. See the
 [pv-cloud instructions](../blueprints/README.md#pv-cloud) for credentials,
-role requirements and lifecycle targets. Tags before `0.6.0` do not bind Dispatch.
+role requirements and lifecycle targets.
 
 pv-cloud `0.10.0` and `latest` use a single target enum: `start`, `status`, `verify`,
 and `stop`.
@@ -274,8 +274,7 @@ local shell commands and recursive `cp` for development fixtures.
 
 Successful results contain the mapping name, destination, whether files were
 pushed, per-host exit codes and the requested Make target's exit code. Every
-selected host must finish successfully. Archive checksums and Ansible task
-counters are no longer returned.
+selected host must finish successfully.
 With multiple directories, `directories` contains these results keyed by mapping
 name; a single directory retains the original result shape.
 
@@ -293,7 +292,9 @@ files, tool execution and remote effects happen during Execute.
 ```sh
 toolai check
 toolai go test --packages ./internal/providers/dispatch
-toolai build release
+toolai go build --native --output bin/kit-exec
+task build:engine
+task setup
 python3 tests/dispatch_check.py
 ```
 

@@ -5,7 +5,7 @@ Each has a `latest/` directory containing `blueprint.yaml` and `templates/`.
 Edit those files directly; there
 is no build, packaging, release manifest or publication step.
 
-Inframill `0.1.22-dev` requires `command_arguments` in every Blueprint. It maps
+The pinned engine requires `command_arguments` in every Blueprint. It maps
 qualified configured provider IDs to JSON object schemas and explicitly selects
 the supported commands. An empty mapping exposes only engine-owned built-ins.
 Kit's Blueprints declare their command contracts; `hello-world` exposes the debug
@@ -48,7 +48,7 @@ engine:
 ```
 
 For a native daemon, use the absolute path to `bin/inframill`. The image's default
-`runtime/inframill.yaml` enables OpenTofu and Ansible; add debug to use hello-world.
+`runtime/inframill.yaml` enables OpenTofu, Ansible and Dispatch; add debug to use hello-world.
 
 ```sh
 inframill namespace create demo
@@ -68,17 +68,14 @@ The example Values render `workspace/debug/message.txt` as `Hello, world!`.
 The current blueprint release is `built.in/pv-cloud:0.10.0`; `latest` has the same
 content. It uses Kit OpenTofu and Ansible `0.4.0` and Dispatch `0.1.0`.
 Resource names use the immutable Instance name through `{{ (instance).Name }}`;
-Values do not contain `instance_name`. This requires an Inframill build with the
-`instance` template function (SPEC-0085).
-For existing deployments, keep the Instance name equal to the previous
-`instance_name` value to preserve generated resource names. Existing Instances
-retain their saved blueprint sources until explicitly replaced.
+Values do not contain `instance_name`. Existing Instances retain their saved
+blueprint sources; fetching an edited tag affects new Instances.
 All top-level Values fields are object groups: `network`, `ssh`, `nodes`,
 `cloudflare`, `ansible`, `inframill`, `millway`, `tls`, and optional `postgres` and `registry`. Network settings use `network.zone` and
 `network.private_networks`; SSH settings use `ssh.user`, `ssh.public_keys`, and
 `ssh.source_ips`.
 
-The `0.10.0` and `latest` sources require Inframill `0.1.23-dev` or later. Their static
+The `0.10.0` and `latest` sources target the engine selected by Kit's Go module pin. Their static
 `required_secrets` declaration checks eight namespace names before creating an
 Instance: `app1-password`, `app2-password`, `hetzner`, `cloudflare`,
 `inframill-root-token`, `millway-root-token`, `pv-cloud-tls-private-key`, and `pv-cloud-registry-token`.
@@ -89,15 +86,8 @@ the entries and retry with the same Instance name. This checks presence only;
 Providers still validate credentials before effects.
 
 The shared TLS certificate is `tls.certificate`; its namespace private-key secret is
-`pv-cloud-tls-private-key`. All three payloads use this pair. When
-moving from `0.8.0`, move `inframill.tls_cert` to `tls.certificate` and upsert the
-existing key under the new secret name. Existing `0.8.0` snapshots still use
-`inframill-tls-key`. The service-specific `inframill-root-token` keeps its name.
-
-The infrastructure, registry and TLS secret references are fixed to those names. When moving from `0.7.0`, remove
-`cloud`, `cloudflare.secret_ref`, `inframill.tls_key_secret_ref`, and
-`inframill.root_token_secret_ref` from Values and store the credentials under the
-required names. Older tags and existing Instance snapshots keep their prior behavior.
+`pv-cloud-tls-private-key`. All three payloads use this pair.
+The infrastructure, registry and TLS secret references are fixed to the required names.
 The repository and image configurations enable all three providers. [Example Values](examples/pv-cloud.json)
 define three AMD64 Docker nodes named `data-1`, `worker-1`, and `web-1`, assigned
 `common` and `docker`, plus `data`, `worker`, and `web` respectively. Docker and Compose
@@ -249,11 +239,8 @@ service; `stop` stops it while preserving the volume and credentials. Changed
 configuration or TLS material causes start to recreate the container, interrupting
 connections briefly. Push copies the entire source payload; credentials and
 generated runtime files on the node are preserved unless overwritten by source files.
-Version `0.6.0` replaces the host PostgreSQL package role; existing package-managed
-databases require a separate data migration before switching. Existing Instances
-keep their original blueprint snapshots.
 
-Version `0.7.0` adds an `inframill` mapping targeting every node with the `worker`
+The `inframill` mapping targets every node with the `worker`
 role. Each selected worker runs an independent Inframill server with its own
 persistent data volume. The example names are numbered; names themselves do not
 select services.
@@ -282,10 +269,8 @@ inframill instance exec example dispatch.make --namespace production \
 Each secret input is a JSON object with `name` and `value`; use your credential
 tooling to populate the PEM private key and token without putting them in Values
 or command arguments. The private key must be usable without a passphrase, and
-the token must be a nonempty single line. The Dispatch executable must be rebuilt
-with `secret_files` support; for native development run
-`python3 build.py build-exec --native --refresh`. Rebuild the
-Kit image when running the controlling daemon in Docker.
+the token must be a nonempty single line. The current Dispatch implementation
+supports these secret files in both native builds and the Kit image.
 
 Dispatch writes these two secret files with mode `0600` under
 `/opt/pv-cloud/inframill/secrets/`. The certificate chain is rendered to
@@ -299,13 +284,13 @@ root token is loaded from a Compose secret into the server process environment
 at startup. The `verify` target runs the same authenticated HTTPS probe against
 the running container.
 
-Version `0.10.0` adds a `millway` mapping to `/opt/pv-cloud/millway` on `web` nodes.
+The `millway` mapping installs to `/opt/pv-cloud/millway` on `web` nodes.
 It runs the existing Millway UI/API image as UID/GID `65532:65532`, using host
 networking, a read-only filesystem, no Linux capabilities and `no-new-privileges`.
 The Ansible `web` role sets `net.ipv4.ip_unprivileged_port_start=443` on web nodes,
-allowing all non-root processes there to bind ports 443 and higher. It no longer
-installs host Nginx. Run Ansible before Millway's first start. Older tags retain
-their original role and existing Instance snapshots are not upgraded automatically.
+allowing all non-root processes there to bind ports 443 and higher.
+Run Ansible before Millway's first start. Existing Instance snapshots are not
+upgraded automatically.
 
 Configure Millway in Values:
 
@@ -423,18 +408,6 @@ blueprints/
   hello-world/latest/templates/...
   pv-cloud/latest/blueprint.yaml
   pv-cloud/latest/templates/...
-  pv-cloud/0.4.0/blueprint.yaml
-  pv-cloud/0.4.0/templates/...
-  pv-cloud/0.5.0/blueprint.yaml
-  pv-cloud/0.5.0/templates/...
-  pv-cloud/0.6.0/blueprint.yaml
-  pv-cloud/0.6.0/templates/...
-  pv-cloud/0.7.0/blueprint.yaml
-  pv-cloud/0.7.0/templates/...
-  pv-cloud/0.8.0/blueprint.yaml
-  pv-cloud/0.8.0/templates/...
-  pv-cloud/0.9.0/blueprint.yaml
-  pv-cloud/0.9.0/templates/...
   pv-cloud/0.10.0/blueprint.yaml
   pv-cloud/0.10.0/templates/...
 ```
@@ -465,16 +438,20 @@ those entries. Do not delete existing Instance state to make the upgrade start.
 From the Kit root:
 
 ```sh
-task inframill:copy
+task build:engine
 BLUEPRINT=hello-world python3 tests/check.py blueprint:check
-# Requires task setup and toolai build -- --native:
+# Prepare the native provider and local tools for pv-cloud checks:
+toolai go build --native --output bin/kit-exec
+task setup
 BLUEPRINT=pv-cloud python3 tests/check.py blueprint:check
 # Disposable real PostgreSQL containers; requires Docker and openssl:
 python3 tests/pv_postgres_check.py
 # Requires the Millway UI/API and current Kit images locally:
 python3 tests/pv_millway_check.py
-# All native workflows, including revision and cache checks:
+# Native daemon/blueprint workflows, including revision and cache checks:
 python3 tests/check.py native
+# Default checks plus all native workflows and both payload suites above:
+toolai check native
 ```
 
 Integration checks fetch local sources into disposable daemon data, render the

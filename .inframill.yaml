@@ -1,5 +1,5 @@
-# Default configuration for the Inframill Kit image.
-# Mount a replacement at /etc/inframill/inframill.yaml to customize it.
+# Repository Docker configuration used by task docker:up.
+# Includes debug for hello-world and the mounted local blueprint sources.
 main:
   port: 8080
   shutdownTimeout: 10s

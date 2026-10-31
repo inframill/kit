@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Acceptance checks using disposable daemons, OCI registries and local resources."""
+import argparse
 import contextlib
 import json
 import os
@@ -23,8 +24,8 @@ from query_check import query_check
 from process_check import process_check
 from image_check import image_check
 from dispatch_check import dispatch_check
-from scripts.kit.bundle import load_image, verify, push
-from scripts.kit.project import runtime_settings, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform, image_reference
+from scripts.kit.bundle import load_image, verify
+from scripts.kit.project import runtime_settings, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform
 
 
 def run(args, **kwargs):
@@ -100,9 +101,8 @@ def registry():
         run(['docker', 'network', 'rm', name], stdout=subprocess.DEVNULL)
 
 
-def registry_env(tmp, push_address):
-    return {**os.environ, 'KIT_DIST_DIR': str(tmp / 'dist'), 'REGISTRY': push_address,
-            'NAMESPACE': 'inframill'}
+def registry_env(push_address):
+    return {**os.environ, 'REGISTRY': push_address, 'NAMESPACE': 'inframill'}
 
 
 def blueprint_check(name):
@@ -263,31 +263,19 @@ def native_checks(tmp, env):
     cache_check(tmp, env)
 
 
-def registry_check():
-    with tempfile.TemporaryDirectory(prefix='kit-check-') as td:
-        tmp = pathlib.Path(td)
-        native_checks(tmp, os.environ.copy())
-        run([sys.executable, ROOT / 'tests/pv_postgres_check.py'])
-        run([sys.executable, ROOT / 'tests/pv_millway_check.py'])
-        with registry() as (address, network, push_address):
-            container_checks(tmp, network, registry_env(tmp, push_address))
-
-
 def main():
-    action = sys.argv[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['image', 'native', 'blueprint:check'])
+    action = parser.parse_args().action
     if action == 'image':
         with tempfile.TemporaryDirectory(prefix='kit-image-') as td:
             with registry() as (_, network, push_address):
-                container_checks(pathlib.Path(td), network, registry_env(pathlib.Path(td), push_address))
-    elif action in ('registry', 'full'):
-        registry_check()
+                container_checks(pathlib.Path(td), network, registry_env(push_address))
     elif action == 'native':
         with tempfile.TemporaryDirectory(prefix='kit-native-') as td:
             native_checks(pathlib.Path(td), os.environ.copy())
     elif action == 'blueprint:check':
         blueprint_check(os.environ['BLUEPRINT'])
-    else:
-        raise RuntimeError('Unknown check')
 
 
 if __name__ == '__main__':

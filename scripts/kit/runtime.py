@@ -1,12 +1,11 @@
 """Install local test tools, or print native engine configuration."""
 import argparse
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 from runtime.tools import install_ansible, install_opentofu
-from .project import ROOT, run, runtime_settings, native_platform, local_tools, local_executable, configuration
+from .project import ROOT, runtime_settings, native_platform, local_tools, local_executable, configuration
 import json
 
 def find_python(override=None):

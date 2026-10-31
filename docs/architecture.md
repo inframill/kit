@@ -96,6 +96,11 @@ command is `inframill server start --config /etc/inframill/inframill.yaml`. User
 that entire file with a read-only bind mount. Configuration is read at startup;
 the image has no merge, rewriting or automatic reload layer.
 
+The default handler serves unauthenticated HTTP. The engine supports native TLS
+and the `connect-engine` handler's optional `rootToken` setting; the pv-cloud
+worker payload configures both. See [daemon authentication](usage.md#daemon-authentication)
+for server and client configuration.
+
 `/var/lib/inframill` is the writable data mount, independent of the configuration
 directory. Users explicitly select a named volume or bind mount. Inframill
 resolves relative YAML paths from the selected config directory; absolute defaults

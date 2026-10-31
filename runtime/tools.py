@@ -1,4 +1,4 @@
-"""Install tools and accompanying sources using the Dockerfile's pins."""
+"""Install tools and accompanying sources using runtime/dependencies.json pins."""
 import hashlib
 import json
 import os

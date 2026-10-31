@@ -1,6 +1,5 @@
 /bin/
 /dist/
-/providers/dist/
 /.cache/
 /.inframill/
 *.pyc

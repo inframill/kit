@@ -9,7 +9,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 LINUX = ['linux/amd64', 'linux/arm64']
-PLATFORMS = LINUX + ['darwin/amd64', 'darwin/arm64']
 
 
 def run(args, **kwargs):

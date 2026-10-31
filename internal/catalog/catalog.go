@@ -77,7 +77,7 @@ func newCatalog(implementations []implementation) (*Catalog, error) {
 func (c *Catalog) Get(selector string) (Release, error) {
 	e, ok := c.entries[selector]
 	if !ok {
-		return Release{}, fmt.Errorf("provider %q is not included; use 'exec list' to see available versions", selector)
+		return Release{}, fmt.Errorf("provider %q is not included; use 'kit-exec list' to see available versions", selector)
 	}
 	r := e.release
 	r.Platforms = append([]string(nil), r.Platforms...)

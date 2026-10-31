@@ -25,9 +25,9 @@ class RuntimeToolTests(unittest.TestCase):
     def test_dispatch_uses_system_ssh_without_an_ansible_override(self):
         release = json.loads((ROOT / 'internal/providers/dispatch/release.json').read_text())
         self.assertNotIn('tool_version', release)
-        config = configuration('/bin/exec', '/data', tools={'ansible': '/tools/ansible-playbook'})
+        config = configuration('/bin/kit-exec', '/data', tools={'ansible': '/tools/ansible-playbook'})
         self.assertEqual(config['engine']['providers']['dispatch'], {
-            'path': '/bin/exec', 'args': ['dispatch-0.1.0']})
+            'path': '/bin/kit-exec', 'args': ['dispatch-0.1.0']})
         self.assertIn(release, provider_releases())
 
     def test_checked_in_dispatch_configs_do_not_override_ssh_with_ansible(self):

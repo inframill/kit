@@ -10,7 +10,7 @@ import tempfile
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.kit.project import ROOT, project_version
+from scripts.kit.project import project_version
 from test_pv_postgres import prepare_payload as prepare_postgres
 from test_pv_inframill import prepare_payload as prepare_inframill
 from test_pv_millway import prepare_payload as prepare_millway

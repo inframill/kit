@@ -6,11 +6,11 @@ Each invocation starts one provider process and serves the Inframill JSON protoc
 on stdin/stdout. Diagnostics go to stderr.
 
 ```sh
-./exec list
-./exec version
-./exec ansible-0.4.0 version
-./exec ansible-0.4.0 --tool /absolute/path/to/ansible-playbook
-printf '%s\n' '{"protocol":1,"method":"info","params":{}}' | ./exec opentofu-0.4.0
+bin/kit-exec list
+bin/kit-exec version
+bin/kit-exec ansible-0.4.0 version
+bin/kit-exec ansible-0.4.0 --tool /absolute/path/to/ansible-playbook
+printf '%s\n' '{"protocol":1,"method":"info","params":{}}' | bin/kit-exec opentofu-0.4.0
 ```
 
 `version` reports the Kit binary version. `NAME-VERSION version` reports that
@@ -49,11 +49,14 @@ metadata is the provider-version source of truth. There is no repeated selection
 file. Source directories are unversioned while each provider has one implementation.
 Provider selectors retain their exact `NAME-VERSION` protocol identity.
 
-Use `toolai go compile`, `toolai check`, and `toolai build`. Standard binaries live in
+Use `toolai go compile` and `toolai check` for development feedback.
+`toolai go build` builds all provider platforms, and
+`toolai go build --native --output bin/kit-exec` builds the native executable used
+in the examples above. Standard binaries live in
 `bin/kit-exec-<os>-<arch>`; `bin/kit-exec` is native. Runtime/image packaging consumes
 those outputs. Native engine builds resolve the same SDK module as the provider
-binary. See [releases](releases.md) for bundle preparation and verification.
-
+binary. The aggregate `toolai build` also builds the engine and local image.
+See [releases](releases.md) for bundle preparation and verification.
 
 ## Inframill configuration
 

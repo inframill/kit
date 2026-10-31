@@ -12,7 +12,7 @@ import tarfile
 import tempfile
 
 from .artifacts import verify_binary
-from .project import (ROOT, LINUX, PLATFORMS, bundle_output, image_reference,
+from .project import (ROOT, LINUX, bundle_output, image_reference,
                       local_executable, project_version, provider_releases, run,
                       runtime_settings)
 

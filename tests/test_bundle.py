@@ -1,5 +1,4 @@
 """Bundle integrity and publication behavior, independent of source checkouts."""
-import hashlib
 import json
 from pathlib import Path
 import struct

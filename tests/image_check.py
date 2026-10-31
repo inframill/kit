@@ -20,7 +20,7 @@ DATA = '/var/lib/inframill'
 def image_check(tmp, image, arch, network):
     root = pathlib.Path(tmp) / ('image-' + arch)
     root.mkdir()
-    lock = json.loads((bundle_output() / 'manifest.json').read_text())
+    manifest = json.loads((bundle_output() / 'manifest.json').read_text())
     python = '/opt/inframill/tools/ansible/' + runtime_settings()['ANSIBLE_VERSION'] + '/bin/python3'
     prefix = ['docker', 'run', '--rm', '--pull=never', '--platform', 'linux/' + arch]
     containers = set()
@@ -68,9 +68,9 @@ def image_check(tmp, image, arch, network):
                 return None
         providers = poll(ready)['providers']
         poll(lambda: namespaces_ready(lambda method: rpc(endpoint, method)))
-        assert {d['id'] for d in providers} == {d['name'] for d in lock['providers']}, providers
+        assert {d['id'] for d in providers} == {d['name'] for d in manifest['providers']}, providers
         assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in providers), providers
-        expected_version = {'version': lock['inframill']['version']}
+        expected_version = {'version': manifest['inframill']['version']}
         assert rpc(endpoint, 'GetServerVersion') == expected_version
         version_cli = ['docker', 'exec', name, 'inframill', 'server', 'version',
                        '--endpoint', 'http://127.0.0.1:' + str(port)]
@@ -128,7 +128,7 @@ def image_check(tmp, image, arch, network):
         assert any(i['id'] == instance for i in remote), remote
         remote_providers = json.loads(docker(cli + ['provider', 'list', '--endpoint',
                                     'http://127.0.0.1:' + str(port), '-o', 'json']).stdout)['providers']
-        assert {d['id'] for d in remote_providers} == {d['name'] for d in lock['providers']}, remote_providers
+        assert {d['id'] for d in remote_providers} == {d['name'] for d in manifest['providers']}, remote_providers
         assert all(d['availability'] == 'PROVIDER_AVAILABILITY_AVAILABLE' for d in remote_providers), remote_providers
         stop(name)
         return instance, mounts_state
@@ -145,7 +145,7 @@ def image_check(tmp, image, arch, network):
         assert config['engine']['dataDir'] == DATA and config['main']['port'] == 8080, config
         assert {d['path'] for d in config['engine']['providers'].values()} == {'/usr/local/bin/kit-exec'}
         assert {d['args'][0] for d in config['engine']['providers'].values()} == {
-            d['name'] + '-' + d['version'] for d in lock['providers']}
+            d['name'] + '-' + d['version'] for d in manifest['providers']}
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
         print('Default YAML, named volume and container replacement passed on ' + arch, flush=True)
 

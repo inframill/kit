@@ -11,7 +11,7 @@ import (
 	"github.com/inframill/kit/internal/cli"
 )
 
-// Set by the release builder. Ordinary go builds identify themselves as development builds.
+// Set by Toolai. Ordinary go builds identify themselves as development builds.
 var version = "dev"
 
 func main() {
