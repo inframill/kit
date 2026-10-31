@@ -6,49 +6,26 @@
     "versionVariable": "main.version",
     "steps": [
       {
-        "exec": [
-          "task",
-          "build:prepare"
-        ]
+        "exec": ["task", "build:prepare"]
       },
       {
-        "toolai": [
-          "go",
-          "build"
-        ]
+        "toolai": ["go", "build"]
       },
       {
-        "toolai": [
-          "go",
-          "build",
-          "--native",
-          "--output",
-          "bin/kit-exec"
-        ]
+        "toolai": ["go", "build", "--native", "--output", "bin/kit-exec"]
       },
       {
-        "exec": [
-          "task",
-          "build:engine"
-        ],
+        "exec": ["task", "build:engine"],
         "env": {
           "TOOLAI": "${toolaiExecutable}"
         }
       },
       {
-        "exec": [
-          "task",
-          "build:image"
-        ]
+        "exec": ["task", "build:image"]
       },
       {
-        "exec": [
-          "task",
-          "build:release"
-        ],
-        "tags": [
-          "release"
-        ]
+        "exec": ["task", "build:release"],
+        "tags": ["release"]
       }
     ]
   },
@@ -65,118 +42,50 @@
   "checks": {
     "steps": [
       {
-        "toolai": [
-          "go",
-          "mod",
-          "tidy",
-          "-diff"
-        ]
+        "toolai": ["go", "mod", "tidy", "-diff"]
       },
       {
-        "toolai": [
-          "gopackage",
-          "check"
-        ]
+        "toolai": ["gopackage", "check"]
       },
       {
-        "toolai": [
-          "go",
-          "compile"
-        ]
+        "toolai": ["go", "compile"]
       },
       {
-        "toolai": [
-          "go",
-          "vet"
-        ]
+        "toolai": ["go", "vet"]
       },
       {
-        "toolai": [
-          "go",
-          "test"
-        ]
+        "toolai": ["go", "test"]
       },
       {
-        "exec": [
-          "task",
-          "check:python"
-        ]
+        "exec": ["task", "check:python"]
       },
       {
-        "toolai": [
-          "go",
-          "mod",
-          "verify"
-        ],
-        "tags": [
-          "full"
-        ]
+        "toolai": ["go", "mod", "verify"],
+        "tags": ["full"]
       },
       {
-        "toolai": [
-          "go",
-          "compile",
-          "--build-tags",
-          "testproviders"
-        ],
-        "tags": [
-          "full"
-        ]
+        "toolai": ["go", "compile", "--build-tags", "testproviders"],
+        "tags": ["full"]
       },
       {
-        "toolai": [
-          "go",
-          "vet",
-          "--build-tags",
-          "testproviders"
-        ],
-        "tags": [
-          "full"
-        ]
+        "toolai": ["go", "vet", "--build-tags", "testproviders"],
+        "tags": ["full"]
       },
       {
-        "toolai": [
-          "go",
-          "test",
-          "--race",
-          "--coverage",
-          "--shuffle",
-          "on"
-        ],
-        "tags": [
-          "full"
-        ]
+        "toolai": ["go", "test", "--race", "--coverage", "--shuffle", "on"],
+        "tags": ["full"]
       },
       {
-        "exec": [
-          "task",
-          "test:native"
-        ],
-        "tags": [
-          "full",
-          "native"
-        ]
+        "exec": ["task", "test:native"],
+        "tags": ["full", "native"]
       },
       {
-        "exec": [
-          "task",
-          "test:image"
-        ],
-        "tags": [
-          "full",
-          "image"
-        ]
+        "exec": ["task", "test:image"],
+        "tags": ["full", "image"]
       },
       {
-        "toolai": [
-          "go",
-          "lint",
-          "--build-tags",
-          "testproviders"
-        ],
-        "tags": [
-          "lint"
-        ]
+        "toolai": ["go", "lint", "--build-tags", "testproviders"],
+        "tags": ["lint"]
       }
     ]
   }
