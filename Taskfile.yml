@@ -1,13 +1,8 @@
 version: '3'
 
-includes:
-  providers:
-    taskfile: ./providers/Taskfile.yml
-    dir: ./providers
-
 # Kit and image releases always use the root VERSION file.
 env:
-  PROVIDERS_DIST_DIR: '{{default "providers/dist" .PROVIDERS_DIST_DIR}}'
+  EXEC_DIST_DIR: '{{default "dist/exec" .EXEC_DIST_DIR}}'
   INFRAMILL_DIST_DIR: '{{default "../inframill/dist" .INFRAMILL_DIST_DIR}}'
   KIT_DIST_DIR: '{{default "dist" .KIT_DIST_DIR}}'
   REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
@@ -34,7 +29,7 @@ tasks:
           'Blueprint: inframill blueprint fetch built.in/pv-cloud --namespace production' \
           '' \
           'Versions: root VERSION file=Kit/image; blueprints are local source directories;' \
-          '          providers/releases.json=providers. Kit/image version overrides are ignored.' \
+          '          releases.json=providers. Kit/image version overrides are ignored.' \
           'Registry: REGISTRY=ghcr.io NAMESPACE=inframill; image repository is /kit.' \
           'Builds stay local. Push tasks upload existing artifacts.' \
           '' \
@@ -52,8 +47,14 @@ tasks:
   inframill:copy:
     desc: Generate a missing release lock, then verify and copy the prebuilt host engine
     cmds: ['python3 build.py copy-engine']
+  providers:build:
+    desc: Build one executable containing all providers for Linux AMD64 and ARM64
+    cmds: ['python3 build.py build-exec {{.CLI_ARGS}}']
+  providers:verify:
+    desc: Verify executable artifacts against current sources and release selections
+    cmds: ['python3 build.py verify-exec {{.CLI_ARGS}}']
   config:
-    desc: Print local engine JSON configuration using native providers/dist outputs
+    desc: Print local engine JSON configuration using native dist/exec outputs
     cmds: ['python3 build.py config']
   completion:zsh:
     desc: Install Inframill zsh completion and enable it in ~/.zshrc
@@ -141,8 +142,7 @@ tasks:
   check-fast:
     desc: Run image tooling and provider tests and validate release versions
     cmds:
-      - python3 build.py test
-      - python3 providers/build.py test
+      - task: test
       - task: release:check
   check-full:
     desc: Run fast checks, native workflows and both Linux images in a disposable registry
@@ -174,8 +174,8 @@ tasks:
     cmds:
       - task: release:prepare
         vars: {CLI_ARGS: '{{.CLI_ARGS}}'}
-      - python3 providers/build.py build --refresh --dist "$PROVIDERS_DIST_DIR"
-      - python3 providers/build.py build --native --refresh --dist "$PROVIDERS_DIST_DIR"
+      - python3 build.py build-exec --refresh --dist "$EXEC_DIST_DIR"
+      - python3 build.py build-exec --native --refresh --dist "$EXEC_DIST_DIR"
       - task: build
       - task: check-full
   # The bundle is the Kit image: engine, providers and pinned tools for both platforms.
@@ -183,7 +183,7 @@ tasks:
     aliases: [bundle]
     desc: Build the local Linux AMD64/ARM64 Kit image (VERSION file)
     summary: |
-      Requires Docker Buildx, prebuilt providers under PROVIDERS_DIST_DIR (providers/dist),
+      Requires Docker Buildx, the prebuilt executable under EXEC_DIST_DIR (dist/exec),
       and Linux engine binaries under INFRAMILL_DIST_DIR. Never compiles providers.
       Includes /etc/inframill/inframill.yaml; mount data at /var/lib/inframill.
       Writes KIT_DIST_DIR/bundles/<VERSION> and loads REGISTRY/NAMESPACE/kit:<VERSION>
@@ -206,5 +206,6 @@ tasks:
     cmds: ['python3 build.py verify --reference "{{.REFERENCE}}"']
 
   test:
-    desc: Test the root Python image builder
-    cmds: ['python3 build.py test']
+    desc: Run Python, Go, executable protocol and provider tests
+    aliases: [providers:test]
+    cmds: ['python3 build.py test {{.CLI_ARGS}}']

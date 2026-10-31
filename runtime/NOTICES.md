@@ -3,9 +3,9 @@
 This image combines separately licensed programs. It is not an all-MIT product.
 
 * Kit's image assembly sources and LICENSE are under `/usr/share/inframill/sources/kit/`.
-  Each provider ships its corresponding sources and LICENSE beside the executable
-  in `/opt/inframill/providers/<name>/<version>/sources/`. Available Go dependency
-  notices, including those for the pinned engine, are in the adjacent `notices/`.
+  The shared provider executable is `/usr/local/bin/exec`. Its corresponding
+  sources and LICENSE are under `/opt/inframill/providers/sources/`. Available Go
+  dependency notices, including those for the pinned engine, are in the adjacent `notices/`.
   Inframill is copied from its prebuilt release. The bundle lock records its
   version, source revision and binary checksums; its source tree is not embedded.
 * OpenTofu is MPL-2.0. Its matching source archive and license accompany the image.

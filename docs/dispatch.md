@@ -291,10 +291,10 @@ files, tool execution and remote effects happen during Execute.
 ## Development verification
 
 ```sh
-python3 providers/build.py test
-python3 providers/build.py test --name dispatch
-python3 providers/build.py build --name dispatch
-python3 providers/build.py build --name dispatch --native
+python3 build.py test
+go test ./pkg/providers/dispatch/...
+python3 build.py build-exec
+python3 build.py build-exec --native
 python3 tests/dispatch_check.py
 ```
 

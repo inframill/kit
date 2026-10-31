@@ -3,7 +3,7 @@
 Kit provides versioned OpenTofu, Ansible and Dispatch providers, reusable blueprints, and a
 ready-to-run image for Inframill.
 
-- **[`providers/`](providers/README.md)** builds one executable per provider version and architecture.
+- **[`exec`](docs/providers.md)** runs all provider implementations from one binary per platform.
 - **`ghcr.io/inframill/kit`** bundles Inframill, the providers, OpenTofu and Ansible.
 - **[`blueprints/`](blueprints/README.md)** contains local `pv-cloud` and `hello-world` sources.
 
@@ -13,7 +13,7 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 ## Release versions
 
 [`VERSION`](VERSION) selects the Kit image; its record under [`releases/`](releases/)
-pins the engine and providers. [`providers/releases.json`](providers/releases.json)
+pins the engine and providers. [`releases.json`](releases.json)
 pins provider selections and the Go/SDK dependency. Tool versions live in
 [`runtime/Dockerfile`](runtime/Dockerfile). Local blueprints are selected by name
 and content digest.
@@ -81,7 +81,7 @@ daemon to probe providers again.
 | `/etc/inframill/inframill.yaml` | Default configuration; replace with a read-only file mount |
 | `/opt/inframill/blueprints` | Optional read-only mount for local blueprint sources |
 | `/var/lib/inframill` | Persistent blueprint cache, Instances, workspaces and command history |
-| `/opt/inframill/providers/<name>/<version>/provider` | Versioned provider executable referenced by the configuration |
+| `/usr/local/bin/exec` | Shared provider executable selected with a `NAME-VERSION` argument |
 
 ### Use your own configuration
 
@@ -170,46 +170,45 @@ Without a data mount, data is lost when the container is removed. Namespace secr
 and registry credentials persist unencrypted in `data.sqlite` and its sidecars,
 including across restarts and namespace deletion.
 
-## Build the subprojects and image
+## Build the executable and image
 
-Provider sources, release metadata, the Python builder and tests live in the
-[provider subproject](providers/README.md). Each version has a root such as
-`providers/roots/opentofu/0.4.0/`. The [local blueprints](blueprints/README.md)
+Provider implementations live under `pkg/providers/<name>/v<major>_<minor>_<patch>/`.
+One root Go module and `cmd/exec/main.go` build the shared executable.
+See the [provider guide](docs/providers.md) for the CLI, layout and versioning. The [local blueprints](blueprints/README.md)
 are fetched directly from their source directories.
 
 [Dispatch](docs/dispatch.md) pushes directories from `workspace/dispatch/` to
 nodes selected from shared artifacts using SCP and runs Make targets over SSH.
 
 ```sh
-task providers:test
-task providers:build         # all providers, Linux AMD64 and ARM64
-task bundle                # assemble the image from providers/dist
+task test
+task providers:build         # one executable per Linux architecture
+task bundle                # assemble the image from dist/exec
 ```
 
-The root project uses a single [`build.py`](build.py) script to assemble, verify
-and push the Kit Docker image. It never compiles
-or implicitly rebuilds providers. It checks the prebuilt binaries, source snapshots,
-checksums, platforms and engine/tool compatibility before copying them into the
-image. Task wraps these commands (`task bundle` remains an alias for `task build`):
+The root [`build.py`](build.py) builds the provider executable, runs tests, and
+assembles, verifies and pushes the Kit Docker image. Image assembly consumes
+prebuilt executable artifacts without implicitly compiling Go. It checks the prebuilt binaries, the source snapshot,
+checksums, platforms and engine/tool compatibility before copying them into the image. Task wraps these commands (`task bundle` remains an alias for `task build`):
 
 ```sh
-python3 build.py build     # both Linux architectures, load into local Docker
+python3 build.py build-exec # shared executable for both Linux architectures
+python3 build.py build     # assemble both image architectures, load into local Docker
 python3 build.py verify    # verify the existing local image
 python3 build.py push      # push that image; run docker login yourself first
-python3 build.py test      # root builder tests
+python3 build.py test      # Python, Go and executable protocol tests
 ```
 
 `build` saves the OCI bundle and loads it into Docker as
 `REGISTRY/NAMESPACE/kit:<VERSION>` (default `ghcr.io/inframill/kit:<VERSION>`),
 without pushing. `publish` runs build then push; `push` uses the existing image. The root script
 also provides `validate`, `setup`, `config` and `copy-engine` for release checks
-and local acceptance setup. Providers retain their own builder; blueprints need no build step.
+and local acceptance setup. Executable build and artifact helpers live under `scripts/`; blueprints need no build step.
 
-Provider builds need Python 3.9+, the Go version in `providers/releases.json`, and the pinned Inframill SDK checkout
+Provider builds need Python 3.9+, the Go version in `releases.json`, and the pinned Inframill SDK checkout
 (default `../inframill` beside this repository). Image assembly needs Docker Buildx
 with Linux AMD64/ARM64 support, Python 3.9+ (standard library only), and the checksum-pinned
-prebuilt engine binaries in `../inframill/dist/<engine-version>/`. It does not need provider
-sources or the SDK checkout. Set `PROVIDERS_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
+prebuilt engine binaries in `../inframill/dist/<engine-version>/`. The image assembly step does not need provider sources or the SDK checkout. Set `EXEC_DIST_DIR` or `INFRAMILL_DIST_DIR` to use
 other prebuilt artifact locations.
 
 For local blueprint development, `task config` configures the repository's source
@@ -241,7 +240,7 @@ task check-full
 
 Full checks exercise native tools, blueprint workflows, disposable registries and
 both Linux runtime images. AMD64 can run under emulation. Use `task config` to
-print a local configuration pointing at native provider outputs in `providers/dist`.
+print a local configuration pointing at native provider outputs in `dist/exec`.
 Absolute `OPENTOFU_PATH` and `ANSIBLE_PATH` overrides select installed tools matching
 the tool versions in [`runtime/Dockerfile`](runtime/Dockerfile). `task setup` uses
 those same pins. The image release lock selects only the engine, providers and
@@ -249,7 +248,7 @@ platforms. Run `task check-full` to verify the current source and artifacts.
 
 ## Documentation
 
-- [Providers](providers/README.md): independent version roots, Python builds and tests.
+- [Providers](docs/providers.md): unified executable, independent implementations, builds and tests.
 - [Blueprints](blueprints/README.md): local sources, development workflow and validation.
 - [Usage](docs/usage.md): configuration, commands, secrets and provider behavior.
 - [Architecture](docs/architecture.md): ownership, execution and artifact contracts.

@@ -30,7 +30,7 @@ while [ ! -f "$control/$1-release" ]; do sleep 0.05; done
     config = json.loads(json.dumps(config))
     config['engine']['dataDir'] = str(tmp / 'data')
     config['engine']['eventJournalMaxBytes'] = 131072
-    config['engine']['providers']['opentofu']['args'] = ['--tool', str(tool)]
+    config['engine']['providers']['opentofu']['args'] = [config['engine']['providers']['opentofu']['args'][0], '--tool', str(tool)]
     terminal = {'COMMAND_EXECUTION_STATUS_SUCCEEDED', 'COMMAND_EXECUTION_STATUS_FAILED',
                 'COMMAND_EXECUTION_STATUS_INTERRUPTED', 'COMMAND_EXECUTION_STATUS_CANCELLED'}
     with Engine(tmp / 'daemon', config, binary, env) as client:

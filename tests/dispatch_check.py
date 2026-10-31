@@ -10,7 +10,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from build import ROOT, configuration, local_tools, native_platform, providers_dist
+from build import ROOT, configuration, local_tools, native_platform, local_executable
 from engine_client import Engine
 from blueprint_workflows import command_contract_check
 
@@ -78,8 +78,8 @@ def dispatch_check(tmp, env=None):
         'verify:\n\t@test -f ' + shlex.quote(str(destination / 'architecture.txt')) + '\n'
         '\t@touch verified\nfail:\n\t@touch should-not-run\n')
     tofu, ansible = local_tools()
-    config = configuration(providers_dist(), tmp / 'data',
-                           {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+    config = configuration(local_executable(), tmp / 'data',
+                           {'opentofu': tofu, 'ansible': ansible})
     config['engine']['providers'] = {
         'opentofu': config['engine']['providers']['opentofu'],
         'delivery': config['engine']['providers']['dispatch'],

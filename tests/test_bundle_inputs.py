@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from build import read_binary, read_provider
+from build import read_binary, read_executable
 
 
 class BinaryFixture:
@@ -64,17 +64,18 @@ class ProviderInputTests(BinaryFixture, unittest.TestCase):
     def provider(self, arch='amd64'):
         entry, data = self.binary(62 if arch == 'amd64' else 183)
         target = 'linux/' + arch
-        folder = self.dist / 'opentofu/0.3.0' / target
+        folder = self.dist / '0.1.24-dev' / target
         (folder / 'sources').mkdir(parents=True)
-        (folder / 'provider').write_bytes(data)
+        (folder / 'exec').write_bytes(data)
         (folder / 'sources/main.go').write_text('package main\n')
-        lock = {'inframill': {'version': '0.3.0-dev', 'revision': 'a' * 40},
+        lock = {'version': '0.1.24-dev', 'inframill': {'version': '0.3.0-dev', 'revision': 'a' * 40},
                 'platforms': ['linux/amd64', 'linux/arm64']}
         selection = {'name': 'opentofu', 'version': '0.3.0'}
-        record = {'schema': 1, 'release': {**selection, 'tool_version': '1.11.5', 'protocol': 1,
-                                         'platforms': lock['platforms']},
+        lock['providers'] = [selection]
+        record = {'schema': 2, 'version': lock['version'], 'providers': [{**selection, 'tool_version': '1.11.5', 'protocol': 1,
+                                         'platforms': lock['platforms']}],
                   'platform': target, 'inframill': lock['inframill'],
-                  'files': {'provider': entry['sha256'], 'sources/main.go': hashlib.sha256(b'package main\n').hexdigest()},
+                  'files': {'exec': entry['sha256'], 'sources/main.go': hashlib.sha256(b'package main\n').hexdigest()},
                   'source_files': {'main.go': hashlib.sha256(b'package main\n').hexdigest()}}
         (folder / 'build.json').write_text(json.dumps(record))
         return folder, record, selection, target, lock
@@ -82,55 +83,53 @@ class ProviderInputTests(BinaryFixture, unittest.TestCase):
     def test_bundle_accepts_only_prebuilt_outputs_for_each_architecture(self):
         for arch in ['amd64', 'arm64']:
             folder, record, selection, target, lock = self.provider(arch)
-            self.assertEqual(read_provider(self.dist, selection, target, lock)[1], record)
+            self.assertEqual(read_executable(self.dist, target, lock)[1], record)
 
     def test_dispatch_bundle_has_no_pinned_ansible_dependency(self):
         folder, record, selection, target, lock = self.provider()
         selection = {'name': 'dispatch', 'version': '0.1.0'}
-        destination = self.dist / 'dispatch/0.1.0' / target
-        destination.parent.mkdir(parents=True)
-        folder.rename(destination)
-        record['release'].update(selection)
-        record['release'].pop('tool_version')
-        (destination / 'build.json').write_text(json.dumps(record))
-        self.assertEqual(read_provider(self.dist, selection, target, lock)[1], record)
-        record['release']['tool_version'] = '2.20.1'
-        (destination / 'build.json').write_text(json.dumps(record))
+        lock['providers'] = [selection]
+        record['providers'][0].update(selection)
+        record['providers'][0].pop('tool_version')
+        (folder / 'build.json').write_text(json.dumps(record))
+        self.assertEqual(read_executable(self.dist, target, lock)[1], record)
+        record['providers'][0]['tool_version'] = '2.20.1'
+        (folder / 'build.json').write_text(json.dumps(record))
         with self.assertRaisesRegex(ValueError, 'tool'):
-            read_provider(self.dist, selection, target, lock)
+            read_executable(self.dist, target, lock)
 
     def test_missing_platform_requires_an_explicit_provider_build(self):
         _, _, selection, _, lock = self.provider()
-        with self.assertRaisesRegex(ValueError, 'Missing prebuilt provider'):
-            read_provider(self.dist, selection, 'linux/arm64', lock)
+        with self.assertRaisesRegex(ValueError, 'Missing prebuilt executable'):
+            read_executable(self.dist, 'linux/arm64', lock)
 
     def test_bundle_rejects_provider_identity_tool_and_engine_mismatches(self):
         folder, original, selection, target, lock = self.provider()
         for field in ['identity', 'tool', 'engine', 'platform']:
             record = json.loads(json.dumps(original))
             if field == 'identity':
-                record['release']['version'] = '9.9.9'
+                record['providers'][0]['version'] = '9.9.9'
             elif field == 'tool':
-                record['release']['tool_version'] = '9.9.9'
+                record['providers'][0]['tool_version'] = '9.9.9'
             elif field == 'engine':
                 record['inframill']['revision'] = 'b' * 40
             else:
                 record['platform'] = 'linux/arm64'
             (folder / 'build.json').write_text(json.dumps(record))
             with self.subTest(field=field), self.assertRaises(ValueError):
-                read_provider(self.dist, selection, target, lock)
+                read_executable(self.dist, target, lock)
 
     def test_bundle_rejects_tampered_source_snapshots(self):
         folder, _, selection, target, lock = self.provider()
         (folder / 'sources/main.go').write_text('modified')
         with self.assertRaisesRegex(ValueError, 'checksum'):
-            read_provider(self.dist, selection, target, lock)
+            read_executable(self.dist, target, lock)
 
     def test_bundle_rejects_unrecorded_files(self):
         folder, _, selection, target, lock = self.provider()
         (folder / 'unexpected').write_text('extra')
         with self.assertRaisesRegex(ValueError, 'unrecorded'):
-            read_provider(self.dist, selection, target, lock)
+            read_executable(self.dist, target, lock)
 
 
 if __name__ == '__main__':

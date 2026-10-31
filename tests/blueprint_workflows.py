@@ -414,7 +414,7 @@ def pv_flow(client, reference, tofu):
             assert error.code == 400, error
         else:
             raise AssertionError(role + ' role without Docker was accepted')
-    ansible = pathlib.Path(client.config['engine']['providers']['ansible']['args'][1])
+    ansible = pathlib.Path(client.config['engine']['providers']['ansible']['args'][2])
     run([ansible.with_name('python3'), pathlib.Path(__file__).with_name('pv_roles_check.py'),
          ansible, workspaces[0].parent / 'ansible/site.yml'])
     # Provider init uses no credentials even after namespace secrets are removed.

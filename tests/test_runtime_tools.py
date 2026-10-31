@@ -17,17 +17,17 @@ class RuntimeToolTests(unittest.TestCase):
         settings = runtime_settings()
         tofu, ansible = local_tools()
         for name, key, path in [('opentofu', 'OPENTOFU_VERSION', tofu), ('ansible', 'ANSIBLE_VERSION', ansible)]:
-            release = json.loads((ROOT / 'providers/roots' / name / '0.4.0/release.json').read_text())
+            release = json.loads((ROOT / 'pkg/providers' / name / 'v0_4_0/release.json').read_text())
             self.assertEqual(settings[key], release['tool_version'])
             self.assertIn(settings[key], str(path))
         self.assertIn('ansible-core==' + settings['ANSIBLE_VERSION'], ansible_requirements(settings))
 
     def test_dispatch_uses_system_ssh_without_an_ansible_override(self):
-        release = json.loads((ROOT / 'providers/roots/dispatch/0.1.0/release.json').read_text())
+        release = json.loads((ROOT / 'pkg/providers/dispatch/v0_1_0/release.json').read_text())
         self.assertNotIn('tool_version', release)
-        config = configuration('/providers', '/data', tools={'ansible': '/tools/ansible-playbook'})
+        config = configuration('/bin/exec', '/data', tools={'ansible': '/tools/ansible-playbook'})
         self.assertEqual(config['engine']['providers']['dispatch'], {
-            'path': '/providers/dispatch/0.1.0/provider', 'args': []})
+            'path': '/bin/exec', 'args': ['dispatch-0.1.0']})
         self.assertIn({'name': 'dispatch', 'version': release['version']}, bundle_lock()['providers'])
 
     def test_checked_in_dispatch_configs_do_not_override_ssh_with_ansible(self):

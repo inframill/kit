@@ -245,14 +245,14 @@ Preparation updates only these release records:
 - `VERSION`: the selected Kit/image version.
 - `releases/<version>.lock.json`: engine revision, four binary checksums, provider
   selections and Linux image platforms.
-- `providers/releases.json`: the matching Inframill SDK version and revision.
+- `releases.json`: the matching Inframill SDK version and revision.
 
 `task inframill:copy` also generates a missing lock automatically before copying
 the native binary, creating `releases/` if needed. It keeps the Kit version in
 `VERSION` and reuses an existing lock. Use `task release:prepare` to select a new
 upstream release or an independent Kit version.
 
-Provider selections come from `providers/releases.json`. The upstream checkout
+Provider selections come from `releases.json`. The upstream checkout
 must have clean build inputs and all four macOS/Linux AMD64/ARM64 release binaries.
 Preparation validates architectures and the native engine version before writing.
 Existing release locks are immutable: identical inputs are safe to prepare again;
@@ -260,7 +260,7 @@ changed inputs require a new Kit version. Historical locks remain release record
 
 Routine engine releases need no README, blueprint or provider implementation version
 edits. API or tool changes can still require code/configuration updates and tests.
-The Go compiler pin remains explicit in `providers/releases.json`.
+The Go compiler pin remains explicit in `releases.json`.
 
 ## Publish
 
@@ -294,14 +294,14 @@ platforms, tool requirements and the exact SDK pin; incompatible or corrupt inpu
 | --- | --- | --- |
 | `INFRAMILL_SOURCE` | Clean checkout for preparation and provider builds | `../inframill` |
 | `INFRAMILL_DIST_DIR` | Prebuilt engine binaries | `../inframill/dist` |
-| `PROVIDERS_DIST_DIR` | Prebuilt provider inputs for image assembly | `providers/dist` |
+| `EXEC_DIST_DIR` | Prebuilt provider inputs for image assembly | `dist/exec` |
 | `KIT_DIST_DIR` | Image output directory | `dist` |
 | `REGISTRY` | Publication registry | `ghcr.io` |
 | `NAMESPACE` | Publication namespace | `inframill` |
 
 For a non-default checkout, set both `INFRAMILL_SOURCE` and `INFRAMILL_DIST_DIR`.
-The full `task release` workflow writes providers to `PROVIDERS_DIST_DIR` and uses
-those same outputs for image assembly. Standalone provider builds accept `--dist`.
+The full `task release` workflow writes providers to `EXEC_DIST_DIR` and uses
+those same outputs for image assembly. Executable builds accept `--dist`; all providers share one output per platform.
 
 Individual steps remain available:
 
@@ -321,7 +321,7 @@ task check-full
 patches and prereleases can differ. Environment variables never override `VERSION`.
 Normal build/push commands do not infer versions from Git or modify release metadata.
 
-Provider versions change independently. See [provider versioning](../providers/README.md#add-a-version)
+Provider versions change independently. See [provider versioning](providers.md#add-a-version)
 when changing provider implementations. Local blueprints have no release manifest;
 edit sources and fetch `built.in/pv-cloud` or `built.in/hello-world` again.
 

@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Assemble and publish Kit images from prebuilt provider and engine artifacts."""
+"""Build the Kit executable, test providers, and assemble or publish Kit images."""
 import argparse
 import hashlib
 import io
 import json
 import os
 import pathlib
-import platform
 import re
 import shutil
-import struct
 import subprocess
 import sys
 import tarfile
@@ -17,6 +15,8 @@ import tempfile
 import time
 
 from runtime.tools import ansible_requirements, docker_defaults, install_opentofu
+from scripts.artifacts import digest, native_platform, valid_version, verify_binary
+from scripts import executable
 
 ROOT = pathlib.Path(__file__).resolve().parent
 PLATFORMS = {'linux/amd64', 'linux/arm64'}
@@ -27,36 +27,29 @@ def run(args, **kwargs):
     return subprocess.run(list(map(str, args)), check=True, text=True, **kwargs)
 
 
-def digest(data):
-    return hashlib.sha256(data).hexdigest()
-
-
 def runtime_settings():
     return docker_defaults(ROOT / 'runtime/Dockerfile')
 
 
-def native_platform():
-    arch = {'aarch64': 'arm64', 'arm64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
-    return platform.system().lower() + '/' + str(arch)
+def exec_dist():
+    return (ROOT / os.environ.get('EXEC_DIST_DIR', 'dist/exec')).resolve()
 
 
-def providers_dist():
-    return (ROOT / os.environ.get('PROVIDERS_DIST_DIR', 'providers/dist')).resolve()
+def local_executable():
+    return exec_dist() / project_version() / native_platform() / 'exec'
 
 
-def configuration(provider_root, workspace, tools=None, providers=None, target=None):
+def configuration(binary, workspace, tools=None, providers=None):
     selected = {}
     for release in providers or bundle_lock()['providers']:
         name, version = release['name'], release['version']
-        identity = name
-        if identity in selected:
+        if name in selected:
             raise ValueError('Default configuration requires one version per provider name')
-        path = pathlib.Path(provider_root) / name / version
-        if target:
-            path = path / target
+        args = [name + '-' + version]
         tool = (tools or {}).get(name)
-        args = ['--tool', str(tool)] if tool is not None else []
-        selected[identity] = {'path': str(path / 'provider'), 'args': args}
+        if tool is not None:
+            args.extend(['--tool', str(tool)])
+        selected[name] = {'path': str(binary), 'args': args}
     return {'main': {'port': 8080}, 'logger': {'type': 'slog', 'settings': {'level': 'info', 'format': 'json'}},
             'engine': {'dataDir': str(workspace), 'providers': selected}, 'handlers': [{'type': 'connect-engine'}]}
 
@@ -99,46 +92,26 @@ def find_python(override=None):
     )
 
 
-def read_provider(dist, selection, target, lock):
-    """Accept only an existing, complete provider build; never compile a fallback."""
-    name, version = selection['name'], selection['version']
-    if not re.fullmatch(r'[a-z][a-z0-9-]*', name) or not re.fullmatch(r'[0-9A-Za-z.-]+', version) or version in ('.', '..'):
-        raise ValueError('Invalid provider selection')
-    folder = pathlib.Path(dist) / name / version / target
-    path = folder / 'build.json'
-    if not path.is_file():
-        raise ValueError(f'Missing prebuilt provider {name}:{version} for {target}; run task build in providers/')
-    record = json.loads(path.read_text())
-    release = record['release']
-    if record['schema'] != 1 or (release['name'], release['version']) != (name, version) or record['platform'] != target:
-        raise ValueError('Provider build identity mismatch')
+def read_executable(dist, target, lock):
+    """Accept one complete prebuilt executable; image assembly never compiles a fallback."""
+    folder = pathlib.Path(dist) / lock['version'] / target
+    if not (folder / 'build.json').is_file():
+        raise ValueError(f'Missing prebuilt executable for {target}; run task providers:build')
+    record = executable.verify_output(folder, lock['version'], target)
     expected_engine = {k: lock['inframill'][k] for k in ('version', 'revision')}
     if record['inframill'] != expected_engine:
-        raise ValueError('Provider and image target different Inframill releases; '
-                         'run GOTOOLCHAIN=go1.27.0 task providers:build -- --refresh')
+        raise ValueError('Executable and image target different Inframill releases; run task providers:build -- --refresh')
+    expected = {(r['name'], r['version']) for r in lock['providers']}
+    included = {(r['name'], r['version']) for r in record['providers']}
+    if included != expected or len(included) != len(record['providers']):
+        raise ValueError('Executable provider selections differ from the image release')
     settings = runtime_settings()
-    tool_version = {'opentofu': settings['OPENTOFU_VERSION'], 'ansible': settings['ANSIBLE_VERSION']}.get(name)
-    if release.get('tool_version') != tool_version or release['protocol'] != 1 or set(release['platforms']) != set(lock['platforms']):
-        raise ValueError('Provider tool/platform/protocol differs from the image release')
-    actual = set()
-    for file in folder.rglob('*'):
-        if file.is_symlink():
-            raise ValueError('Provider output contains a link')
-        if file.is_file() and file != path:
-            actual.add(str(file.relative_to(folder)))
-    if actual != set(record['files']) or 'provider' not in actual or not any(p.startswith('sources/') for p in actual):
-        raise ValueError('Provider output is incomplete or contains unrecorded files')
-    for name, digest in record['files'].items():
-        relative = pathlib.PurePosixPath(name)
-        if relative.is_absolute() or '..' in relative.parts or not re.fullmatch(r'[0-9a-f]{64}', digest):
-            raise ValueError('Invalid provider output record')
-        if hashlib.sha256((folder / name).read_bytes()).hexdigest() != digest:
-            raise ValueError('Provider output checksum mismatch: ' + name)
-    for name, digest in record['source_files'].items():
-        if record['files'].get('sources/' + name) != digest:
-            raise ValueError('Provider source snapshot differs from the build record')
-    data = read_binary(folder, {'path': 'provider', 'sha256': record['files']['provider']}, target.split('/')[1])
-    return folder, record, data
+    for release in record['providers']:
+        tool = {'opentofu': settings['OPENTOFU_VERSION'], 'ansible': settings['ANSIBLE_VERSION']}.get(release['name'])
+        if (release.get('tool_version') != tool or release['protocol'] != 1
+                or set(release['platforms']) != set(lock['platforms'])):
+            raise ValueError('Provider tool/platform/protocol differs from the image release')
+    return folder, record, (folder / 'exec').read_bytes()
 
 
 def read_binary(dist, entry, arch, system='linux'):
@@ -157,31 +130,8 @@ def read_binary(dist, entry, arch, system='linux'):
         raise ValueError('Inframill binary exceeds size limit')
     if hashlib.sha256(data).hexdigest() != expected:
         raise ValueError(f'Inframill binary checksum mismatch: {path}')
-    if system == 'linux':
-        if len(data) < 64 or data[:6] != b'\x7fELF\x02\x01' or data[7] not in (0, 3):
-            raise ValueError(f'Expected a Linux 64-bit little-endian ELF binary: {path}')
-        machine = struct.unpack_from('<H', data, 18)[0]
-        expected_machine = {'amd64': 62, 'arm64': 183}[arch]
-    elif system == 'darwin':
-        if len(data) < 32 or data[:4] != b'\xcf\xfa\xed\xfe':
-            raise ValueError(f'Expected a Darwin Mach-O binary: {path}')
-        machine = struct.unpack_from('<I', data, 4)[0]
-        expected_machine = {'amd64': 0x1000007, 'arm64': 0x100000c}[arch]
-    else:
-        raise ValueError('Unsupported binary platform: ' + system)
-    if machine != expected_machine:
-        raise ValueError(f'Inframill binary architecture mismatch: expected {arch}: {path}')
+    verify_binary(data, system + '/' + arch)
     return data
-
-
-def valid_version(value, metadata=False):
-    pattern = r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?'
-    if metadata:
-        pattern += r'(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?'
-    if not isinstance(value, str) or not re.fullmatch(pattern, value):
-        return False
-    pre = value.split('+', 1)[0].partition('-')[2]
-    return all(not (part.isdigit() and len(part) > 1 and part.startswith('0')) for part in pre.split('.'))
 
 
 def read_version(path):
@@ -211,7 +161,7 @@ def prepare_release(source=None, version=None):
                   cwd=source, capture_output=True).stdout
     if changed.strip():
         raise ValueError('Commit Inframill source changes before preparing a release')
-    config_path = ROOT / 'providers/releases.json'
+    config_path = ROOT / 'releases.json'
     config = json.loads(config_path.read_text())
     engine_dist = (ROOT / os.environ.get('INFRAMILL_DIST_DIR', source / 'dist')).resolve()
     binaries = {}
@@ -316,15 +266,14 @@ def build_image():
     engine_dist = (ROOT / os.environ.get('INFRAMILL_DIST_DIR', '../inframill/dist')).resolve()
     binaries = {arch: read_binary(engine_dist, lock['inframill']['binaries']['linux/' + arch], arch)
                 for arch in ('amd64', 'arm64')}
-    providers = {(entry['name'], entry['version'], target): read_provider(providers_dist(), entry, target, lock)
-               for entry in lock['providers'] for target in lock['platforms']}
+    executables = {target: read_executable(exec_dist(), target, lock) for target in lock['platforms']}
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.bundle-', dir=output.parent) as td:
         stage = pathlib.Path(td)
         context = stage / 'context'
         sources = context / 'sources'
         sources.mkdir(parents=True)
-        for name in ['VERSION', 'build.py', 'LICENSE', 'README.md', 'docs', 'releases', 'runtime', 'tests', 'Taskfile.yml']:
+        for name in ['VERSION', 'build.py', 'LICENSE', 'README.md', 'docs', 'releases', 'runtime', 'scripts', 'tests', 'Taskfile.yml']:
             path = ROOT / name
             if path.is_dir():
                 shutil.copytree(path, sources / name, ignore=shutil.ignore_patterns('__pycache__'))
@@ -335,16 +284,15 @@ def build_image():
             bindir.mkdir(parents=True)
             (bindir / 'inframill').write_bytes(binaries[arch])
             (bindir / 'inframill').chmod(0o755)
-            for entry in lock['providers']:
-                folder, record, data = providers[(entry['name'], entry['version'], 'linux/' + arch)]
-                destination = context / 'providers' / arch / entry['name'] / entry['version']
-                destination.mkdir(parents=True)
-                (destination / 'provider').write_bytes(data)
-                (destination / 'provider').chmod(0o755)
-                shutil.copy2(folder / 'build.json', destination / 'build.json')
-                for name in ('sources', 'notices'):
-                    if (folder / name).is_dir():
-                        shutil.copytree(folder / name, destination / name)
+            folder, record, data = executables['linux/' + arch]
+            (bindir / 'exec').write_bytes(data)
+            (bindir / 'exec').chmod(0o755)
+            destination = context / 'providers' / arch
+            destination.mkdir(parents=True)
+            shutil.copy2(folder / 'build.json', destination / 'build.json')
+            for name in ('sources', 'notices'):
+                if (folder / name).is_dir():
+                    shutil.copytree(folder / name, destination / name)
         for name in ('Dockerfile', 'NOTICES.md', 'inframill.yaml', 'tools.py'):
             shutil.copy2(ROOT / 'runtime' / name, context / name)
         lock_bytes = (ROOT / f'releases/{version}.lock.json').read_bytes()
@@ -377,7 +325,7 @@ def build_image():
                   'dependency_revision': lock['inframill']['revision'], 'inframill': lock['inframill'],
                   'platforms': manifest['manifests'],
                   'source_files': {str(p.relative_to(sources)): digest(p.read_bytes()) for p in sources.rglob('*') if p.is_file()},
-                  'providers': {name + '@' + ver + '/' + target: record for (name, ver, target), (_, record, _) in providers.items()},
+                  'executables': {target: record for target, (_, record, _) in executables.items()},
                   'binaries': {str(p.relative_to(context)): digest(p.read_bytes()) for p in (context / 'bin').rglob('*') if p.is_file()}}
         completed = stage / 'complete'
         completed.mkdir()
@@ -546,7 +494,7 @@ def verify_remote(reference):
                 result = subprocess.run(['docker', 'exec', container, 'inframill', 'provider', 'list', '-o', 'json'], capture_output=True, text=True)
                 if result.returncode == 0:
                     providers = json.loads(result.stdout)['providers']
-                    expected = set(configuration('/opt/inframill/providers', '/var/lib/inframill', providers=lock['providers'])['engine']['providers'])
+                    expected = set(configuration('/usr/local/bin/exec', '/var/lib/inframill', providers=lock['providers'])['engine']['providers'])
                     if {d['id'] for d in providers} != expected or any(d['availability'] != 'PROVIDER_AVAILABILITY_AVAILABLE' for d in providers):
                         raise ValueError('Published provider discovery differs from the release')
                     break
@@ -567,8 +515,14 @@ def main(argv=None):
     prepare = commands.add_parser('prepare-release', help='generate Kit version, SDK pin and engine checksums')
     prepare.add_argument('--version', help='Kit version; defaults to Inframill VERSION')
     prepare.add_argument('--inframill-source', type=pathlib.Path)
+    for command in ('build-exec', 'verify-exec'):
+        executable.add_arguments(commands.add_parser(command))
+    test = commands.choices['test']
+    test.add_argument('--inframill-source', type=pathlib.Path)
     args = parser.parse_args(argv)
-    if args.command == 'prepare-release':
+    if args.command in ('build-exec', 'verify-exec'):
+        executable.execute(args, ROOT, exec_dist(), project_version())
+    elif args.command == 'prepare-release':
         prepare_release(args.inframill_source, args.version)
     elif args.command == 'build':
         build_image()
@@ -593,12 +547,13 @@ def main(argv=None):
         setup()
     elif args.command == 'config':
         tofu, ansible = local_tools()
-        config = configuration(providers_dist(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
-                               {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+        config = configuration(local_executable(), os.environ.get('DATA_DIR', str(ROOT / '.inframill')),
+                               {'opentofu': tofu, 'ansible': ansible})
         config['engine']['localBlueprintPaths'] = [str(ROOT / 'blueprints')]
         print(json.dumps(config, indent=2))
     elif args.command == 'test':
         run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], cwd=ROOT)
+        executable.test(ROOT, args.inframill_source)
 
 
 if __name__ == '__main__':

@@ -17,13 +17,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from blueprint_workflows import (BLUEPRINTS, local_paths, LOCAL_REFERENCE,
                                  local_flow, pv_flow, hello_world_flow)
-from providers.tests.daemon_check import daemon_check
+from daemon_check import daemon_check
 from engine_client import Engine
 from query_check import query_check
 from process_check import process_check
 from image_check import image_check
 from dispatch_check import dispatch_check
-from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, bundle_lock, providers_dist, native_platform
+from build import runtime_settings, load_image, verify_image, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform
 
 
 def run(args, **kwargs):
@@ -33,8 +33,7 @@ def run(args, **kwargs):
 
 def tools():
     tofu, ansible = local_tools()
-    binaries = [providers_dist() / d['name'] / d['version'] / native_platform() / 'provider' for d in bundle_lock()['providers']]
-    for tool in [tofu, ansible, ROOT / 'bin/inframill', *binaries]:
+    for tool in [tofu, ansible, ROOT / 'bin/inframill', local_executable()]:
         if not tool.is_file():
             raise RuntimeError(f'Missing prerequisite {tool}; see README setup')
     return tofu, ansible
@@ -48,8 +47,8 @@ def engine(tmp, env=None, data=None, debug_only=False, paths=None):
             'handlers': [{'type': 'connect-engine'}]}
     else:
         tofu, ansible = tools()
-        config = configuration(providers_dist(), data or tmp / 'data',
-                               {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+        config = configuration(local_executable(), data or tmp / 'data',
+                               {'opentofu': tofu, 'ansible': ansible})
     config['engine']['localBlueprintPaths'] = local_paths() if paths is None else paths
     return Engine(tmp, config, ROOT / 'bin/inframill', env)
 
@@ -246,8 +245,8 @@ def local_revision_check(tmp):
 
 def native_checks(tmp, env):
     tofu, ansible = tools()
-    config = configuration(providers_dist(), tmp / 'unused',
-                           {'opentofu': tofu, 'ansible': ansible}, target=native_platform())
+    config = configuration(local_executable(), tmp / 'unused',
+                           {'opentofu': tofu, 'ansible': ansible})
     config['engine']['localBlueprintPaths'] = local_paths()
     process_check(tmp / 'process', config, ROOT / 'bin/inframill', native_platform().split('/')[1], env)
     local_revision_check(tmp)

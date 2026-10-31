@@ -27,9 +27,8 @@ class PrepareReleaseTests(unittest.TestCase):
         self.source.mkdir()
         (self.source / 'VERSION').write_text('0.22.0-dev\n')
         (self.root / 'VERSION').write_text('0.21.0-dev\n')
-        (self.root / 'providers').mkdir()
-        self.config_path = self.root / 'providers/releases.json'
-        self.config = json.loads((build.ROOT / 'providers/releases.json').read_text())
+        self.config_path = self.root / 'releases.json'
+        self.config = json.loads((build.ROOT / 'releases.json').read_text())
         self.config_path.write_text(json.dumps(self.config))
         self.dist = self.source / 'dist'
         self.paths = {}

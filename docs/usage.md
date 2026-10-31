@@ -455,7 +455,7 @@ address. Native daemons inherit the agent from the shell that starts them.
 The executable's configured prefix is:
 
 ```text
-/opt/inframill/providers/opentofu/0.4.0/provider
+/usr/local/bin/exec opentofu-0.4.0
 ```
 
 Inframill sends one JSON request on stdin, without adding protocol arguments. Kit

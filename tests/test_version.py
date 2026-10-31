@@ -20,6 +20,7 @@ class VersionTests(unittest.TestCase):
         runtime = pathlib.Path(directory) / 'runtime'
         runtime.mkdir(exist_ok=True)
         shutil.copyfile(ROOT / 'runtime/tools.py', runtime / 'tools.py')
+        shutil.copytree(ROOT / 'scripts', pathlib.Path(directory) / 'scripts', dirs_exist_ok=True)
         return subprocess.run([sys.executable, str(script), 'version'], cwd=ROOT,
                               env={**os.environ, 'VERSION': '9.9.9', 'KIT_VERSION': '9.9.9',
                                    'BUNDLE_VERSION': '9.9.9'}, capture_output=True)

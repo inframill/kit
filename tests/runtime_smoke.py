@@ -16,11 +16,12 @@ from process_check import process_check
 arch = 'arm64' if platform.machine() in ('arm64', 'aarch64') else 'amd64'
 lock = json.loads(pathlib.Path('/usr/share/inframill/bundle.lock.json').read_text())
 assert hashlib.sha256(pathlib.Path('/usr/local/bin/inframill').read_bytes()).hexdigest() == lock['inframill']['binaries']['linux/'+arch]['sha256']
+binary = pathlib.Path('/usr/local/bin/exec')
+record = json.loads(pathlib.Path('/opt/inframill/providers/build.json').read_text())
+assert hashlib.sha256(binary.read_bytes()).hexdigest() == record['files']['exec']
+assert json.loads(subprocess.check_output([binary, 'version']))['version'] == lock['version']
 for release in lock['providers']:
-    folder = pathlib.Path('/opt/inframill/providers') / release['name'] / release['version']
-    record = json.loads((folder / 'build.json').read_text())
-    assert hashlib.sha256((folder / 'provider').read_bytes()).hexdigest() == record['files']['provider']
-    metadata = json.loads(subprocess.check_output([str(folder / 'provider'), 'version']))
+    metadata = json.loads(subprocess.check_output([binary, release['name'] + '-' + release['version'], 'version']))
     assert (metadata['name'], metadata['version']) == (release['name'], release['version'])
 with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     tmp = pathlib.Path(td)
@@ -31,6 +32,6 @@ with tempfile.TemporaryDirectory(prefix='kit-runtime-') as td:
     with Engine(tmp, config, '/usr/local/bin/inframill') as client:
         assert client.rpc('GetServerVersion') == {'version': lock['inframill']['version']}
         query_check(client, LOCAL_REFERENCE, arch)
-        tofu = config['engine']['providers']['opentofu']['args'][1]
+        tofu = config['engine']['providers']['opentofu']['args'][2]
         runtime_flows(client, arch, tofu)
 print('Runtime workflow and provider mocks passed on ' + arch)

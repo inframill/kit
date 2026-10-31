@@ -1,7 +1,7 @@
 # Kit architecture
 
-Kit targets the Inframill API pinned in the selected release lock. The `providers/` subproject builds
-independently versioned executables. The root `ghcr.io/inframill/kit` image bundles
+Kit targets the Inframill API pinned in the selected release lock. One root Go module builds
+independently versioned implementations into a shared executable. The root `ghcr.io/inframill/kit` image bundles
 prebuilt provider outputs with the engine and tools. Blueprints are local source directories.
 
 ## Ownership
@@ -9,15 +9,17 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
 - Inframill owns namespace lifecycle, namespace-scoped Blueprints and Instances,
   Blueprint-owned Values and command argument validation, rendering, namespace secret snapshots,
   queues, persistence, history and the external provider transport.
-- `providers/roots/<name>/<version>/` owns each implementation, release metadata, command
-  entrypoint and tests. `providers/roots/internal/runner` calls upstream `runmill.Serve`.
-- `providers/roots/internal/artifacts` owns rooted file access, hashes and shared node
-  records. `providers/roots/internal/toolrun` owns subprocesses, restricted environments,
-  bounded output and filtered diagnostics.
-- `providers/build.py` verifies the pinned SDK checkout and builds separate AMD64 and
-  ARM64 executables. The subproject has its own Go module, tasks and tests.
-- Root `build.py` owns image assembly, input verification and publication in one
-  standard-library Python script. Root acceptance tests live in `tests/`.
+- `pkg/providers/<name>/v<major>_<minor>_<patch>/` owns each implementation,
+  embedded release metadata and tests. `cmd/exec/main.go` is the only entry point.
+- `internal/catalog` maps exact `NAME-VERSION` selectors to implementations.
+  `internal/cli` consumes prefix arguments and calls upstream `runmill.Serve`.
+- `internal/artifacts` owns rooted file access, hashes and shared node records.
+  `internal/toolrun` owns subprocesses, restricted environments, bounded output
+  and filtered diagnostics.
+- Root `build.py` owns executable builds, tests, image assembly and publication.
+  `scripts/executable.py` verifies the pinned SDK and builds one binary per
+  platform; `scripts/artifacts.py` shares integrity and architecture checks.
+  Implementation and executable protocol tests use the same root Go module.
 
 ## Command lifecycle
 
@@ -74,10 +76,13 @@ can differ. The image shares Kit's exact version and its lock must pin the decla
 engine target. Normal builds use only these explicit selections. `task release:prepare` generates
 them from the chosen upstream release before building.
 
-The current providers are OpenTofu and Ansible 0.4.0 and Dispatch 0.1.0. Each binary embeds its version's
-`release.json`; its executable path selects the implementation. Provider builds use
-`providers/releases.json`, independently of the image release. Synthetic test providers
-under `providers/tests` exercise version coexistence and distinct contracts.
+The current providers are OpenTofu and Ansible 0.4.0 and Dispatch 0.1.0. The
+shared executable embeds every selected implementation's `release.json` and
+selects it by the first argument. `releases.json` pins provider selections, Go and
+the SDK; root `VERSION` identifies the binary and image. Multiple implementation
+versions can coexist in one binary. Synthetic providers are compiled only with
+`testproviders`, allowing tests to exercise the production dispatcher with distinct
+version contracts. See [providers](providers.md).
 Blueprints are local directories under `blueprints/<repository>/<tag>/`, each
 containing a definition and provider templates. Kit uses the `latest` tag. Inframill fetches `built.in/pv-cloud` and `built.in/hello-world`
 from `engine.localBlueprintPaths`, creating namespace-scoped snapshots. Native
@@ -86,13 +91,15 @@ Edits become new revisions on the next fetch of that tag; existing Instances ret
 their snapshots. Bare repository references resolve `latest`. There are no blueprint release manifests, archives or publishing tasks.
 Fixtures, examples and source/workflow checks live beside the local blueprints.
 
-Image assembly reads prebuilt `providers/dist/<name>/<version>/linux/<arch>/`
-outputs and engine binaries. It checks recorded hashes, ELF architectures and
-engine/tool compatibility without accessing provider source or the SDK checkout.
-Each provider ships with its build record, corresponding sources and dependency
-notices. Native development outputs use the same layout with the host OS/architecture.
-Kit image push verifies existing bytes and rejects conflicting version tags. Image
-publication is manual; acceptance uses a disposable registry only for Kit images.
+Image assembly reads prebuilt `dist/exec/<KIT-VERSION>/linux/<arch>/` outputs
+and engine binaries. It checks recorded hashes, binary architectures and
+engine/tool compatibility without accessing Go sources or the SDK checkout.
+Each platform has one binary, build record, source snapshot and set of dependency
+notices. Native outputs use the same layout with the host OS/architecture. The
+image installs `/usr/local/bin/exec` and configures each provider with a selector
+argument. Each invocation still runs in its own process. Image push verifies
+existing bytes and rejects conflicting version tags. Publication is manual;
+acceptance uses a disposable registry only for Kit images.
 
 ## Container configuration and storage
 

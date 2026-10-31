@@ -1,0 +1,170 @@
+package ansible
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"regexp"
+	"strings"
+
+	"github.com/inframill/kit/internal/artifacts"
+	"github.com/sir-hassan/inframill/pkg/runmill"
+)
+
+type Provider struct{ Version, ToolVersion, Tool string }
+type StaticSettings struct {
+	ID              string            `json:"id"`
+	SettingsFile    string            `json:"settings_file"`
+	ProducerID      string            `json:"producer_id"`
+	ProducerVersion string            `json:"producer_version"`
+	Artifact        string            `json:"artifact"`
+	Connection      string            `json:"connection"`
+	HostKeyPolicy   string            `json:"host_key_policy"`
+	Roles           []string          `json:"roles"`
+	Playbooks       map[string]string `json:"playbooks"`
+}
+type Settings struct {
+	Schema      int    `json:"schema"`
+	AddressMode string `json:"address_mode"`
+	SSHUser     string `json:"ssh_user"`
+}
+type Arguments struct {
+	Playbook string   `json:"playbook,omitempty"`
+	Hosts    []string `json:"hosts,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+}
+type execution struct {
+	provider Provider
+	scope    runmill.ExecutionContext
+	static   StaticSettings
+	settings Settings
+	args     Arguments
+	command  string
+}
+
+var _ runmill.Provider = Provider{}
+var userName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+func (d Provider) Definition() (runmill.ProviderDefinition, error) {
+	// Even syntax-check, check and ping create temporary workspace files.
+	// Inventory publishes a shared file, so all commands require exclusive access.
+	commands := map[string]runmill.CommandDefinition{"inventory": {AccessMode: runmill.ReadWrite, Description: "Write inventory from a verified node artifact"}}
+	commands["ping"] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: "Verify SSH/local connectivity and Python on every selected host"}
+	for _, name := range []string{"syntax-check", "check", "apply"} {
+		commands[name] = runmill.CommandDefinition{AccessMode: runmill.ReadWrite, Description: name + " the selected playbook and verify the outcome"}
+	}
+	return runmill.ProviderDefinition{Name: "ansible", Commands: commands}, nil
+}
+func (d Provider) parseSettings(config runmill.Settings) (StaticSettings, error) {
+	var m StaticSettings
+	data, e := json.Marshal(config)
+	if e != nil {
+		return m, errors.New("invalid static settings")
+	}
+	if e = artifacts.Decode(data, &m); e != nil {
+		return m, e
+	}
+	if m.HostKeyPolicy == "" {
+		m.HostKeyPolicy = "strict"
+	}
+	if !runmill.ValidID(m.ID) || !runmill.ValidID(m.ProducerID) || m.ProducerVersion == "" || !artifacts.Flat(m.SettingsFile) || !artifacts.Flat(m.Artifact) || !strings.HasPrefix(m.Artifact, m.ProducerID+"-nodes-") || m.Connection != "local" && m.Connection != "ssh" || m.HostKeyPolicy != "strict" && m.HostKeyPolicy != "accept-new" || len(m.Playbooks) == 0 {
+		return m, errors.New("invalid Ansible static settings")
+	}
+	for name, path := range m.Playbooks {
+		if !artifacts.Identifier.MatchString(name) || !artifacts.Relative(path) {
+			return m, errors.New("invalid playbook selection")
+		}
+	}
+	seen := map[string]bool{}
+	for _, role := range m.Roles {
+		if !artifacts.Identifier.MatchString(role) || role == "all" || role == "ungrouped" || seen[role] {
+			return m, errors.New("invalid role")
+		}
+		seen[role] = true
+	}
+	return m, nil
+}
+func (d Provider) ValidateSettings(ctx context.Context, config runmill.Settings) error {
+	_, err := d.parseSettings(config)
+	return errors.Join(ctx.Err(), err)
+}
+func (d Provider) Execute(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments, secrets map[string]string) (any, error) {
+	p, err := d.loadExecution(ctx, scope, command, args)
+	if err != nil {
+		return nil, err
+	}
+	return p.run(ctx, secrets)
+}
+
+// loadExecution defensively decodes inputs and checks prerequisites before effects.
+func (d Provider) loadExecution(ctx context.Context, scope runmill.ExecutionContext, command string, args runmill.Arguments) (*execution, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	m, err := d.parseSettings(scope.Settings)
+	if err != nil {
+		return nil, err
+	}
+	var s Settings
+	data, err := artifacts.Read(scope.WorkspaceDir, m.SettingsFile, artifacts.SettingsLimit)
+	if err != nil {
+		return nil, err
+	}
+	if err = artifacts.Decode(data, &s); err != nil {
+		return nil, err
+	}
+	if s.Schema != 1 || s.AddressMode != "public_ipv4" && s.AddressMode != "private_ipv4" && s.AddressMode != "fqdn" || !userName.MatchString(s.SSHUser) {
+		return nil, errors.New("invalid Ansible workspace settings")
+	}
+	var a Arguments
+	if err = artifacts.DecodeArguments(args, &a); err != nil {
+		return nil, err
+	}
+	switch command {
+	case "inventory":
+		if len(args) > 0 {
+			return nil, errors.New("inventory takes no arguments")
+		}
+	case "ping":
+		for key := range args {
+			if key != "hosts" {
+				return nil, errors.New("ping only accepts hosts")
+			}
+		}
+	case "syntax-check", "check", "apply":
+		if _, provided := args["playbook"]; command == "apply" && !provided {
+			a.Playbook = "site"
+		}
+		path, ok := m.Playbooks[a.Playbook]
+		if !ok {
+			return nil, errors.New("select a declared playbook")
+		}
+		if _, err = artifacts.Read(scope.WorkspaceDir, path, artifacts.Limit); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, errors.New("unknown Ansible command")
+	}
+	for _, values := range [][]string{a.Hosts, a.Tags} {
+		if len(values) > 100 {
+			return nil, errors.New("too many selection entries")
+		}
+		seen := map[string]bool{}
+		for _, v := range values {
+			if !artifacts.Identifier.MatchString(v) || seen[v] {
+				return nil, errors.New("invalid or duplicate selection")
+			}
+			seen[v] = true
+		}
+	}
+	if command == "syntax-check" && (len(a.Hosts) > 0 || len(a.Tags) > 0) {
+		return nil, errors.New("syntax-check does not select hosts or tags")
+	}
+	p := &execution{d, scope, m, s, a, command}
+	if command != "syntax-check" {
+		if _, _, err = p.inventory(); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
+}

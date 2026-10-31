@@ -40,7 +40,7 @@ RUN mkdir -p /var/lib/inframill \
     && test "$(inframill --version)" = "$INFRAMILL_VERSION" \
     && /opt/inframill/tools/opentofu/${OPENTOFU_VERSION}/tofu version \
     && /opt/inframill/tools/ansible/${ANSIBLE_VERSION}/bin/ansible-playbook --version
-RUN for provider in /opt/inframill/providers/*/*/provider; do "$provider" version || exit 1; done
+RUN /usr/local/bin/exec version && /usr/local/bin/exec list
 WORKDIR /var/lib/inframill
 EXPOSE 8080
 ENTRYPOINT ["inframill"]

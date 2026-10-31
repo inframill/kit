@@ -143,15 +143,15 @@ def image_check(tmp, image, arch, network):
         config = json.loads(raw)
         assert config['handlers'] == [{'type': 'connect-engine'}], config
         assert config['engine']['dataDir'] == DATA and config['main']['port'] == 8080, config
-        assert {d['path'] for d in config['engine']['providers'].values()} == {
-            '/opt/inframill/providers/' + d['name'] + '/' + d['version'] + '/provider' for d in lock['providers']}
-        assert all(d['args'][0] == '--tool' for d in config['engine']['providers'].values())
+        assert {d['path'] for d in config['engine']['providers'].values()} == {'/usr/local/bin/exec'}
+        assert {d['args'][0] for d in config['engine']['providers'].values()} == {
+            d['name'] + '-' + d['version'] for d in lock['providers']}
         persist(['--mount', 'type=volume,src=' + volume + ',dst=' + DATA])
         print('Default YAML, named volume and container replacement passed on ' + arch, flush=True)
 
         # A different working directory proves the config-relative data rule.
         custom = root / 'inframill.yaml'
-        custom_config = configuration('/opt/inframill/providers', './data', providers=lock['providers'])
+        custom_config = configuration('/usr/local/bin/exec', './data', providers=lock['providers'])
         custom_config['main']['port'] = 8081
         custom_config['engine']['localBlueprintPaths'] = ['/opt/inframill/blueprints']
         custom.write_text(json.dumps(custom_config))

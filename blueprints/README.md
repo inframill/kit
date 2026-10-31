@@ -284,7 +284,7 @@ tooling to populate the PEM private key and token without putting them in Values
 or command arguments. The private key must be usable without a passphrase, and
 the token must be a nonempty single line. The Dispatch executable must be rebuilt
 with `secret_files` support; for native development run
-`python3 providers/build.py build --name dispatch --native --refresh`. Rebuild the
+`python3 build.py build-exec --native --refresh`. Rebuild the
 Kit image when running the controlling daemon in Docker.
 
 Dispatch writes these two secret files with mode `0600` under
