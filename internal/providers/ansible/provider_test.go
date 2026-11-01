@@ -3,6 +3,7 @@ package ansible
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,13 @@ func TestHostKeyPolicy(t *testing.T) {
 		for _, command := range []string{"ping", "syntax-check", "check", "apply"} {
 			t.Run(policy+"/"+command, func(t *testing.T) {
 				d, s, n := fixture(t)
+				s.Settings["id"] = "custom"
 				s.Settings["connection"] = "ssh"
+				s.ArtifactDir = filepath.Join(t.TempDir(), "instance's \"storage\"", "artifacts")
+				if err := os.MkdirAll(s.ArtifactDir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				n.ArtifactScope = artifacts.Scope(s.ArtifactDir)
 				delete(s.Settings, "host_key_policy")
 				if policy != "" {
 					s.Settings["host_key_policy"] = policy
@@ -52,7 +59,9 @@ printf '%s' '{"schema":1,"hosts":{"local":{"ok":1}}}'
 				if policy == "accept-new" {
 					want = "accept-new"
 				}
-				if got := strings.TrimSpace(string(data)); got != "True\n-o BatchMode=yes -o StrictHostKeyChecking="+want {
+				knownHosts := filepath.Join(s.ArtifactDir, "custom-known_hosts")
+				wantEnvironment := fmt.Sprintf("True\n-o BatchMode=yes -o StrictHostKeyChecking=%s -o %q", want, fmt.Sprintf("UserKnownHostsFile=%q", knownHosts))
+				if got := strings.TrimSpace(string(data)); got != wantEnvironment {
 					t.Fatalf("unexpected SSH environment: %q", got)
 				}
 			})

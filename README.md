@@ -128,9 +128,11 @@ Ansible use its SSH keys and configuration automatically. Put your private key a
 `ssh/id_ed25519` (or another standard SSH identity filename), with mode `600`;
 use mode `700` for `ssh/`. For other key names, set `IdentityFile` in `ssh/config`
 using the container path, for example `/root/.ssh/deploy_key`. The mount is writable
-so SSH can persist `known_hosts` across container replacements. `ssh/` is ignored
-by Git and keys are not included in the image. Existing SSH agent forwarding
-remains available; see [provider SSH access](docs/usage.md#providers).
+so SSH providers using the default known hosts path can persist `known_hosts`
+across container replacements. Ansible stores host keys in each Instance's
+`artifacts/<configured-id>-known_hosts` (normally `artifacts/ansible-known_hosts`).
+`ssh/` is ignored by Git and keys are not included in the image. Existing SSH agent
+forwarding remains available; see [provider SSH access](docs/usage.md#providers).
 
 To stop and remove the container while preserving the data, configuration and image:
 

@@ -395,7 +395,12 @@ artifact, selects the requested address without fallback, and checks the complet
 host recap. Failed, unreachable, ignored or rescued failures reject. Check mode is a
 prediction. Syntax-check needs no previously applied infrastructure. SSH uses an
 agent and batch mode; Kit does not write private keys. The host-key policy defaults
-to `strict`, which requires hosts to be trusted in `known_hosts` before connecting.
+to `strict`, which requires hosts to be trusted before connecting. Ansible sets
+`UserKnownHostsFile` to the Instance's `artifacts/<configured-id>-known_hosts`
+(normally `artifacts/ansible-known_hosts`). This file persists across executions,
+rerenders and container replacements when the Instance data is persisted. For
+`strict`, add verified host keys to this file before connecting; existing keys in
+`~/.ssh/known_hosts` must be copied here if they should be trusted by Ansible.
 The pv-cloud blueprint explicitly sets `host_key_policy: accept-new` to
 automatically record unknown SSH hosts while still rejecting changed keys.
 
@@ -460,8 +465,10 @@ stop installation if login fails. Omit `registry` to skip login. See the
 
 For Docker, `task docker:up` mounts the project's `ssh/` directory at `/root/.ssh`.
 Ansible and other providers invoking SSH use the standard identities there, such
-as `ssh/id_ed25519`, along with `ssh/config` and `ssh/known_hosts`. Set directory
-permissions to `700` and private-key permissions to `600`. For a nonstandard key
+as `ssh/id_ed25519`, along with `ssh/config`. Ansible stores known hosts in the
+Instance artifacts described above. Other SSH providers use `ssh/known_hosts` by
+default. Set directory permissions to `700` and private-key permissions to `600`.
+For a nonstandard key
 name, add an `IdentityFile /root/.ssh/your_key` entry to `ssh/config`. Paths in that
 configuration must refer to the container filesystem. SSH can write `known_hosts`
 to this mount, preserving trusted host keys across container replacements.

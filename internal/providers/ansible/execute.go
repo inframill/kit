@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/inframill/kit/internal/artifacts"
@@ -104,7 +105,13 @@ func (p *execution) run(ctx context.Context, secrets map[string]string) (any, er
 	if p.static.HostKeyPolicy == "accept-new" {
 		policy = "accept-new"
 	}
-	run.Environment = append(run.Environment, "ANSIBLE_CONFIG="+filepath.Join(tmp, "ansible.cfg"), "ANSIBLE_CALLBACK_PLUGINS="+tmp, "ANSIBLE_STDOUT_CALLBACK=callback", "ANSIBLE_HOST_KEY_CHECKING=True", "ANSIBLE_RETRY_FILES_ENABLED=False", "ANSIBLE_ROLES_PATH="+filepath.Join(p.scope.WorkspaceDir, "roles"), "ANSIBLE_SSH_ARGS=-o BatchMode=yes -o StrictHostKeyChecking="+policy)
+	knownHosts, err := filepath.Abs(filepath.Join(p.scope.ArtifactDir, p.static.ID+"-known_hosts"))
+	if err != nil {
+		return nil, err
+	}
+	// Quote for both Ansible's argument splitting and SSH's file-list parsing.
+	sshArgs := "-o BatchMode=yes -o StrictHostKeyChecking=" + policy + " -o " + strconv.Quote("UserKnownHostsFile="+strconv.Quote(knownHosts))
+	run.Environment = append(run.Environment, "ANSIBLE_CONFIG="+filepath.Join(tmp, "ansible.cfg"), "ANSIBLE_CALLBACK_PLUGINS="+tmp, "ANSIBLE_STDOUT_CALLBACK=callback", "ANSIBLE_HOST_KEY_CHECKING=True", "ANSIBLE_RETRY_FILES_ENABLED=False", "ANSIBLE_ROLES_PATH="+filepath.Join(p.scope.WorkspaceDir, "roles"), "ANSIBLE_SSH_ARGS="+sshArgs)
 	if p.static.Connection == "local" {
 		run.Environment = append(run.Environment, "ANSIBLE_PYTHON_INTERPRETER="+filepath.Join(filepath.Dir(tool), "python3"))
 	}
