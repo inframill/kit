@@ -9,10 +9,29 @@ import zipfile
 from unittest.mock import patch
 
 from scripts.kit.project import ROOT, provider_releases, configuration, local_tools, runtime_settings
-from runtime.tools import ansible_requirements, fetch_sources, install_opentofu
+from runtime.tools import ansible_requirements, fetch_sources, install_ansible, install_opentofu
 
 
 class RuntimeToolTests(unittest.TestCase):
+    def test_ansible_venv_installation_uses_explicit_environment_and_working_directory(self):
+        settings = {'ANSIBLE_VERSION': '2.0.0', 'ANSIBLE_DEPENDENCIES': 'example==1.0'}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            venv = root / 'venv'
+            report = root / 'packages.json'
+            environment = {'PATH': '/tools'}
+            with patch('runtime.tools.subprocess.run') as run:
+                install_ansible('/python', settings, venv, report, env=environment, cwd=root)
+            self.assertEqual(run.call_count, 3)
+            self.assertEqual(run.call_args_list[0].args[0], ['/python', '-m', 'venv', str(venv)])
+            self.assertIn('ansible-core==2.0.0', run.call_args_list[1].args[0])
+            self.assertEqual(run.call_args_list[-1].args[0], [str(venv / 'bin/pip'), 'check'])
+            for call in run.call_args_list:
+                self.assertTrue(call.kwargs['check'])
+                self.assertEqual(call.kwargs['env'], environment)
+                self.assertEqual(call.kwargs['cwd'], root)
+                self.assertGreater(call.kwargs['timeout'], 0)
+
     def test_native_setup_matches_provider_requirements(self):
         settings = runtime_settings()
         tofu, ansible = local_tools()

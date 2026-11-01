@@ -1,37 +1,36 @@
 """Verify and import sibling engine binaries; retain no engine implementation source."""
-import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
-import tempfile
 
+from ..core.workspace import install, workspace
 from .artifacts import verify_binary
-from .project import ROOT, native_platform, run, runtime_settings
+from .project import get_context, native_platform, runtime_settings
 
 MODULE = 'github.com/inframill/inframill'
 LOCAL_RUNMILL = 'github.com/inframill/kit/pkg/runmill'
 PLATFORMS = ('linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64')
 
 
-def engine_checkout():
-    return Path(os.environ.get('INFRAMILL_SOURCE') or os.environ.get('INFRAMILL_DIR')
-                or ROOT.parent / 'inframill').resolve()
+def engine_checkout(*, context=None):
+    context = get_context(context)
+    return context.path(context.env.get('INFRAMILL_SOURCE') or context.env.get('INFRAMILL_DIR')
+                        or context.root.parent / 'inframill')
 
 
-def source_revision(source):
+def source_revision(source, *, context=None):
+    context = get_context(context)
     if not re.search(r'^module\s+' + re.escape(MODULE) + r'\s*$',
                      (source / 'go.mod').read_text(), re.MULTILINE):
         raise ValueError('INFRAMILL_DIR must be the Inframill module root')
-    root = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=source, text=True).strip()
+    root = context.output(['git', 'rev-parse', '--show-toplevel'], cwd=source).strip()
     if Path(root).resolve() != source:
         raise ValueError('INFRAMILL_DIR must be the Inframill Git checkout root')
-    if subprocess.check_output(['git', 'status', '--porcelain'], cwd=source, text=True).strip():
+    if context.output(['git', 'status', '--porcelain'], cwd=source).strip():
         raise ValueError('Commit or set aside sibling changes first; the engine pin requires a clean checkout')
-    return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()
+    return context.output(['git', 'rev-parse', 'HEAD'], cwd=source).strip()
 
 
 def runmill_digest(package):
@@ -51,11 +50,11 @@ def binary_name(platform):
     return 'inframill-' + platform.replace('/', '-')
 
 
-def verify_engine_binary(path, platform, pin):
+def verify_engine_binary(path, platform, pin, *, context=None):
     if path.is_symlink() or not path.is_file():
         raise ValueError('Missing regular engine binary: ' + str(path))
     verify_binary(path.read_bytes(), platform)
-    info = subprocess.check_output(['go', 'version', '-m', path], text=True)
+    info = get_context(context).output(['go', 'version', '-m', path])
     required = ['\tpath\t' + MODULE + '/cmd', '\tbuild\tvcs.revision=' + pin['revision'],
                 '\tbuild\tvcs.modified=false', '\tbuild\tGOOS=' + platform.split('/')[0],
                 '\tbuild\tGOARCH=' + platform.split('/')[1]]
@@ -64,11 +63,11 @@ def verify_engine_binary(path, platform, pin):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def collect_notices(source, target, revision):
+def collect_notices(source, target, revision, *, context=None):
     target.mkdir()
-    output = subprocess.check_output(
+    output = get_context(context).output(
         ['go', 'list', '-deps', '-f', '{{if .Module}}{{.Module.Path}}|{{.Module.Version}}|{{.Module.Dir}}{{end}}', './cmd'],
-        cwd=source, env={**os.environ, 'GOWORK': 'off', 'CGO_ENABLED': '0'}, text=True)
+        cwd=source, env={'GOWORK': 'off', 'CGO_ENABLED': '0'}, timeout=300)
     modules = {}
     for line in filter(None, output.splitlines()):
         name, version, folder = line.split('|', 2)
@@ -83,8 +82,9 @@ def collect_notices(source, target, revision):
                     shutil.copy2(path, destination)
 
 
-def prepare(source, stage, expected=None):
-    revision = source_revision(source)
+def prepare(source, stage, expected=None, *, context=None):
+    context = get_context(context)
+    revision = source_revision(source, context=context)
     pin = {'version': json.loads((source / 'toolai.json').read_text())['version'],
            'revision': revision, 'runmill_sha256': runmill_digest(source / 'pkg/runmill'), 'binaries': {}}
     binaries = stage / 'bin'
@@ -96,87 +96,63 @@ def prepare(source, stage, expected=None):
             raise ValueError('Missing sibling binaries; run task dev:prepare or build Inframill first: ' + str(original))
         target = binaries / name
         shutil.copy2(original, target)
-        pin['binaries'][platform] = verify_engine_binary(target, platform, pin)
+        pin['binaries'][platform] = verify_engine_binary(target, platform, pin, context=context)
     native = binaries / binary_name(native_platform())
-    if subprocess.check_output([native, '--version'], text=True).strip() != pin['version']:
+    if context.output([native, '--version']).strip() != pin['version']:
         raise ValueError('Engine binary version differs from sibling metadata')
     shutil.copy2(native, binaries / 'inframill')
     if expected is not None and pin != expected:
         raise ValueError('Sibling engine artifacts differ from runtime pin; run task dev:sync')
     metadata = stage / 'engine'
     metadata.mkdir()
-    collect_notices(source, metadata / 'notices', revision)
-    if source_revision(source) != revision or runmill_digest(source / 'pkg/runmill') != pin['runmill_sha256']:
+    collect_notices(source, metadata / 'notices', revision, context=context)
+    if source_revision(source, context=context) != revision or runmill_digest(source / 'pkg/runmill') != pin['runmill_sha256']:
         raise ValueError('Sibling changed during import; rerun task dev:sync')
     (metadata / 'engine.json').write_text(json.dumps(pin, indent=2) + '\n')
     return pin
 
 
-def install(items, backup):
-    """Install the prepared package, pins and artifacts together, restoring on failure."""
-    previous = []
-    try:
-        for index, (prepared, target) in enumerate(items):
-            if target.is_symlink():
-                raise ValueError('Import target must not be a symlink: ' + str(target))
-            target.parent.mkdir(parents=True, exist_ok=True)
-            saved = backup / str(index)
-            if target.exists():
-                target.rename(saved)
-            previous.append((target, saved))
-            prepared.rename(target)
-    except BaseException:
-        for target, saved in reversed(previous):
-            if target.is_dir():
-                shutil.rmtree(target)
-            elif target.exists():
-                target.unlink()
-            if saved.exists():
-                saved.rename(target)
-        raise
+def artifact_items(stage, *, context=None):
+    root = get_context(context).root
+    return [(path, root / 'bin' / path.name) for path in sorted((stage / 'bin').iterdir())] + [
+        (stage / 'engine', root / '.build/engine')]
 
 
-def artifact_items(stage):
-    return [(path, ROOT / 'bin' / path.name) for path in sorted((stage / 'bin').iterdir())] + [
-        (stage / 'engine', ROOT / '.build/engine')]
-
-
-def verify_prepared():
-    pin = runtime_settings()['INFRAMILL']
-    if json.loads((ROOT / '.build/engine/engine.json').read_text()) != pin:
+def verify_prepared(*, context=None):
+    context = get_context(context)
+    root = context.root
+    pin = runtime_settings(context=context)['INFRAMILL']
+    if json.loads((root / '.build/engine/engine.json').read_text()) != pin:
         raise ValueError('Prepared engine pin is stale; rerun task build:engine')
-    if runmill_digest(ROOT / 'pkg/runmill') != pin['runmill_sha256']:
+    if runmill_digest(root / 'pkg/runmill') != pin['runmill_sha256']:
         raise ValueError('Kit Runmill source differs from runtime pin')
     for platform in PLATFORMS:
-        if verify_engine_binary(ROOT / 'bin' / binary_name(platform), platform, pin) != pin['binaries'][platform]:
+        if verify_engine_binary(root / 'bin' / binary_name(platform), platform, pin, context=context) != pin['binaries'][platform]:
             raise ValueError('Engine binary checksum mismatch: ' + platform)
-    if hashlib.sha256((ROOT / 'bin/inframill').read_bytes()).hexdigest() != pin['binaries'][native_platform()]:
+    if hashlib.sha256((root / 'bin/inframill').read_bytes()).hexdigest() != pin['binaries'][native_platform()]:
         raise ValueError('Native engine binary checksum mismatch')
 
 
-def copy():
-    parent = ROOT / '.build'
-    parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='engine-', dir=parent) as temporary:
-        stage = Path(temporary)
-        prepare(engine_checkout(), stage, runtime_settings()['INFRAMILL'])
+def copy(*, context=None):
+    context = get_context(context)
+    with workspace(context.root / '.build', prefix='engine-') as stage:
+        prepare(engine_checkout(context=context), stage, runtime_settings(context=context)['INFRAMILL'], context=context)
         backup = stage / 'backup'
         backup.mkdir()
-        install(artifact_items(stage), backup)
+        install(artifact_items(stage, context=context), backup)
 
 
-def build_sibling():
-    source = engine_checkout()
-    revision = source_revision(source)
-    run([os.environ.get('TOOLAI', 'toolai'), 'go', 'build', source], env={**os.environ, 'GOWORK': 'off'})
-    if source_revision(source) != revision:
+def build_sibling(*, context=None):
+    context = get_context(context)
+    source = engine_checkout(context=context)
+    revision = source_revision(source, context=context)
+    context.run([context.env.get('TOOLAI', 'toolai'), 'go', 'build', source],
+                env={'GOWORK': 'off'}, timeout=1800)
+    if source_revision(source, context=context) != revision:
         raise ValueError('Sibling changed during build; rerun task dev:prepare')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', nargs='?', choices=['copy', 'build'], default='copy')
-    if parser.parse_args().action == 'build':
-        build_sibling()
-    else:
-        copy()
+    import sys
+    from ..cli import main
+    raise SystemExit(main(['kit', 'engine', *(sys.argv[1:] or ['copy'])]))

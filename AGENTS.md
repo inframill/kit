@@ -29,6 +29,7 @@ Use Toolai for this project's Go development workflow. Use direct Go commands
 for focused tests and diagnostics that Toolai does not expose.
 
 - Follow the repository-local `toolai` skill for development workflow, operational safeguards, generation, and failure recovery. Scale planning and testing to the change; small, clear tasks can proceed directly.
+- For repository Python automation, follow the skill's scripts guidance and the local `scripts/README.md` when present. Reuse namespaced jobs, keep tests beside their modules, and distinguish validation from operational effects. Select relevant Python checks for script-only changes; Task is optional and scripts remain project-owned.
 - Inspect existing changes and preserve unrelated work. Continue within the user's authorized scope, asking only when material ambiguity or an action outside that scope requires a decision. Keep credentials and sensitive data out of output and artifacts.
 - Root check steps are defined in `toolai.json` under `checks.steps`; untagged steps always run, and positional tags add steps matching any requested tag. Inspect the steps and select appropriate tags; use `--directory` for another project with root check or build. Clean, generate, check, and build are independent operations. Go commands do not run sqlc/RPC tools or `gopackage` checks.
 - During implementation, use `toolai go compile` when compilation feedback is useful.

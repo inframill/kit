@@ -1,20 +1,17 @@
 """Package, verify and publish prepared Kit artifacts; never compile or test."""
-import argparse
 import hashlib
 import gzip
 import json
-import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
-import subprocess
 import tarfile
-import tempfile
 
+from ..core.workspace import install, workspace
 from .artifacts import verify_binary
 from .engine import MODULE, verify_prepared
-from .project import (ROOT, LINUX, bundle_output, image_reference,
-                      local_executable, project_version, provider_releases, run,
+from .project import (get_context, LINUX, bundle_output, image_reference,
+                      local_executable, project_version, provider_releases,
                       runtime_settings)
 
 
@@ -57,29 +54,31 @@ def verify(folder):
     return metadata
 
 
-def loaded_digest(reference):
-    descriptor = json.loads(subprocess.check_output(['docker', 'image', 'inspect', reference, '--format', '{{json .Descriptor}}'], text=True))
+def loaded_digest(reference, *, context=None):
+    descriptor = json.loads(get_context(context).output(['docker', 'image', 'inspect', reference, '--format', '{{json .Descriptor}}']))
     return descriptor['digest']
 
 
-def load_image(folder, reference=None):
+def load_image(folder, reference=None, *, context=None):
+    context = get_context(context)
     metadata = verify(folder)
     original = metadata['image']['reference']
-    run(['docker', 'load', '--input', Path(folder) / 'image.oci.tar'])
-    if loaded_digest(original) != metadata['image']['digest']:
+    context.run(['docker', 'load', '--input', Path(folder) / 'image.oci.tar'], timeout=600)
+    if loaded_digest(original, context=context) != metadata['image']['digest']:
         raise ValueError('Loaded image digest differs from bundle')
     if reference and reference != original:
-        run(['docker', 'tag', original, reference])
+        context.run(['docker', 'tag', original, reference])
     return metadata
 
 
-def source_files():
-    paths = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard', '-z'], cwd=ROOT).decode().split('\0')
+def source_files(*, context=None):
+    context = get_context(context)
+    paths = context.output(['git', 'ls-files', '-co', '--exclude-standard', '-z']).split('\0')
     roots = {'cmd', 'internal', 'pkg', 'runtime', 'scripts', 'tests', 'blueprints', 'docs', '.agents'}
     files = {'go.mod', 'go.sum', 'toolai.json', 'Taskfile.yml', 'README.md', 'LICENSE'}
     result = {}
     for name in sorted(set(filter(None, paths))):
-        path = ROOT / name
+        path = context.root / name
         if name not in files and PurePosixPath(name).parts[0] not in roots:
             continue
         if path.is_symlink():
@@ -89,20 +88,23 @@ def source_files():
     return result
 
 
-def capture():
-    parent = ROOT / '.build'
+def capture(*, context=None):
+    context = get_context(context)
+    parent = context.root / '.build'
     parent.mkdir(exist_ok=True)
-    (parent / 'inputs.json').write_text(json.dumps(source_files(), sort_keys=True))
+    (parent / 'inputs.json').write_text(json.dumps(source_files(context=context), sort_keys=True))
 
 
-def check_inputs():
-    if json.loads((ROOT / '.build/inputs.json').read_text()) != source_files():
+def check_inputs(*, context=None):
+    context = get_context(context)
+    if json.loads((context.root / '.build/inputs.json').read_text()) != source_files(context=context):
         raise ValueError('Sources changed after build preparation; rerun toolai build')
 
 
-def source_archive(target):
-    check_inputs()
-    epoch = int(runtime_settings()['SOURCE_DATE_EPOCH'])
+def source_archive(target, *, context=None):
+    context = get_context(context)
+    check_inputs(context=context)
+    epoch = int(runtime_settings(context=context)['SOURCE_DATE_EPOCH'])
     def normalize(info):
         info.uid = info.gid = 0
         info.uname = info.gname = ''
@@ -110,17 +112,18 @@ def source_archive(target):
         return info
     with target.open('wb') as stream, gzip.GzipFile(fileobj=stream, mode='wb', mtime=epoch, filename='') as compressed:
         with tarfile.open(fileobj=compressed, mode='w') as archive:
-            for name in source_files():
-                archive.add(ROOT / name, arcname='kit/' + name, recursive=False, filter=normalize)
-    check_inputs()
+            for name in source_files(context=context):
+                archive.add(context.root / name, arcname='kit/' + name, recursive=False, filter=normalize)
+    check_inputs(context=context)
 
 
-def notices(target):
-    shutil.copytree(ROOT / '.build/engine/notices', target)
+def notices(target, *, context=None):
+    context = get_context(context)
+    shutil.copytree(context.root / '.build/engine/notices', target)
     for pattern in ('LICENSE*', 'COPYING*', 'NOTICE*', 'AUTHORS*'):
-        for path in ROOT.glob(pattern):
+        for path in context.root.glob(pattern):
             if path.is_file() and not path.is_symlink():
-                destination = target / ('github.com_inframill_kit@' + project_version()) / path.name
+                destination = target / ('github.com_inframill_kit@' + project_version(context=context)) / path.name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, destination)
 
@@ -131,18 +134,19 @@ def verify_provider_build_info(info):
         raise ValueError('Provider binary still imports upstream Runmill; rerun toolai build')
 
 
-def prepare(context):
-    engine_root = ROOT / '.build/engine'
+def prepare(target, *, context=None):
+    context = get_context(context)
+    engine_root = context.root / '.build/engine'
     metadata = json.loads((engine_root / 'engine.json').read_text())
-    verify_prepared()
-    providers = json.loads(subprocess.check_output([local_executable(), 'list'], text=True))
-    expected = provider_releases()
+    verify_prepared(context=context)
+    providers = json.loads(context.output([local_executable(context=context), 'list']))
+    expected = provider_releases(context=context)
     if providers != sorted(expected, key=lambda item: item['name'] + '-' + item['version']):
         raise ValueError('Compiled provider registry differs from sources')
-    version = json.loads(subprocess.check_output([local_executable(), 'version'], text=True))['version']
-    if version != project_version():
+    version = json.loads(context.output([local_executable(context=context), 'version']))['version']
+    if version != project_version(context=context):
         raise ValueError('Provider binary version is stale; run toolai build')
-    settings = runtime_settings()
+    settings = runtime_settings(context=context)
     for provider in providers:
         key = {'opentofu': 'OPENTOFU_VERSION', 'ansible': 'ANSIBLE_VERSION'}.get(provider['name'])
         if provider['protocol'] != 1 or set(provider['platforms']) != set(LINUX) or key and provider['tool_version'] != settings[key]:
@@ -150,13 +154,13 @@ def prepare(context):
     binary_hashes = {}
     for platform in LINUX:
         system, arch = platform.split('/')
-        folder = context / 'bin' / system / arch
+        folder = target / 'bin' / system / arch
         folder.mkdir(parents=True)
-        for name, source in [('kit-exec', ROOT / f'bin/kit-exec-{system}-{arch}'), ('inframill', ROOT / f'bin/inframill-{system}-{arch}')]:
+        for name, source in [('kit-exec', context.root / f'bin/kit-exec-{system}-{arch}'), ('inframill', context.root / f'bin/inframill-{system}-{arch}')]:
             data = source.read_bytes()
             verify_binary(data, platform)
             # Toolai embeds version injection and module identities in Go build info.
-            info = subprocess.check_output(['go', 'version', '-m', source], text=True)
+            info = context.output(['go', 'version', '-m', source])
             expected_package = 'github.com/inframill/' + ('kit' if name == 'kit-exec' else 'inframill') + '/cmd'
             if expected_package not in info:
                 raise ValueError('Unexpected binary package: ' + str(source))
@@ -165,76 +169,76 @@ def prepare(context):
             destination = folder / name
             shutil.copy2(source, destination)
             binary_hashes[f'{platform}/{name}'] = checksum(destination)
-    source_archive(context / 'sources.tar.gz')
-    notices(context / 'notices')
-    shutil.copytree(ROOT / 'runtime', context / 'runtime', ignore=shutil.ignore_patterns('__pycache__'))
-    shutil.copy2(ROOT / 'runtime/inframill.yaml', context / 'inframill.yaml')
-    record = {'schema': 1, 'version': project_version(), 'platforms': LINUX,
-              'source_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-              'source_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
+    source_archive(target / 'sources.tar.gz', context=context)
+    notices(target / 'notices', context=context)
+    shutil.copytree(context.root / 'runtime', target / 'runtime', ignore=shutil.ignore_patterns('__pycache__'))
+    shutil.copy2(context.root / 'runtime/inframill.yaml', target / 'inframill.yaml')
+    record = {'schema': 1, 'version': project_version(context=context), 'platforms': LINUX,
+              'source_revision': context.output(['git', 'rev-parse', 'HEAD']).strip(),
+              'source_dirty': bool(context.output(['git', 'status', '--porcelain']).strip()),
               'inframill': metadata, 'providers': providers, 'runtime': settings,
-              'go_version': subprocess.check_output(['go', 'env', 'GOVERSION'], text=True).strip(),
+              'go_version': context.output(['go', 'env', 'GOVERSION']).strip(),
               'binaries': binary_hashes,
-              'source_sha256': checksum(context / 'sources.tar.gz')}
-    (context / 'manifest.json').write_text(json.dumps(record, indent=2) + '\n')
+              'source_sha256': checksum(target / 'sources.tar.gz')}
+    (target / 'manifest.json').write_text(json.dumps(record, indent=2) + '\n')
     return record
 
 
-def build_image():
-    parent = ROOT / '.build'
-    parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='image-', dir=parent) as temporary:
-        stage = Path(temporary)
-        context = stage / 'context'
-        context.mkdir()
-        record = prepare(context)
-        reference = image_reference()
-        settings = runtime_settings()
+def build_image(*, context=None):
+    context = get_context(context)
+    parent = context.root / '.build'
+    with workspace(parent, prefix='image-') as temporary:
+        stage = temporary / 'bundle'
+        stage.mkdir()
+        target = temporary / 'context'
+        target.mkdir()
+        record = prepare(target, context=context)
+        reference = image_reference(context=context)
+        settings = runtime_settings(context=context)
         args = ['docker', 'buildx', 'build', '--platform', ','.join(LINUX), '--provenance=false', '--sbom=false',
-                '--metadata-file', stage / 'buildx.json', '--tag', reference,
+                '--metadata-file', temporary / 'buildx.json', '--tag', reference,
                 '--build-arg', 'INFRAMILL_VERSION=' + record['inframill']['version'],
                 '--build-arg', 'KIT_VERSION=' + record['version']]
         for name in ('BASE_IMAGE', 'SOURCE_DATE_EPOCH', 'DEBIAN_SNAPSHOT'):
             args += ['--build-arg', name + '=' + settings[name]]
-        args += ['--file', context / 'runtime/Dockerfile', '--output', 'type=oci,dest=' + str(stage / 'image.oci.tar') + ',rewrite-timestamp=true', context]
-        run(args)
-        digest = json.loads((stage / 'buildx.json').read_text())['containerimage.digest']
+        args += ['--file', target / 'runtime/Dockerfile', '--output', 'type=oci,dest=' + str(stage / 'image.oci.tar') + ',rewrite-timestamp=true', target]
+        context.run(args, timeout=1800)
+        digest = json.loads((temporary / 'buildx.json').read_text())['containerimage.digest']
         record['image'] = {'reference': reference, 'digest': digest}
         for name in ('sources.tar.gz', 'notices'):
-            shutil.move(context / name, stage / name)
-        shutil.rmtree(context)
-        (stage / 'buildx.json').unlink()
+            shutil.move(target / name, stage / name)
         (stage / 'manifest.json').write_text(json.dumps(record, indent=2) + '\n')
-        check_inputs()
+        check_inputs(context=context)
         write_checksums(stage)
         verify(stage)
+        load_image(stage, context=context)
         destination = parent / 'image'
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.move(stage, destination)
-    load_image(destination)
+        backup = temporary / 'backup'
+        backup.mkdir()
+        install([(stage, destination)], backup)
     print('Prepared image:', reference, digest)
 
 
-def release():
-    source = ROOT / '.build/image'
+def release(*, context=None):
+    context = get_context(context)
+    source = context.root / '.build/image'
     metadata = verify(source)
-    if metadata['version'] != project_version():
+    if metadata['version'] != project_version(context=context):
         raise ValueError('Prepared image version is stale')
-    output = bundle_output()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='.release-', dir=output.parent) as temporary:
-        stage = Path(temporary) / 'bundle'
+    output = bundle_output(context=context)
+    with workspace(output.parent, prefix='.release-') as temporary:
+        stage = temporary / 'bundle'
         shutil.copytree(source, stage)
         verify(stage)
-        if output.exists():
-            shutil.rmtree(output)
-        stage.rename(output)
+        backup = temporary / 'backup'
+        backup.mkdir()
+        install([(stage, output)], backup)
     print('Release bundle:', output)
 
 
-def remote_digest(reference):
-    result = subprocess.run(['docker', 'buildx', 'imagetools', 'inspect', '--format', '{{json .Manifest}}', reference], capture_output=True, text=True)
+def remote_digest(reference, *, context=None):
+    result = get_context(context).run(['docker', 'buildx', 'imagetools', 'inspect', '--format', '{{json .Manifest}}', reference],
+                                      capture_output=True, check=False, log=False)
     if result.returncode:
         if any(word in result.stderr.lower() for word in ('manifest unknown', 'no such manifest', ': not found')):
             return None
@@ -242,40 +246,28 @@ def remote_digest(reference):
     return json.loads(result.stdout)['digest']
 
 
-def push(folder):
+def push(folder, *, context=None):
+    context = get_context(context)
     metadata = verify(folder)
-    reference = image_reference(metadata['version'])
+    reference = image_reference(metadata['version'], context=context)
     digest = metadata['image']['digest']
-    existing = remote_digest(reference)
+    existing = remote_digest(reference, context=context)
     if existing == digest:
         return
     if existing is not None:
         raise ValueError('Release tag already points to different content')
-    load_image(folder, reference)
-    existing = remote_digest(reference)
+    load_image(folder, reference, context=context)
+    existing = remote_digest(reference, context=context)
     if existing is not None and existing != digest:
         raise ValueError('Concurrent conflicting publication')
     if existing is None:
-        run(['docker', 'push', reference])
-    if remote_digest(reference) != digest:
+        context.run(['docker', 'push', reference], timeout=1800)
+    if remote_digest(reference, context=context) != digest:
         raise ValueError('Published digest mismatch')
     print(reference.rsplit(':', 1)[0] + '@' + digest)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['capture', 'image', 'release', 'verify', 'load', 'push'])
-    parser.add_argument('--bundle', type=Path)
-    args = parser.parse_args()
-    if args.action == 'capture': capture()
-    elif args.action == 'image': build_image()
-    elif args.action == 'release': release()
-    else:
-        folder = args.bundle or bundle_output()
-        if args.action == 'verify': print(json.dumps(verify(folder), indent=2))
-        elif args.action == 'load': load_image(folder)
-        else: push(folder)
-
-
 if __name__ == '__main__':
-    main()
+    import sys
+    from ..cli import main
+    raise SystemExit(main(['kit', 'bundle', *sys.argv[1:]]))

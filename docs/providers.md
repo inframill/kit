@@ -33,9 +33,10 @@ internal/toolrun/              subprocesses and filtered diagnostics
 pkg/runmill/                   copied transport implementation and tests
 go.mod                         one root Go module, no external dependencies
 toolai.json                    application version, Go builds and check steps
-scripts/kit/                   focused engine/runtime/bundle helpers
+scripts/core/                  shared Python execution/staging primitives and unit tests
+scripts/kit/                   namespaced engine/runtime/bundle jobs and unit tests
 runtime/dependencies.json      runtime tool versions and checksums
-tests/                         Python, protocol and acceptance tests
+tests/                         blueprint, protocol and acceptance tests
 ```
 
 The provider registry reads identity and requirements from each implementation's

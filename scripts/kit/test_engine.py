@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from scripts.core.context import Context
 from scripts.kit import engine
 
 
@@ -36,10 +37,11 @@ class EngineArtifactTests(unittest.TestCase):
             self.pin['binaries'][platform] = hashlib.sha256(data).hexdigest()
         shutil.copy2(self.root / 'bin/inframill-linux-amd64', self.root / 'bin/inframill')
         (self.root / '.build/engine/engine.json').write_text(json.dumps(self.pin))
-        self.patch(engine, 'ROOT', self.root)
+        self.context = Context(self.root, env={})
         self.patch(engine, 'native_platform', return_value='linux/amd64')
-        self.patch(engine, 'runtime_settings', return_value={'INFRAMILL': self.pin})
-        self.patch(engine.subprocess, 'check_output', side_effect=self.build_info)
+        (self.root / 'runtime').mkdir()
+        (self.root / 'runtime/dependencies.json').write_text(json.dumps({'INFRAMILL': self.pin}))
+        self.patch(Context, 'output', side_effect=self.build_info)
 
     def patch(self, target, name, *args, **kwargs):
         patched = patch.object(target, name, *args, **kwargs)
@@ -54,7 +56,7 @@ class EngineArtifactTests(unittest.TestCase):
                 '\n\tbuild\tvcs.modified=false\n\tbuild\tGOOS=' + platform[0] + '\n\tbuild\tGOARCH=' + platform[1] + '\n')
 
     def test_prepared_artifacts_verify_without_engine_sources_or_sibling(self):
-        engine.verify_prepared()
+        engine.verify_prepared(context=self.context)
         self.assertFalse((self.root / '.build/engine/source').exists())
         self.assertFalse((self.root / '.build/engine/source.tar').exists())
 
@@ -73,7 +75,7 @@ class EngineArtifactTests(unittest.TestCase):
                 original = path.read_bytes()
                 path.write_bytes(value)
                 with self.assertRaises(ValueError):
-                    engine.verify_prepared()
+                    engine.verify_prepared(context=self.context)
                 path.write_bytes(original)
 
     def test_binary_identity_requires_expected_revision_platform_and_clean_build(self):
@@ -81,11 +83,11 @@ class EngineArtifactTests(unittest.TestCase):
         valid = self.build_info(['go', 'version', '-m', path])
         for field, replacement in [(self.pin['revision'], 'b' * 40), ('modified=false', 'modified=true'),
                                    ('GOOS=linux', 'GOOS=darwin'), (engine.MODULE + '/cmd', 'other/cmd')]:
-            with self.subTest(field=field), patch.object(engine.subprocess, 'check_output', return_value=valid.replace(field, replacement)), \
+            with self.subTest(field=field), patch.object(Context, 'output', return_value=valid.replace(field, replacement)), \
                  self.assertRaisesRegex(ValueError, 'build identity differs'):
-                engine.verify_engine_binary(path, 'linux/amd64', self.pin)
+                engine.verify_engine_binary(path, 'linux/amd64', self.pin, context=self.context)
         with self.assertRaisesRegex(ValueError, 'architecture mismatch'):
-            engine.verify_engine_binary(path, 'linux/arm64', self.pin)
+            engine.verify_engine_binary(path, 'linux/arm64', self.pin, context=self.context)
 
     def test_runmill_import_replacement_keeps_same_source_hash(self):
         package = self.root / 'pkg/runmill'

@@ -19,14 +19,14 @@ def ansible_requirements(settings):
     return ['ansible-core==' + settings['ANSIBLE_VERSION'], *shlex.split(settings['ANSIBLE_DEPENDENCIES'])]
 
 
-def install_ansible(python, settings, output, report):
+def install_ansible(python, settings, output, report, *, env=None, cwd=None):
     """Use the same installation contract for native setup and Docker."""
     output = pathlib.Path(output)
-    subprocess.run([str(python), '-m', 'venv', str(output)], check=True)
+    subprocess.run([str(python), '-m', 'venv', str(output)], check=True, env=env, cwd=cwd, timeout=120)
     pip = str(output / 'bin/pip')
     subprocess.run([pip, 'install', '--no-cache-dir', '--report', str(report),
-                    *ansible_requirements(settings)], check=True)
-    subprocess.run([pip, 'check'], check=True)
+                    *ansible_requirements(settings)], check=True, env=env, cwd=cwd, timeout=900)
+    subprocess.run([pip, 'check'], check=True, env=env, cwd=cwd, timeout=120)
 
 
 def download(url, checksum, destination):

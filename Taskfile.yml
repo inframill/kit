@@ -13,14 +13,14 @@ tasks:
 
   setup:
     desc: Install pinned OpenTofu and Ansible into .cache
-    cmds: ['python3 -m scripts.kit.runtime setup']
+    cmds: ['python3 -m scripts kit runtime setup']
 
   dev:sync:
     desc: Import Runmill, engine binaries and runtime pins from ../inframill (INFRAMILL_DIR overrides)
     env:
       INFRAMILL_SOURCE: '{{.INFRAMILL_DIR | default "../inframill"}}'
       GOWORK: 'off'
-    cmds: ['python3 -m scripts.kit.dev']
+    cmds: ['python3 -m scripts kit dev sync']
 
   dev:prepare:
     desc: Sync Runmill/engine pins, install pinned tools, build binaries and write native dev config
@@ -28,50 +28,52 @@ tasks:
       GOWORK: 'off'
       INFRAMILL_SOURCE: '{{.INFRAMILL_DIR | default "../inframill"}}'
     cmds:
-      - python3 -m scripts.kit.engine build
+      - python3 -m scripts kit engine build
       - task: dev:sync
       - task: setup
       - toolai go build
       - toolai go build --native --output bin/kit-exec
-      - python3 -m scripts.kit.runtime config --output .build/dev/inframill.json
+      - python3 -m scripts kit runtime config --output .build/dev/inframill.json
 
   config:
     desc: Print native configuration using prepared binaries and local tools
-    cmds: ['python3 -m scripts.kit.runtime config']
+    cmds: ['python3 -m scripts kit runtime config']
 
   build:prepare:
     desc: Record the source inputs before Toolai builds binaries
-    cmds: ['python3 -m scripts.kit.bundle capture']
+    cmds: ['python3 -m scripts kit bundle capture']
 
   build:engine:
     desc: Import and verify pinned sibling engine binaries and dependency notices
     env:
       INFRAMILL_SOURCE: '{{.INFRAMILL_DIR | default "../inframill"}}'
-    cmds: ['python3 -m scripts.kit.engine']
+    cmds: ['python3 -m scripts kit engine copy']
 
   build:image:
     desc: Package prepared provider/engine binaries and load the local image
-    cmds: ['python3 -m scripts.kit.bundle image']
+    cmds: ['python3 -m scripts kit bundle image']
 
   build:release:
     desc: Assemble a self-contained release bundle from the prepared image
-    cmds: ['python3 -m scripts.kit.bundle release']
+    cmds: ['python3 -m scripts kit bundle release']
 
   release:verify:
     desc: Verify an existing release bundle without source or engine checkouts
-    cmds: ['python3 -m scripts.kit.bundle verify {{.CLI_ARGS}}']
+    cmds: ['python3 -m scripts kit bundle verify {{.CLI_ARGS}}']
 
   release:load:
     desc: Verify and load an existing release bundle
-    cmds: ['python3 -m scripts.kit.bundle load {{.CLI_ARGS}}']
+    cmds: ['python3 -m scripts kit bundle load {{.CLI_ARGS}}']
 
   release:push:
     desc: Verify and publish the existing bundle (requires registry login)
-    cmds: ['python3 -m scripts.kit.bundle push {{.CLI_ARGS}}']
+    cmds: ['python3 -m scripts kit bundle push {{.CLI_ARGS}}']
 
   check:python:
     desc: Run Python packaging, runtime, and blueprint unit tests
-    cmds: ['python3 -B -m unittest discover -s tests -p "test_*.py"']
+    cmds:
+      - python3 -B -m unittest discover -s scripts -t . -p "test_*.py"
+      - python3 -B -m unittest discover -s tests -p "test_*.py"
 
   test:native:
     desc: Run native acceptance against prepared binaries and installed local tools

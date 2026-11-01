@@ -18,9 +18,13 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
 - `internal/artifacts` owns rooted file access, hashes and shared node records.
   `internal/toolrun` owns subprocesses, restricted environments, bounded output
   and filtered diagnostics.
-- Toolai owns Go builds and aggregate workflows. `scripts/kit` owns focused
+- Toolai owns Go builds and aggregate workflows. The [`scripts` Python package](../scripts/README.md)
+  exposes an explicit namespaced CLI; `scripts/core` owns invocation contexts,
+  subprocess execution and temporary staging, while `scripts/kit` owns focused
   engine staging, runtime setup and release packaging. Task exposes those external
-  jobs and local runtime operations. Tests live under `tests` and beside Go code.
+  jobs and local runtime operations. Automation unit tests live beside their
+  modules in `scripts`; blueprint/acceptance tests remain under `tests`, with Go tests
+  beside their packages.
 
 ## Command lifecycle
 

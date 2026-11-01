@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from scripts.core.context import Context
 from scripts.kit import dev, engine
 
 
@@ -41,17 +42,16 @@ class DevSyncTests(unittest.TestCase):
         (self.source / 'bin').mkdir()
         for platform in engine.PLATFORMS:
             (self.source / 'bin' / engine.binary_name(platform)).write_text('fixture binary for ' + platform)
-        for module in (dev, engine):
-            self.start_patch(module, 'ROOT', self.kit)
+        self.context = Context(self.kit)
         self.start_patch(engine, 'native_platform', return_value='linux/amd64')
-        self.start_patch(engine, 'verify_engine_binary', side_effect=lambda path, *args: hashlib.sha256(path.read_bytes()).hexdigest())
-        self.start_patch(engine, 'collect_notices', side_effect=lambda source, target, revision: target.mkdir())
-        original_output = subprocess.check_output
-        def output(args, **kwargs):
+        self.start_patch(engine, 'verify_engine_binary', side_effect=lambda path, *args, **kwargs: hashlib.sha256(path.read_bytes()).hexdigest())
+        self.start_patch(engine, 'collect_notices', side_effect=lambda source, target, revision, **kwargs: target.mkdir())
+        original_output = Context.output
+        def output(context, args, **kwargs):
             if args[-1] == '--version':
                 return '1.2.3\n'
-            return original_output(args, **kwargs)
-        self.start_patch(engine.subprocess, 'check_output', side_effect=output)
+            return original_output(context, args, **kwargs)
+        self.start_patch(Context, 'output', autospec=True, side_effect=output)
 
     def start_patch(self, target, name, *args, **kwargs):
         patched = patch.object(target, name, *args, **kwargs)
@@ -67,7 +67,7 @@ class DevSyncTests(unittest.TestCase):
 
     def test_sync_imports_only_runmill_binaries_and_metadata_and_is_repeatable(self):
         before_mod = (self.kit / 'go.mod').read_bytes()
-        dev.sync(self.source)
+        dev.sync(self.source, context=self.context)
         self.assertFalse((self.local / 'removed.go').exists())
         self.assertEqual((self.local / 'README.md').read_text(), 'Kit documentation\n')
         self.assertIn(engine.LOCAL_RUNMILL, (self.local / 'example_test.go').read_text())
@@ -85,7 +85,7 @@ class DevSyncTests(unittest.TestCase):
         self.assertEqual((self.kit / 'go.mod').read_bytes(), before_mod)
         self.assertFalse(any(path.name in ('private-engine.go', 'source.tar') for path in self.kit.rglob('*')))
         before = self.snapshot()
-        dev.sync(self.source)
+        dev.sync(self.source, context=self.context)
         self.assertEqual(self.snapshot(), before)
 
     def test_dirty_sibling_and_missing_outputs_leave_kit_unchanged(self):
@@ -96,12 +96,12 @@ class DevSyncTests(unittest.TestCase):
             else:
                 (self.source / 'bin/inframill-linux-arm64').unlink()
             with self.subTest(condition=condition), self.assertRaises(ValueError):
-                dev.sync(self.source)
+                dev.sync(self.source, context=self.context)
             self.assertEqual(self.snapshot(), before)
             (self.upstream / 'runmill.go').write_text('package runmill\n')
 
     def test_failed_install_restores_previous_sources_pins_and_binaries(self):
-        dev.sync(self.source)
+        dev.sync(self.source, context=self.context)
         before = self.snapshot()
         original = Path.rename
         def fail_metadata(path, target):
@@ -109,5 +109,17 @@ class DevSyncTests(unittest.TestCase):
                 raise OSError('cannot install pin')
             return original(path, target)
         with patch.object(Path, 'rename', fail_metadata), self.assertRaises(OSError):
-            dev.sync(self.source)
+            dev.sync(self.source, context=self.context)
         self.assertEqual(self.snapshot(), before)
+
+    def test_pinned_copy_rejects_changed_sibling_binaries_without_replacing_outputs(self):
+        dev.sync(self.source, context=self.context)
+        context = Context(self.kit, env={**self.context.env, 'INFRAMILL_DIR': str(self.source)})
+        before = self.snapshot()
+        engine.copy(context=context)
+        self.assertEqual(self.snapshot(), before)
+        (self.source / 'bin/inframill-linux-arm64').write_text('changed sibling binary')
+        with self.assertRaisesRegex(ValueError, 'differ from runtime pin'):
+            engine.copy(context=context)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual([path.name for path in (self.kit / '.build').iterdir()], ['engine'])

@@ -173,7 +173,7 @@ def image_bundle():
 
 
 def container_checks(tmp, network, env, bundle):
-    run([sys.executable, '-m', 'scripts.kit.bundle', 'push', '--bundle', bundle], cwd=ROOT, env=env)
+    run([sys.executable, '-m', 'scripts', 'kit', 'bundle', 'push', '--bundle', bundle], cwd=ROOT, env=env)
     image = 'docker.io/library/inframill-kit-test:' + uuid.uuid4().hex
     load_image(bundle, image)
     try:

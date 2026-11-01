@@ -1,11 +1,10 @@
 """Synchronize Runmill and the engine runtime pin from a sibling checkout."""
-from pathlib import Path
 import json
 import shutil
-import tempfile
 
-from .project import ROOT
-from .engine import (MODULE, engine_checkout, prepare, artifact_items, install, runmill_digest)
+from ..core.workspace import install, workspace
+from .project import get_context
+from .engine import (MODULE, prepare, artifact_items, runmill_digest)
 LOCAL_RUNMILL = 'github.com/inframill/kit/pkg/runmill'
 
 
@@ -31,16 +30,14 @@ def stage_runmill(source, destination, stage):
         (stage / path.name).write_bytes(data)
 
 
-def sync(source):
-    source = Path(source).resolve()
-    destination = ROOT / 'pkg/runmill'
-    settings_path = ROOT / 'runtime/dependencies.json'
+def sync(source, *, context=None):
+    context = get_context(context)
+    source = context.path(source)
+    destination = context.root / 'pkg/runmill'
+    settings_path = context.root / 'runtime/dependencies.json'
     settings = json.loads(settings_path.read_text())
-    parent = ROOT / '.build'
-    parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='sync-', dir=parent) as temporary:
-        temporary = Path(temporary)
-        metadata = prepare(source, temporary)
+    with workspace(context.root / '.build', prefix='sync-') as temporary:
+        metadata = prepare(source, temporary, context=context)
         stage = temporary / 'pkg/runmill'
         stage.parent.mkdir()
         stage_runmill(source, destination, stage)
@@ -51,9 +48,11 @@ def sync(source):
         prepared_settings.write_text(json.dumps(settings, indent=2) + '\n')
         backup = temporary / 'backup'
         backup.mkdir()
-        install([(stage, destination), *artifact_items(temporary), (prepared_settings, settings_path)], backup)
+        install([(stage, destination), *artifact_items(temporary, context=context), (prepared_settings, settings_path)], backup)
     print('Synced pkg/runmill and runtime engine pin from ' + metadata['revision'])
 
 
 if __name__ == '__main__':
-    sync(engine_checkout())
+    import sys
+    from ..cli import main
+    raise SystemExit(main(['kit', 'dev', 'sync', *sys.argv[1:]]))

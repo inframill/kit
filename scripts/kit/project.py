@@ -1,23 +1,21 @@
 """Shared paths and runtime configuration; release identity comes from Toolai."""
 import json
-import os
 from pathlib import Path
 import platform
 import re
-import subprocess
-import sys
+
+from ..core.context import Context
 
 ROOT = Path(__file__).resolve().parents[2]
 LINUX = ['linux/amd64', 'linux/arm64']
 
 
-def run(args, **kwargs):
-    print('+', ' '.join(map(str, args)), file=sys.stderr, flush=True)
-    return subprocess.run(list(map(str, args)), check=True, text=True, **kwargs)
+def get_context(context=None):
+    return context if context is not None else Context(ROOT)
 
 
-def project_version():
-    return json.loads((ROOT / 'toolai.json').read_text())['version']
+def project_version(*, context=None):
+    return json.loads((get_context(context).root / 'toolai.json').read_text())['version']
 
 
 def native_platform():
@@ -25,33 +23,35 @@ def native_platform():
     return platform.system().lower() + '/' + arch
 
 
-def runtime_settings():
-    return json.loads((ROOT / 'runtime/dependencies.json').read_text())
+def runtime_settings(*, context=None):
+    return json.loads((get_context(context).root / 'runtime/dependencies.json').read_text())
 
 
-def local_executable():
-    return ROOT / 'bin/kit-exec'
+def local_executable(*, context=None):
+    return get_context(context).root / 'bin/kit-exec'
 
 
-def provider_releases():
-    return [json.loads(path.read_text()) for path in sorted((ROOT / 'internal/providers').glob('*/release.json'))]
+def provider_releases(*, context=None):
+    return [json.loads(path.read_text()) for path in sorted((get_context(context).root / 'internal/providers').glob('*/release.json'))]
 
 
-def image_reference(version=None):
-    registry = os.environ.get('REGISTRY', 'ghcr.io')
-    namespace = os.environ.get('NAMESPACE', 'inframill')
+def image_reference(version=None, *, context=None):
+    context = get_context(context)
+    registry = context.env.get('REGISTRY', 'ghcr.io')
+    namespace = context.env.get('NAMESPACE', 'inframill')
     if not re.fullmatch(r'[a-z][a-z0-9-]*', namespace) or not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]+)?', registry):
         raise ValueError('Invalid registry or namespace')
-    return registry + '/' + namespace + '/kit:' + (version or project_version())
+    return registry + '/' + namespace + '/kit:' + (version or project_version(context=context))
 
 
-def bundle_output():
-    return ROOT / 'dist/kit' / project_version()
+def bundle_output(*, context=None):
+    context = get_context(context)
+    return context.root / 'dist/kit' / project_version(context=context)
 
 
-def configuration(binary, workspace, tools=None):
+def configuration(binary, workspace, tools=None, *, context=None):
     selected = {}
-    for release in provider_releases():
+    for release in provider_releases(context=context):
         name = release['name']
         args = [name + '-' + release['version']]
         if tools and name in tools:
@@ -61,12 +61,13 @@ def configuration(binary, workspace, tools=None):
             'engine': {'dataDir': str(workspace), 'providers': selected}, 'handlers': [{'type': 'connect-engine'}]}
 
 
-def local_tools():
-    settings = runtime_settings()
-    tofu = ROOT / f".cache/tools/opentofu/{settings['OPENTOFU_VERSION']}/tofu"
-    ansible = ROOT / f".cache/ansible-{settings['ANSIBLE_VERSION']}/bin/ansible-playbook"
-    return Path(os.environ.get('OPENTOFU_PATH', tofu)).resolve(), Path(os.environ.get('ANSIBLE_PATH', ansible)).resolve()
+def local_tools(*, context=None):
+    context = get_context(context)
+    settings = runtime_settings(context=context)
+    tofu = context.root / f".cache/tools/opentofu/{settings['OPENTOFU_VERSION']}/tofu"
+    ansible = context.root / f".cache/ansible-{settings['ANSIBLE_VERSION']}/bin/ansible-playbook"
+    return context.path(context.env.get('OPENTOFU_PATH', tofu)), context.path(context.env.get('ANSIBLE_PATH', ansible))
 
 
-def engine_version():
-    return runtime_settings()['INFRAMILL']['version']
+def engine_version(*, context=None):
+    return runtime_settings(context=context)['INFRAMILL']['version']

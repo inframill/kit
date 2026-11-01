@@ -244,6 +244,24 @@ There are no SQL or RPC generators in Kit. Local runtime configuration is printe
 with `task config`. `task docker:up` and `task docker:down` manage the repository's
 persistent development daemon; tests use separate disposable processes/containers.
 
+## Python automation
+
+[`scripts/`](scripts/README.md) is the repository's namespaced Python automation
+package. Task calls its shared CLI for focused Kit jobs:
+
+```sh
+python3 -m scripts --help
+python3 -m scripts kit --help
+python3 -m scripts kit runtime config
+task check:python
+```
+
+The package uses the Python standard library, explicit invocation contexts and
+isolated temporary staging. Its unit tests live beside the modules they cover and run
+alongside the remaining repository tests through `task check:python` and
+`toolai check`. See the [automation guide](scripts/README.md) for commands,
+isolation conventions and adding namespaces.
+
 ## Documentation
 
 - [Providers](docs/providers.md): unified executable, independent implementations, builds and tests.
