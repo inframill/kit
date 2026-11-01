@@ -11,13 +11,13 @@
   "BASE_IMAGE": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
   "INFRAMILL": {
     "version": "0.1.27-dev",
-    "revision": "66a9731588584fb781fa3728905000305dca8654",
+    "revision": "d3ebb8a721f8d0aa944b1989f1940ac726e46c7c",
     "runmill_sha256": "7fc17eb643d04f6668b19fcb0f736d4889d76c779ce3dd5c8dde55768539940a",
     "binaries": {
-      "linux/amd64": "e617e1f0e86a61a3bc1870b0b984378f6df1f176b9f84f66742a8d7893046c9d",
-      "linux/arm64": "51df4d4fb1d9c91cdd6e978287fc3c24f76290747a8632606d1cc2abab614c89",
-      "darwin/amd64": "61703e1c5fa5fce67a09da82e42404984d6a7aa719fd7b27fa4d9960be8216d6",
-      "darwin/arm64": "d37bb52e0e5a8650b5ec6f0df7c3477a0f6a0b8f100aabfd5cd1310182a64c3c"
+      "linux/amd64": "84a3a8e3cd0a5902c4e0f6f176b9627d79e11e1cc926df0f58ee5fb83855b7cd",
+      "linux/arm64": "310aebdb327f56b60c1bdc1ea948a255293d31c64109a84c66431e9a8c8d9ddf",
+      "darwin/amd64": "db787daa5ba2745478dfc31ff06593f8585601f3b3dd968c7a69db97dda4415f",
+      "darwin/arm64": "4e935206234c7cbf6993e5d4ece693299398d8be9e73e8c9e3e259cf8a2ee681"
     }
   }
 }
