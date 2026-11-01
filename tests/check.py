@@ -25,7 +25,7 @@ from process_check import process_check
 from image_check import image_check
 from dispatch_check import dispatch_check
 from scripts.kit.bundle import load_image, verify
-from scripts.kit.project import runtime_settings, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform
+from scripts.kit.project import runtime_settings, ROOT, local_tools, configuration, bundle_output, local_executable, native_platform, project_version
 
 
 def run(args, **kwargs):
@@ -162,13 +162,20 @@ def cache_check(tmp, env):
     print('Namespace cache isolation, offline reuse, failed catalogue entry and safe deletion passed', flush=True)
 
 
-def container_checks(tmp, network, env):
-    if not (bundle_output() / 'manifest.json').is_file():
-        raise RuntimeError('Run toolai build release before image checks')
-    verify(bundle_output())
-    run([sys.executable, '-m', 'scripts.kit.bundle', 'push', '--bundle', bundle_output()], cwd=ROOT, env=env)
+def image_bundle():
+    folder = bundle_output()
+    if not (folder / 'manifest.json').is_file():
+        raise RuntimeError(f'Missing release bundle: {folder}. Run toolai build release before image checks')
+    metadata = verify(folder)
+    if metadata['version'] != project_version():
+        raise RuntimeError(f'Release bundle version differs from Kit: {folder}. Run toolai build release')
+    return folder
+
+
+def container_checks(tmp, network, env, bundle):
+    run([sys.executable, '-m', 'scripts.kit.bundle', 'push', '--bundle', bundle], cwd=ROOT, env=env)
     image = 'docker.io/library/inframill-kit-test:' + uuid.uuid4().hex
-    load_image(bundle_output(), image)
+    load_image(bundle, image)
     try:
         python = '/opt/inframill/tools/ansible/' + runtime_settings()['ANSIBLE_VERSION'] + '/bin/python3'
         for arch in ['arm64', 'amd64']:
@@ -268,9 +275,10 @@ def main():
     parser.add_argument('action', choices=['image', 'native', 'blueprint:check'])
     action = parser.parse_args().action
     if action == 'image':
+        bundle = image_bundle()
         with tempfile.TemporaryDirectory(prefix='kit-image-') as td:
             with registry() as (_, network, push_address):
-                container_checks(pathlib.Path(td), network, registry_env(push_address))
+                container_checks(pathlib.Path(td), network, registry_env(push_address), bundle)
     elif action == 'native':
         with tempfile.TemporaryDirectory(prefix='kit-native-') as td:
             native_checks(pathlib.Path(td), os.environ.copy())

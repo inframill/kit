@@ -75,10 +75,11 @@ tasks:
 
   test:native:
     desc: Run native acceptance against prepared binaries and installed local tools
+    # Compose must not read the terminal from Toolai's separate process group.
     cmds:
-      - python3 tests/check.py native
-      - python3 tests/pv_postgres_check.py
-      - python3 tests/pv_millway_check.py
+      - python3 tests/check.py native < /dev/null
+      - python3 tests/pv_postgres_check.py < /dev/null
+      - python3 tests/pv_millway_check.py < /dev/null
 
   test:image:
     desc: Verify the prepared release in a disposable registry and both Linux runtimes

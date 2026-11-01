@@ -10,14 +10,14 @@
   "ANSIBLE_DEPENDENCIES": "cffi==2.1.1 cryptography==50.0.1 Jinja2==3.1.6 MarkupSafe==3.0.3 packaging==26.3 pycparser==3.0 PyYAML==6.0.3 resolvelib==1.2.1",
   "BASE_IMAGE": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
   "INFRAMILL": {
-    "version": "0.1.25-dev",
-    "revision": "9786e9732fe412dd2a940882d774a312dfbec7af",
+    "version": "0.1.26-dev",
+    "revision": "35fe85380f0bc93c4aa3bcac8824395b1824fec3",
     "runmill_sha256": "7fc17eb643d04f6668b19fcb0f736d4889d76c779ce3dd5c8dde55768539940a",
     "binaries": {
-      "linux/amd64": "fd080b3246cb9b65cd8ff005c95b408fe551efbca5b7023ec83c501fe6bb9fd2",
-      "linux/arm64": "4e213469039f8a342f854279ffdc084909796fba4b0fab36d7a1a3926f462dfd",
-      "darwin/amd64": "20d1b0cd4103cfabea722c39df5551955017bc5305687c21efbdf3182b25035c",
-      "darwin/arm64": "7a0374bfe98cad1248f45dfd83f53ebe0434e6c815ead506f801b7a3fa588b90"
+      "linux/amd64": "1d2988985f6c82c2dd3d632318e0576d21924cf4af43eddc1dc87b4793d36e4b",
+      "linux/arm64": "8e34baff78a6bac4efd515f27b48924a794dd6ed3c6c9c6fd159a22ca616ecc0",
+      "darwin/amd64": "0f14cd2712fd365b10e718096844eb438734830bd542c10e80c5bc50f8113c80",
+      "darwin/arm64": "e3febf9d732c5cb487c68a85b565213ca6bced582a5202df46c776a8e818560e"
     }
   }
 }
