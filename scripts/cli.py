@@ -1,4 +1,4 @@
-"""Explicit namespace registration and common command failure handling."""
+"""Explicit command group registration and command failure handling."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -12,19 +12,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def parser():
     result = argparse.ArgumentParser(prog='python3 -m scripts',
-                                     description='Repository development automation')
-    namespaces = result.add_subparsers(dest='namespace', required=True)
-    # Register new namespaces here. Their CLI modules only declare commands;
-    # implementations are imported when a command actually runs.
-    from .kit.cli import register
-    register(namespaces)
+                                     description='Kit repository automation')
+    groups = result.add_subparsers(dest='group', required=True)
+    # CLI modules declare arguments; job imports and effects wait for dispatch.
+    from .repos.cli import register as register_repos
+    register_repos(groups)
+    from .kit.cli import register as register_kit
+    register_kit(groups)
     return result
 
 
 def main(argv=None, *, context=None):
     args = parser().parse_args(argv)
     try:
-        args.handler(args, context if context is not None else Context(ROOT))
+        result = args.handler(args, context if context is not None else Context(ROOT))
     except subprocess.CalledProcessError as error:
         print(str(error), file=sys.stderr)
         return error.returncode if error.returncode > 0 else 128 - error.returncode
@@ -34,4 +35,4 @@ def main(argv=None, *, context=None):
     except KeyboardInterrupt:
         print('Interrupted', file=sys.stderr)
         return 130
-    return 0
+    return result if result is not None else 0

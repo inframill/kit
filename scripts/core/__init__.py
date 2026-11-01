@@ -1,1 +1,1 @@
-"""Shared automation primitives, independent of any job namespace."""
+"""Standard-library-only primitives, independent of script groups."""

@@ -7,7 +7,8 @@ import re
 import shutil
 import tarfile
 
-from ..core.workspace import install, workspace
+from ..core.workspace import workspace
+from .workspace import install
 from .artifacts import verify_binary
 from .engine import MODULE, verify_prepared
 from .project import (get_context, LINUX, bundle_output, image_reference,

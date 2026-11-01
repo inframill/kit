@@ -2,7 +2,8 @@
 import json
 import shutil
 
-from ..core.workspace import install, workspace
+from ..core.workspace import workspace
+from .workspace import install
 from .project import get_context
 from .engine import (MODULE, prepare, artifact_items, runmill_digest)
 LOCAL_RUNMILL = 'github.com/inframill/kit/pkg/runmill'

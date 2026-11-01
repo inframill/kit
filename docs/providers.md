@@ -34,7 +34,8 @@ pkg/runmill/                   copied transport implementation and tests
 go.mod                         one root Go module, no external dependencies
 toolai.json                    application version, Go builds and check steps
 scripts/core/                  shared Python execution/staging primitives and unit tests
-scripts/kit/                   namespaced engine/runtime/bundle jobs and unit tests
+scripts/kit/                   Kit engine/runtime/bundle jobs, rollback and unit tests
+scripts/repos/                 sibling repository recipes and unit tests
 runtime/dependencies.json      runtime tool versions and checksums
 tests/                         blueprint, protocol and acceptance tests
 ```

@@ -3,28 +3,28 @@ import json
 from pathlib import Path
 
 
-def register(namespaces):
-    kit = namespaces.add_parser('kit', help='Kit development, runtime and release jobs')
-    groups = kit.add_subparsers(dest='group', required=True)
+def register(groups):
+    kit = groups.add_parser('kit', help='Kit development, runtime and release jobs')
+    subgroups = kit.add_subparsers(dest='subgroup', required=True)
 
-    dev = groups.add_parser('dev', help='Synchronize development sources and pins')
+    dev = subgroups.add_parser('dev', help='Synchronize development sources and pins')
     commands = dev.add_subparsers(dest='action', required=True)
     commands.add_parser('sync', help='Import Runmill and verified engine artifacts').set_defaults(handler=dev_command)
 
-    engine = groups.add_parser('engine', help='Build or import sibling engine binaries')
+    engine = subgroups.add_parser('engine', help='Build or import sibling engine binaries')
     commands = engine.add_subparsers(dest='action', required=True)
     for action, help_text in [('copy', 'Import and verify pinned sibling binaries'),
                               ('build', 'Build binaries in the sibling checkout')]:
         commands.add_parser(action, help=help_text).set_defaults(handler=engine_command)
 
-    runtime = groups.add_parser('runtime', help='Install local tools or generate configuration')
+    runtime = subgroups.add_parser('runtime', help='Install local tools or generate configuration')
     commands = runtime.add_subparsers(dest='action', required=True)
     commands.add_parser('setup', help='Install pinned OpenTofu and Ansible').set_defaults(handler=runtime_command)
     config = commands.add_parser('config', help='Print or write native development configuration')
     config.add_argument('--output', type=Path, help='Write to this repository-relative or absolute path')
     config.set_defaults(handler=runtime_command)
 
-    bundle = groups.add_parser('bundle', help='Package, verify, load or publish prepared artifacts')
+    bundle = subgroups.add_parser('bundle', help='Package, verify, load or publish prepared artifacts')
     commands = bundle.add_subparsers(dest='action', required=True)
     for action, help_text in [('capture', 'Record build source inputs'),
                               ('image', 'Build and load the local image'),

@@ -5,7 +5,8 @@ from pathlib import Path
 import re
 import shutil
 
-from ..core.workspace import install, workspace
+from ..core.workspace import workspace
+from .workspace import install
 from .artifacts import verify_binary
 from .project import get_context, native_platform, runtime_settings
 

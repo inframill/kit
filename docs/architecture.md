@@ -19,7 +19,7 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
   `internal/toolrun` owns subprocesses, restricted environments, bounded output
   and filtered diagnostics.
 - Toolai owns Go builds and aggregate workflows. The [`scripts` Python package](../scripts/README.md)
-  exposes an explicit namespaced CLI; `scripts/core` owns invocation contexts,
+  exposes explicit command groups; `scripts/core` owns invocation contexts,
   subprocess execution and temporary staging, while `scripts/kit` owns focused
   engine staging, runtime setup and release packaging. Task exposes those external
   jobs and local runtime operations. Automation unit tests live beside their

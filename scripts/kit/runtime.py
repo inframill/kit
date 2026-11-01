@@ -6,7 +6,8 @@ import shutil
 import subprocess
 import sys
 from runtime.tools import install_ansible, install_opentofu
-from ..core.workspace import replace_outputs, workspace
+from ..core.workspace import workspace
+from .workspace import replace_outputs
 from .project import get_context, runtime_settings, native_platform, local_tools, local_executable, configuration
 
 

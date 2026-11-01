@@ -246,12 +246,13 @@ persistent development daemon; tests use separate disposable processes/container
 
 ## Python automation
 
-[`scripts/`](scripts/README.md) is the repository's namespaced Python automation
-package. Task calls its shared CLI for focused Kit jobs:
+[`scripts/`](scripts/README.md) is the repository's Python automation package,
+organized into command groups. Task calls its shared CLI for focused Kit jobs:
 
 ```sh
 python3 -m scripts --help
 python3 -m scripts kit --help
+python3 -m scripts repos --help
 python3 -m scripts kit runtime config
 task check:python
 ```
@@ -260,7 +261,7 @@ The package uses the Python standard library, explicit invocation contexts and
 isolated temporary staging. Its unit tests live beside the modules they cover and run
 alongside the remaining repository tests through `task check:python` and
 `toolai check`. See the [automation guide](scripts/README.md) for commands,
-isolation conventions and adding namespaces.
+isolation conventions and adding groups.
 
 ## Documentation
 
