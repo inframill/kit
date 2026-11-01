@@ -80,15 +80,16 @@ Project commands, targets, dependency pins and release rules remain repo-owned.
 
 ### Develop scripts
 
-For a namespaced Python automation package, use these conventions:
+For Python automation organized into command groups:
 
-- Expose `python3 -m scripts <namespace> <group> <command>` through explicit
-  namespace registration. Keep CLI adapters separate from ordinary job functions.
+- Expose `python3 -m scripts <group> <command>` through explicit group registration,
+  adding subgroups when useful. Keep CLI adapters separate from ordinary job
+  functions.
   Defer job imports and effects until dispatch so help and argument errors need
   no external tools, installed job dependencies or prepared artifacts.
 - Keep the launcher and shared `scripts/core` primitives standard-library-only.
-  Namespaces use their own modules and shared primitives; keep `core` independent
-  of namespaces. Extract common code when there is a demonstrated shared use.
+  Groups use their own modules and shared primitives; keep `core` independent
+  of groups. Extract common code when there is a demonstrated shared use.
 - Pass an invocation context with explicit checkout paths and an environment
   snapshot. Reuse existing subprocess and workspace helpers. Set child working
   directories and environment overrides explicitly instead of changing process
@@ -101,7 +102,7 @@ For a namespaced Python automation package, use these conventions:
 - Provision third-party job dependencies explicitly in dedicated virtual
   environments using the project's dependency pins. Invoke their interpreters in
   subprocesses; avoid adding those imports or automatic installation to the
-  launcher, help path, or unrelated namespaces.
+  launcher, help path, or unrelated groups.
 - Keep `test_*.py` beside the modules they cover, with `__init__.py` in packages
   needed for unittest discovery. Use temporary fixture roots and mock external
   installation, service and publication boundaries. Cover behavior such as CLI
