@@ -1,6 +1,7 @@
 """Install local test tools, or print native engine configuration."""
 import argparse
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -47,10 +48,21 @@ def setup():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['setup', 'config'])
+    parser.add_argument('--output', type=Path,
+                        help='Write native config to this file instead of stdout')
     args = parser.parse_args()
-    if args.action == 'setup': setup()
+    if args.action == 'setup':
+        if args.output:
+            parser.error('--output is only supported with config')
+        setup()
     else:
         tofu, ansible = local_tools()
         config = configuration(local_executable(), ROOT / '.inframill', {'opentofu': tofu, 'ansible': ansible})
         config['engine']['localBlueprintPaths'] = [str(ROOT / 'blueprints')]
-        print(json.dumps(config, indent=2))
+        document = json.dumps(config, indent=2) + '\n'
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(document)
+            print('Native dev config: ' + str(args.output))
+        else:
+            print(document, end='')

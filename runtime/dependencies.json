@@ -8,5 +8,16 @@
   "OPENTOFU_SOURCE_SHA256": "450f962f262d9f484ad1fb73454650740cdce0d83a854ad8b6c183cc5822eb09",
   "ANSIBLE_VERSION": "2.20.1",
   "ANSIBLE_DEPENDENCIES": "cffi==2.1.1 cryptography==50.0.1 Jinja2==3.1.6 MarkupSafe==3.0.3 packaging==26.3 pycparser==3.0 PyYAML==6.0.3 resolvelib==1.2.1",
-  "BASE_IMAGE": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d"
+  "BASE_IMAGE": "python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d",
+  "INFRAMILL": {
+    "version": "0.1.25-dev",
+    "revision": "9786e9732fe412dd2a940882d774a312dfbec7af",
+    "runmill_sha256": "7fc17eb643d04f6668b19fcb0f736d4889d76c779ce3dd5c8dde55768539940a",
+    "binaries": {
+      "linux/amd64": "fd080b3246cb9b65cd8ff005c95b408fe551efbca5b7023ec83c501fe6bb9fd2",
+      "linux/arm64": "4e213469039f8a342f854279ffdc084909796fba4b0fab36d7a1a3926f462dfd",
+      "darwin/amd64": "20d1b0cd4103cfabea722c39df5551955017bc5305687c21efbdf3182b25035c",
+      "darwin/arm64": "7a0374bfe98cad1248f45dfd83f53ebe0434e6c815ead506f801b7a3fa588b90"
+    }
+  }
 }

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/inframill/inframill/pkg/runmill"
 	"github.com/inframill/kit/internal/artifacts"
+	"github.com/inframill/kit/pkg/runmill"
 )
 
 func TestHostKeyPolicy(t *testing.T) {

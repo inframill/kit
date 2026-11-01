@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 
 from .artifacts import verify_binary
+from .engine import MODULE, verify_prepared
 from .project import (ROOT, LINUX, bundle_output, image_reference,
                       local_executable, project_version, provider_releases, run,
                       runtime_settings)
@@ -74,7 +75,7 @@ def load_image(folder, reference=None):
 
 def source_files():
     paths = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard', '-z'], cwd=ROOT).decode().split('\0')
-    roots = {'cmd', 'internal', 'runtime', 'scripts', 'tests', 'blueprints', 'docs', '.agents'}
+    roots = {'cmd', 'internal', 'pkg', 'runtime', 'scripts', 'tests', 'blueprints', 'docs', '.agents'}
     files = {'go.mod', 'go.sum', 'toolai.json', 'Taskfile.yml', 'README.md', 'LICENSE'}
     result = {}
     for name in sorted(set(filter(None, paths))):
@@ -99,7 +100,7 @@ def check_inputs():
         raise ValueError('Sources changed after build preparation; rerun toolai build')
 
 
-def source_archive(target, engine):
+def source_archive(target):
     check_inputs()
     epoch = int(runtime_settings()['SOURCE_DATE_EPOCH'])
     def normalize(info):
@@ -111,51 +112,29 @@ def source_archive(target, engine):
         with tarfile.open(fileobj=compressed, mode='w') as archive:
             for name in source_files():
                 archive.add(ROOT / name, arcname='kit/' + name, recursive=False, filter=normalize)
-            for path in sorted(engine.rglob('*')):
-                if path.is_file() and 'bin' not in path.relative_to(engine).parts:
-                    archive.add(path, arcname='inframill/' + path.relative_to(engine).as_posix(), recursive=False, filter=normalize)
     check_inputs()
 
 
-def notices(target, engine):
-    target.mkdir()
-    modules = {}
-    engine_pin = json.loads((ROOT / '.build/engine/engine.json').read_text())['module_version']
-    for source in (ROOT, engine):
-        text = subprocess.check_output(['go', 'list', '-deps', '-f', '{{if .Module}}{{.Module.Path}}|{{.Module.Version}}|{{.Module.Dir}}{{end}}', './cmd'], cwd=source, env={**os.environ, **({'GOWORK': 'off'} if source == engine else {})}, text=True)
-        for line in filter(None, text.splitlines()):
-            name, version, folder = line.split('|', 2)
-            if name == 'github.com/inframill/kit': version = project_version()
-            if name == 'github.com/inframill/inframill': version = engine_pin
-            modules[name.replace('/', '_') + '@' + version] = Path(folder)
-    for identity, folder in sorted(modules.items()):
-        for pattern in ('LICENSE*', 'COPYING*', 'NOTICE*', 'AUTHORS*'):
-            for path in folder.glob(pattern):
-                if path.is_file():
-                    destination = target / identity / path.name
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(path, destination)
+def notices(target):
+    shutil.copytree(ROOT / '.build/engine/notices', target)
+    for pattern in ('LICENSE*', 'COPYING*', 'NOTICE*', 'AUTHORS*'):
+        for path in ROOT.glob(pattern):
+            if path.is_file() and not path.is_symlink():
+                destination = target / ('github.com_inframill_kit@' + project_version()) / path.name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, destination)
 
 
-def verify_sdk_build_info(info, metadata):
-    prefix = '\tdep\t' + metadata['module'] + '\t'
-    line = next((line for line in info.splitlines() if line.startswith(prefix)), '')
-    values = line.removeprefix(prefix).split('\t')
-    version = values[0]
-    if version == metadata['module_version']:
-        if not metadata.get('sum') or len(values) > 1 and values[1] == metadata['sum']:
-            return
-    # Go records workspace modules as (devel). Engine staging has already checked
-    # that this checkout is clean and resolves to the SDK's pinned revision.
-    if version == '(devel)' and metadata.get('local_source') and metadata.get('revision') and metadata.get('dirty') is False:
-        return
-    raise ValueError('Provider SDK differs from engine module pin')
+def verify_provider_build_info(info):
+    prefix = '\tdep\t' + MODULE + '\t'
+    if any(line.startswith(prefix) for line in info.splitlines()):
+        raise ValueError('Provider binary still imports upstream Runmill; rerun toolai build')
 
 
 def prepare(context):
     engine_root = ROOT / '.build/engine'
-    engine = engine_root / 'source'
     metadata = json.loads((engine_root / 'engine.json').read_text())
+    verify_prepared()
     providers = json.loads(subprocess.check_output([local_executable(), 'list'], text=True))
     expected = provider_releases()
     if providers != sorted(expected, key=lambda item: item['name'] + '-' + item['version']):
@@ -173,7 +152,7 @@ def prepare(context):
         system, arch = platform.split('/')
         folder = context / 'bin' / system / arch
         folder.mkdir(parents=True)
-        for name, source in [('kit-exec', ROOT / f'bin/kit-exec-{system}-{arch}'), ('inframill', engine / f'bin/inframill-{system}-{arch}')]:
+        for name, source in [('kit-exec', ROOT / f'bin/kit-exec-{system}-{arch}'), ('inframill', ROOT / f'bin/inframill-{system}-{arch}')]:
             data = source.read_bytes()
             verify_binary(data, platform)
             # Toolai embeds version injection and module identities in Go build info.
@@ -182,12 +161,12 @@ def prepare(context):
             if expected_package not in info:
                 raise ValueError('Unexpected binary package: ' + str(source))
             if name == 'kit-exec':
-                verify_sdk_build_info(info, metadata)
+                verify_provider_build_info(info)
             destination = folder / name
             shutil.copy2(source, destination)
             binary_hashes[f'{platform}/{name}'] = checksum(destination)
-    source_archive(context / 'sources.tar.gz', engine)
-    notices(context / 'notices', engine)
+    source_archive(context / 'sources.tar.gz')
+    notices(context / 'notices')
     shutil.copytree(ROOT / 'runtime', context / 'runtime', ignore=shutil.ignore_patterns('__pycache__'))
     shutil.copy2(ROOT / 'runtime/inframill.yaml', context / 'inframill.yaml')
     record = {'schema': 1, 'version': project_version(), 'platforms': LINUX,

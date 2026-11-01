@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/inframill/inframill/pkg/runmill"
+	"github.com/inframill/kit/pkg/runmill"
 	"os"
 	"path/filepath"
 	"time"

@@ -15,6 +15,26 @@ tasks:
     desc: Install pinned OpenTofu and Ansible into .cache
     cmds: ['python3 -m scripts.kit.runtime setup']
 
+  dev:sync:
+    desc: Import Runmill, engine binaries and runtime pins from ../inframill (INFRAMILL_DIR overrides)
+    env:
+      INFRAMILL_SOURCE: '{{.INFRAMILL_DIR | default "../inframill"}}'
+      GOWORK: 'off'
+    cmds: ['python3 -m scripts.kit.dev']
+
+  dev:prepare:
+    desc: Sync Runmill/engine pins, install pinned tools, build binaries and write native dev config
+    env:
+      GOWORK: 'off'
+      INFRAMILL_SOURCE: '{{.INFRAMILL_DIR | default "../inframill"}}'
+    cmds:
+      - python3 -m scripts.kit.engine build
+      - task: dev:sync
+      - task: setup
+      - toolai go build
+      - toolai go build --native --output bin/kit-exec
+      - python3 -m scripts.kit.runtime config --output .build/dev/inframill.json
+
   config:
     desc: Print native configuration using prepared binaries and local tools
     cmds: ['python3 -m scripts.kit.runtime config']
@@ -24,7 +44,9 @@ tasks:
     cmds: ['python3 -m scripts.kit.bundle capture']
 
   build:engine:
-    desc: Build the resolved Inframill module using Toolai
+    desc: Import and verify pinned sibling engine binaries and dependency notices
+    env:
+      INFRAMILL_SOURCE: '{{.INFRAMILL_DIR | default "../inframill"}}'
     cmds: ['python3 -m scripts.kit.engine']
 
   build:image:

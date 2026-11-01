@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/inframill/inframill/pkg/runmill"
 	ansible "github.com/inframill/kit/internal/providers/ansible"
 	dispatch "github.com/inframill/kit/internal/providers/dispatch"
 	opentofu "github.com/inframill/kit/internal/providers/opentofu"
+	"github.com/inframill/kit/pkg/runmill"
 )
 
 type Release struct {

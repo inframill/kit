@@ -13,10 +13,12 @@ independent; pv-cloud supports AMD64, ARM64 and mixed guest architectures.
 ## Development and releases
 
 Toolai owns Go compilation, builds, tests, and aggregate workflows. Task owns focused
-external jobs and local operations. Kit's version lives in `toolai.json`; `go.mod`
-and `go.sum` select the Inframill SDK/engine source. Runtime dependencies have one
-source of truth in `runtime/dependencies.json`. Provider metadata lives alongside
-each implementation in `internal/providers/<name>/release.json`.
+external jobs and local operations. Kit's version lives in `toolai.json`.
+`runtime/dependencies.json` owns the engine version, Git revision, Runmill source
+hash and platform binary checksums alongside external tool pins. Kit has no external Go module dependencies.
+Kit owns its copy of the transport in `pkg/runmill`, which uses only the standard
+library. Provider metadata lives alongside each implementation in
+`internal/providers/<name>/release.json`.
 
 ```sh
 toolai doctor
@@ -32,11 +34,10 @@ Go lint is separately selected with `toolai check lint`; no lint rewrites run in
 checks. See [the release guide](docs/releases.md) for inputs, output layout and
 artifact verification. Builds stay local; publishing is always explicit.
 
-The SDK module pin must be available from the Inframill repository for fresh
-checkouts to resolve it. For local cross-project work, create an ignored Go
-workspace with `go work init . ../inframill`.
-Use `GOPRIVATE=github.com/inframill/*` and authenticated Git access for private modules.
-Release engine builds require the workspace checkout to match the pinned SDK revision.
+Engine imports require a clean `../inframill` checkout and prebuilt binaries matching
+the runtime engine pin. Use `INFRAMILL_DIR=/path/to/inframill` to select another checkout. No Go
+workspace or GitHub module access is needed to build Kit or synchronize Runmill.
+The separately built engine resolves its own dependencies from its own `go.mod`/`go.sum`.
 
 ## Run with Docker
 
@@ -179,9 +180,11 @@ including across restarts and namespace deletion.
 Provider implementations live in `internal/providers/{opentofu,ansible,dispatch}`.
 One Go module and `cmd/main.go` produce the `kit-exec` binary. Toolai builds all
 Linux/macOS AMD64/ARM64 binaries under `bin/` and a native `bin/kit-exec`.
-The engine builder resolves the SDK module through Go, stages its sources under
-`.build/engine`, invokes Toolai, and prepares `bin/inframill` for native tests.
-It never changes the SDK pin or prepares a release implicitly.
+The engine importer verifies the sibling binaries' architecture, embedded Git
+revision, clean-build marker, native version and pinned checksums. It copies all
+four platform binaries into `bin/inframill-<os>-<arch>` and the host's binary into
+`bin/inframill`. `.build/engine` holds only generated metadata and dependency notices.
+Full engine sources are excluded from Kit staging, images and release archives.
 
 ```sh
 toolai go compile
@@ -202,22 +205,41 @@ for the Docker host architecture. Focus acceptance with `toolai check native` or
 For native development without image packaging:
 
 ```sh
-toolai go build --native --output bin/kit-exec
-task build:engine
-task setup
-task --silent config > /tmp/kit-config.json
-bin/inframill server start --config /tmp/kit-config.json
+task dev:prepare
+bin/inframill server start --config .build/dev/inframill.json
 ```
+
+`task dev:prepare` first builds Inframill's platform binaries in `../inframill`
+using Toolai, then copies all Runmill Go sources and tests from that checkout,
+replaces their imports with Kit paths, and updates the `INFRAMILL` record in
+`runtime/dependencies.json` to that checkout's version, committed HEAD, Runmill
+source hash and binary checksums. It copies engine binaries into Kit's `bin/`,
+installs the pinned runtime tools, rebuilds provider binaries for the standard platforms and
+the native host, and writes `.build/dev/inframill.json` with local tool and
+Blueprint paths. Kit's Runmill README is preserved; obsolete Go files are removed.
+The sibling checkout must be clean. Synchronization reads the local Git checkout
+without fetching Inframill or modifying Kit's Go module. An existing Go workspace
+is ignored for this workflow.
+
+Use `task dev:prepare INFRAMILL_DIR=/path/to/inframill` for another checkout.
+`task dev:sync` imports Runmill, existing sibling binaries, notices and engine pins
+without building. An update failure restores the previous sources, binaries and
+runtime metadata. Stale, dirty or mismatched binary builds are rejected. The task does
+not change Kit/provider versions or the other runtime tool pins.
+Run `toolai check` separately after preparing or editing sources. Docker images
+and release bundles still use `toolai build` and `toolai build release`.
 
 `task setup` supports Linux AMD64/ARM64 and macOS ARM64 using the checked-in
 download hashes. `OPENTOFU_PATH` and `ANSIBLE_PATH` override local tool paths;
 `PYTHON` selects a Python 3.12–3.14 interpreter for setup. `task build:engine`
-prepares both platform binaries and the native `bin/inframill` from the module pin.
+verifies and imports existing sibling binaries matching the runtime pin without
+building them or updating pins.
 `toolai build` additionally prepares and loads the local multi-platform image;
 `toolai build release` adds the distributable bundle. See [validation commands](docs/releases.md#build-and-check)
 for the prerequisites of each acceptance suite.
 
-Generation, builds, checks, installation and publishing are explicit operations.
+Generation, builds, checks, installation and publishing are explicit operations;
+`task dev:prepare` explicitly combines source synchronization, installation and native development preparation.
 There are no SQL or RPC generators in Kit. Local runtime configuration is printed
 with `task config`. `task docker:up` and `task docker:down` manage the repository's
 persistent development daemon; tests use separate disposable processes/containers.

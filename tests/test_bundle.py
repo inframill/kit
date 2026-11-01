@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -115,17 +116,32 @@ class BundleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Sources changed'):
                 bundle.check_inputs()
 
-    def test_sdk_build_identity_checks_module_version_sum_and_workspace(self):
-        metadata = {'module': 'example.test/sdk', 'module_version': 'v1.2.3', 'sum': 'h1:expected'}
-        prefix = '\tdep\texample.test/sdk\t'
-        bundle.verify_sdk_build_info(prefix + 'v1.2.3\th1:expected', metadata)
-        for value in ('v1.2.4\th1:expected', 'v1.2.3\th1:other', '(devel)'):
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                bundle.verify_sdk_build_info(prefix + value, metadata)
-        local = {**metadata, 'local_source': True, 'revision': 'abc123', 'dirty': False}
-        bundle.verify_sdk_build_info(prefix + '(devel)', local)
-        with self.assertRaises(ValueError):
-            bundle.verify_sdk_build_info(prefix + '(devel)', {**local, 'dirty': True})
+    def test_pkg_sources_are_fingerprinted_and_archived(self):
+        subprocess.run(['git', 'init', '--quiet', str(self.root)], check=True)
+        source = self.root / 'pkg/runmill/runmill.go'
+        source.parent.mkdir(parents=True)
+        source.write_text('package runmill\n')
+        engine = self.root / '.build/engine/source'
+        engine.mkdir(parents=True)
+        (engine / 'private-engine.go').write_text('full engine implementation must be excluded')
+        with patch.object(bundle, 'ROOT', self.root), \
+             patch.object(bundle, 'runtime_settings', return_value={'SOURCE_DATE_EPOCH': '1'}):
+            bundle.capture()
+            archive = self.root / 'sources.tar.gz'
+            bundle.source_archive(archive)
+            with tarfile.open(archive) as snapshot:
+                self.assertEqual(snapshot.extractfile('kit/pkg/runmill/runmill.go').read(), source.read_bytes())
+                self.assertEqual(snapshot.getnames(), ['kit/pkg/runmill/runmill.go'])
+            source.write_text('package runmill\n// changed\n')
+            with self.assertRaisesRegex(ValueError, 'Sources changed'):
+                bundle.check_inputs()
+
+    def test_legacy_provider_binaries_with_upstream_runmill_are_rejected(self):
+        info = '\tpath\tgithub.com/inframill/kit/cmd\n\tmod\tgithub.com/inframill/kit\t(devel)\n'
+        bundle.verify_provider_build_info(info)
+        for version in ('v0.0.0-pinned', '(devel)'):
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, 'still imports upstream'):
+                bundle.verify_provider_build_info(info + '\tdep\tgithub.com/inframill/inframill\t' + version + '\n')
 
     def test_nested_checksum_filename_cannot_hide_an_extra_file(self):
         nested = self.root / 'notices/SHA256SUMS'

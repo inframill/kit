@@ -3,7 +3,7 @@ package catalog
 import (
 	"testing"
 
-	"github.com/inframill/inframill/pkg/runmill"
+	"github.com/inframill/kit/pkg/runmill"
 )
 
 func TestBuiltinRegistry(t *testing.T) {

@@ -1,8 +1,8 @@
 # Releasing Kit
 
 Kit, the engine and provider implementations have independent versions. Kit's
-version is `toolai.json.version`; normal Go module requirements select the SDK.
-Runtime versions and download checksums are in `runtime/dependencies.json`, including
+version is `toolai.json.version`. Engine and runtime pins have one source of truth
+in `runtime/dependencies.json`, including
 the immutable base image and signed Debian snapshot. Provider metadata describes
 implementation/protocol versions and required external tool versions.
 
@@ -10,15 +10,25 @@ OpenTofu dependency locks inside blueprints remain owned by those blueprints.
 
 ## Prepare inputs
 
-Update SDK imports and the normal Go module pin together. Use `toolai go mod tidy`
-and review go.mod/go.sum. The engine comes from that same resolved module, not an
-independently selected prebuilt sibling binary. A Go workspace can select the
-sibling checkout during development; engine packaging checks its revision against
-the module pin and rejects dirty or mismatched upstream sources.
-
-The selected module revision must be available upstream before a fresh machine can
-fetch it. Private module access needs GOPRIVATE and authenticated Git. No credentials
-belong in project configuration or release archives.
+The `INFRAMILL` record contains the engine version, full Git revision, normalized
+Runmill source hash and SHA-256 checksums for all four platform binaries.
+There is no Inframill dependency in Kit's Go module
+and no separate engine lock file. `task dev:sync` updates this record from the clean
+committed HEAD of `../inframill` and copies its verified binaries plus Runmill Go sources and tests into
+Kit's `pkg/runmill`, replacing imports and removing obsolete Go files while keeping
+Kit's README. Override the checkout with `INFRAMILL_DIR=/path/to/inframill`.
+`task dev:prepare` first builds the engine in the sibling, then imports its outputs,
+installs the pinned tools, builds Kit binaries and writes
+the native development config. Neither task changes Kit/provider versions or the other runtime tool pins.
+Import verifies executable architecture, embedded Git revision, clean-build marker,
+native engine version and binary checksums. Packaging rechecks the copied binaries
+and Runmill source hash against the runtime pin. All engine binaries live directly
+in Kit's `bin/`; `.build/engine` retains only generated identity and dependency notices.
+Full engine sources are excluded from Kit staging, images and release archives,
+including `sources.tar.gz`, which contains Kit sources and the copied Runmill package.
+No Go workspace or upstream module fetch is needed to select the engine. The engine
+keeps its dependency checksums in its own checkout. No credentials belong in project
+configuration or release archives.
 
 Update provider/tool metadata when implementation requirements change. Native setup
 and the Docker image read the same runtime dependency JSON. Bump Kit's version
@@ -35,9 +45,9 @@ toolai check full
 task release:verify
 ```
 
-The default build prepares standard provider binaries, builds the resolved engine,
+The default build prepares standard provider binaries, imports verified pinned engine binaries,
 and packages/loads a local image for Linux AMD64 and ARM64. The release tag adds
-bundle assembly. Builds do not run checks, fetch a newer SDK, change versions, or
+bundle assembly. Builds do not run checks, fetch a newer engine, change versions, or
 publish. Checks consume existing artifacts; missing prerequisites fail clearly.
 `toolai check lint` is separate and does not apply rewrites.
 
@@ -58,20 +68,20 @@ overrides select another registry. See [native development](../README.md#build-a
 for preparing binaries without image packaging.
 
 ```text
-bin/                         Toolai provider binaries and native engine
+bin/                         Provider and engine platform binaries plus native executables
 .build/                      Disposable engine/image staging and input fingerprint
 dist/kit/<version>/
   image.oci.tar              Exact multi-platform OCI image
   manifest.json              Resolved inputs, versions, binary hashes and image digest
   SHA256SUMS                 Complete bundle file checksums
-  sources.tar.gz             Corresponding Kit and engine source snapshot
+  sources.tar.gz             Kit source snapshot, including the copied Runmill package
   notices/                   Available dependency distribution notices
 ```
 
 Development outputs can be rebuilt normally. Source inputs are captured once before
 building and checked during packaging, preventing mixed-source bundles. Temporary
 staging prevents a failed assembly from replacing a completed bundle. Image assembly
-checks binary architecture, embedded versions, SDK identity, provider registry and
+checks binary architecture, embedded versions, copied Runmill source identity, provider registry and
 tool compatibility. Docker/Buildx handle OCI export/load; no custom OCI graph or tar
 index rewriting is required. Loading checks that Docker retained the recorded digest.
 

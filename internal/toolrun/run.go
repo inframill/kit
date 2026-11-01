@@ -13,7 +13,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/inframill/inframill/pkg/runmill"
+	"github.com/inframill/kit/pkg/runmill"
 )
 
 const Limit = 32 << 20

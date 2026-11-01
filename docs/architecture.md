@@ -1,6 +1,6 @@
 # Kit architecture
 
-Kit targets the Inframill API selected by its Go module dependency. One root Go module builds
+Kit targets the Inframill API selected by the `INFRAMILL` record in `runtime/dependencies.json`. One root Go module builds
 independently versioned implementations into a shared executable. The root `ghcr.io/inframill/kit` image bundles
 prebuilt provider outputs with the engine and tools. Blueprints are local source directories.
 
@@ -12,7 +12,9 @@ prebuilt provider outputs with the engine and tools. Blueprints are local source
 - `internal/providers/<name>/` owns each implementation,
   embedded release metadata and tests. `cmd/main.go` is the only entry point.
 - `internal/catalog` maps exact `NAME-VERSION` selectors to implementations.
-  `internal/cli` consumes prefix arguments and calls upstream `runmill.Serve`.
+  `internal/cli` consumes prefix arguments and calls local `runmill.Serve`.
+- `pkg/runmill` contains the copied transport and its tests, using only the standard library.
+  Release preparation checks its source hash against the engine's runtime pin.
 - `internal/artifacts` owns rooted file access, hashes and shared node records.
   `internal/toolrun` owns subprocesses, restricted environments, bounded output
   and filtered diagnostics.
@@ -42,7 +44,7 @@ resolved before effects and passed through a selected child environment. No secr
 are read from inherited `INFRAMILL_SECRET_*`, Values, Arguments or Engine storage. Tool
 logs are bounded and filtered for known injected values, including chunked and
 JSON-escaped forms. Machine output is parsed privately and projected into stable
-results; credential-bearing projections reject. Transport remains upstream-owned.
+results; credential-bearing projections reject. Transport uses Kit's copy of Runmill.
 
 ## Identity and verification
 
@@ -68,15 +70,18 @@ with exit code zero. Shared artifacts remain input. See [Dispatch](dispatch.md).
 
 ## Versions and publication
 
-Kit's version comes from `toolai.json`. The normal `go.mod`/`go.sum` dependency
-selects the SDK and engine source. Provider versions/protocols are embedded metadata
-beside their implementations. `runtime/dependencies.json` owns external tool pins.
+Kit's version comes from `toolai.json`. Kit's Go module has no external dependencies.
+`runtime/dependencies.json` selects the engine version, Git revision, Runmill source
+hash and platform binary checksums in one `INFRAMILL` record alongside external tool pins. Runmill source is copied into
+`pkg/runmill` and verified against that pin during packaging. Provider versions/protocols are embedded metadata
+beside their implementations.
 Kit and engine versions are independent. No release locks duplicate these inputs.
 
-Standard provider binaries live in `bin/`. Engine sources and binaries are staged
-under `.build/engine`; the image stage uses verified prepared outputs. Release
+Provider and engine binaries live in `bin/`. `.build/engine` contains generated
+engine identity and dependency notices. Engine compilation happens in the sibling;
+full engine sources are excluded from Kit staging, images and releases. Release
 bundles under `dist/kit/<version>` contain the image archive, one generated manifest,
-checksums, sources and dependency notices. Input fingerprints prevent source changes
+checksums, Kit sources including Runmill, and dependency notices. Input fingerprints prevent source changes
 during assembly. A completed bundle verifies independently of either source checkout.
 Published tag conflicts are rejected; publishing is explicit and never builds.
 

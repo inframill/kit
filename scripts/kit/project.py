@@ -68,12 +68,5 @@ def local_tools():
     return Path(os.environ.get('OPENTOFU_PATH', tofu)).resolve(), Path(os.environ.get('ANSIBLE_PATH', ansible)).resolve()
 
 
-def engine_module():
-    data = json.loads(subprocess.check_output(['go', 'list', '-m', '-json', 'github.com/inframill/inframill'], cwd=ROOT, text=True))
-    module = Path(data.get('Replace', data)['Dir'])
-    metadata = json.loads((module / 'toolai.json').read_text())
-    return module, {'module': data['Path'], 'module_version': data.get('Version') or re.search(r'github.com/inframill/inframill\s+(\S+)', (ROOT / 'go.mod').read_text()).group(1), 'version': metadata['version'], 'sum': data.get('Sum', ''), 'local_source': bool(data.get('Main') or data.get('Replace'))}
-
-
 def engine_version():
-    return engine_module()[1]['version']
+    return runtime_settings()['INFRAMILL']['version']

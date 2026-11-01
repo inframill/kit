@@ -15,10 +15,7 @@
         "toolai": ["go", "build", "--native", "--output", "bin/kit-exec"]
       },
       {
-        "exec": ["task", "build:engine"],
-        "env": {
-          "TOOLAI": "${toolaiExecutable}"
-        }
+        "exec": ["task", "build:engine"]
       },
       {
         "exec": ["task", "build:image"]
@@ -36,7 +33,11 @@
     },
     {
       "package": "./internal/toolrun",
-      "mode": "pure"
+      "mode": "unrestricted"
+    },
+    {
+      "package": "./pkg/runmill",
+      "mode": "stdlib"
     }
   ],
   "checks": {

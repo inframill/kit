@@ -1,7 +1,8 @@
 # Kit image distribution notices
 
-The image combines separately licensed programs. Kit and the resolved engine's
-corresponding sources are in `/usr/share/inframill/sources/kit.tar.gz`; available Go
+The image combines separately licensed programs. Kit sources, including the copied
+Runmill package, are in `/usr/share/inframill/sources/kit.tar.gz`. Full Inframill
+engine sources are excluded. Available Go
 dependency notices are under `/usr/share/inframill/notices/`. The shared provider
 executable is `/usr/local/bin/kit-exec`. `/usr/share/inframill/manifest.json` records
 engine/provider identity and binary checksums.

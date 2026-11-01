@@ -6,8 +6,11 @@ docs before changing provider behavior. No subagents unless explicitly requested
 
 - Provider implementations and embedded protocol/release metadata live in
   `internal/providers/<name>`. The catalog is the active provider selection.
-- SDK/engine identity comes from go.mod/go.sum; runtime dependencies come from
-  `runtime/dependencies.json`. Do not reintroduce parallel version or release locks.
+- Runmill source lives in `pkg/runmill`; engine version/revision, Runmill source hash,
+  binary checksums and runtime tool pins live in `runtime/dependencies.json`. Kit has no Inframill Go module
+  dependency. Do not reintroduce parallel version or release locks.
+- Import only Runmill and engine binaries from the sibling. Full engine sources
+  must not be staged in Kit or included in images or release archives.
 - Build, checks, setup and publishing are explicit independent operations.
   `toolai build release` prepares bundles; `toolai check full` consumes them.
 - Preserve source/checksum/architecture/provider/runtime and publication verification.

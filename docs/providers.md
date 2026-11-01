@@ -30,7 +30,8 @@ internal/catalog/              exact selectors and provider factories
 internal/cli/                  argument handling and runmill.Serve
 internal/artifacts/            shared artifact integrity and rooted access
 internal/toolrun/              subprocesses and filtered diagnostics
-go.mod, go.sum                 one root Go module
+pkg/runmill/                   copied transport implementation and tests
+go.mod                         one root Go module, no external dependencies
 toolai.json                    application version, Go builds and check steps
 scripts/kit/                   focused engine/runtime/bundle helpers
 runtime/dependencies.json      runtime tool versions and checksums
@@ -50,12 +51,18 @@ file. Source directories are unversioned while each provider has one implementat
 Provider selectors retain their exact `NAME-VERSION` protocol identity.
 
 Use `toolai go compile` and `toolai check` for development feedback.
+`task dev:prepare` builds the sibling engine, imports Runmill, its binaries and pins, installs
+pinned tools, builds the development binaries and writes `.build/dev/inframill.json`.
+Use `task dev:sync` to import existing verified sibling outputs without building.
 `toolai go build` builds all provider platforms, and
 `toolai go build --native --output bin/kit-exec` builds the native executable used
 in the examples above. Standard binaries live in
 `bin/kit-exec-<os>-<arch>`; `bin/kit-exec` is native. Runtime/image packaging consumes
-those outputs. Native engine builds resolve the same SDK module as the provider
-binary. The aggregate `toolai build` also builds the engine and local image.
+those outputs. Engine imports use a clean sibling checkout with prebuilt binaries
+matching the version, revision and checksums in `runtime/dependencies.json`.
+Release preparation verifies the copied Runmill source hash and engine binary
+identity without retaining the full engine source. The aggregate `toolai build`
+imports the pinned engine binaries and builds the local image.
 See [releases](releases.md) for bundle preparation and verification.
 
 ## Inframill configuration
@@ -108,7 +115,7 @@ dispatcher. Test tools are temporary stubs and create no cloud resources.
 Provider metadata advertises command descriptions and access modes. Blueprint
 `command_arguments` declarations own schemas and admission validation. The
 protocol supports `info`, `validate_settings` and `run`; execution defensively
-checks inputs, artifacts, credentials and outcomes. The SDK owns process
+checks inputs, artifacts, credentials and outcomes. `pkg/runmill` owns process
 observation and group signalling; child tools stay in the provider process group.
 
 The optional `toolai check full` suite exercises native tools, disposable daemons,

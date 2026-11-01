@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/inframill/inframill/pkg/runmill"
 	"github.com/inframill/kit/internal/catalog"
+	"github.com/inframill/kit/pkg/runmill"
 )
 
 const usage = `usage: kit-exec list | version | NAME-VERSION [--tool ABSOLUTE_PATH] | NAME-VERSION version

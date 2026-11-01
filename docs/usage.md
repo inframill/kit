@@ -483,7 +483,7 @@ The executable's configured prefix is:
 ```
 
 Inframill sends one JSON request on stdin, without adding protocol arguments. Kit
-uses upstream `runmill.Serve` for JSON Lines messages and final success/error replies.
+uses `pkg/runmill.Serve` for JSON Lines messages and final success/error replies.
 For a manual discovery probe, pipe this JSON to that prefix:
 
 ```json

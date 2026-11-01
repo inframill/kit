@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inframill/inframill/pkg/runmill"
+	"github.com/inframill/kit/pkg/runmill"
 )
 
 func build(t *testing.T, fixtures bool) string {
