@@ -135,6 +135,14 @@ func TestApplyAndDestroyWithoutSavedPlan(t *testing.T) {
 			write(scope.WorkspaceDir, "command", tc.command, 0600)
 			write(scope.WorkspaceDir, "inventory-path", filepath.Join(scope.ArtifactDir, "tofu-nodes-v1.json"), 0600)
 			write(scope.ArtifactDir, "tofu-nodes-v1.json", `{"valid":true}`, 0600)
+			knownHosts := []string{"ansible-known_hosts", "Custom-SSH-known_hosts"}
+			for _, name := range knownHosts {
+				write(scope.ArtifactDir, name, "trusted host key", 0600)
+			}
+			preserved := []string{"tofu-terraform.tfstate", "ansible-known_hosts.old", "known_hosts"}
+			for _, name := range preserved {
+				write(scope.ArtifactDir, name, "preserved artifact", 0600)
+			}
 			// Omission must use the current configuration, without selecting or
 			// consuming any previously saved plan.
 			plan := "tofu-plan-" + scope.ExecutionID + ".json"
@@ -179,6 +187,22 @@ esac
 			if (err != nil) != tc.wantError {
 				t.Fatalf("result %v, error %v", result, err)
 			}
+			for _, name := range knownHosts {
+				data, err := os.ReadFile(filepath.Join(scope.ArtifactDir, name))
+				if tc.command == "destroy" && !tc.wantError {
+					if !os.IsNotExist(err) {
+						t.Fatalf("successful destroy retained %s: %v", name, err)
+					}
+				} else if err != nil || string(data) != "trusted host key" {
+					t.Fatalf("%s changed %s: %v", tc.name, name, err)
+				}
+			}
+			for _, name := range preserved {
+				data, err := os.ReadFile(filepath.Join(scope.ArtifactDir, name))
+				if err != nil || string(data) != "preserved artifact" {
+					t.Fatalf("%s changed unrelated artifact %s: %v", tc.name, name, err)
+				}
+			}
 			calls, err := os.ReadFile(filepath.Join(scope.WorkspaceDir, "calls.txt"))
 			if err != nil {
 				t.Fatal(err)
@@ -211,6 +235,56 @@ esac
 				t.Fatal("direct execution consumed a saved plan", err)
 			}
 		})
+	}
+}
+
+func TestSavedDestroyCleansKnownHosts(t *testing.T) {
+	d, scope := fixture(t)
+	d.Tool = filepath.Join(t.TempDir(), "tofu")
+	script := `#!/bin/sh
+case "$1" in
+version) printf '{"terraform_version":"1.11.5"}';;
+plan) for a in "$@"; do case "$a" in -out=*) printf 'saved plan' > "${a#-out=}";; esac; done; exit 2;;
+apply|destroy) exit 0;;
+show) printf '{"values":{"root_module":{}}}';;
+output) printf '{}';;
+*) exit 2;;
+esac
+`
+	if err := os.WriteFile(d.Tool, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := artifacts.WriteBytes(scope.ArtifactDir, "ansible-known_hosts", []byte("trusted host key")); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := d.Execute(t.Context(), scope, "plan", runmill.Arguments{"destroy": true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(scope.ArtifactDir, "ansible-known_hosts")); err != nil {
+		t.Fatal("destroy planning removed known hosts", err)
+	}
+	if _, err := d.Execute(t.Context(), scope, "destroy", runmill.Arguments{"plan_id": plan.(PlanResult).PlanID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(scope.ArtifactDir, "ansible-known_hosts")); !os.IsNotExist(err) {
+		t.Fatal("saved destroy retained known hosts", err)
+	}
+	if _, err := d.Execute(t.Context(), scope, "destroy", nil, nil); err != nil {
+		t.Fatal("destroy with no known hosts failed", err)
+	}
+	outside := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(outside, []byte("other instance's host key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(scope.ArtifactDir, "ansible-known_hosts")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Execute(t.Context(), scope, "destroy", nil, nil); err == nil || !strings.Contains(err.Error(), "clean up known hosts") {
+		t.Fatal("destroy did not report unsafe cleanup destination", err)
+	}
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "other instance's host key" {
+		t.Fatal("destroy changed known hosts outside the Instance", err)
 	}
 }
 

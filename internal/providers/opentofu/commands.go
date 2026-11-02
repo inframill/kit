@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/inframill/kit/internal/artifacts"
 	"github.com/inframill/kit/internal/toolrun"
@@ -232,6 +234,9 @@ func (p *execution) applyOrDestroy(ctx context.Context, run toolrun.Runner) (any
 		if err != nil {
 			return nil, err
 		}
+		if err = p.clearKnownHosts(); err != nil {
+			return nil, fmt.Errorf("clean up known hosts after destroy: %w", err)
+		}
 		return DestroyResult{output, true, true}, nil
 	}
 	output, err := p.publish(ctx, run)
@@ -239,6 +244,31 @@ func (p *execution) applyOrDestroy(ctx context.Context, run toolrun.Runner) (any
 		return nil, err
 	}
 	return ApplyResult{output}, nil
+}
+
+func (p *execution) clearKnownHosts() error {
+	root, err := os.OpenRoot(p.scope.ArtifactDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		id, ok := strings.CutSuffix(entry.Name(), "-known_hosts")
+		if !ok || !runmill.ValidID(id) {
+			continue
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("nonregular known hosts artifact %q", entry.Name())
+		}
+		if err = root.Remove(entry.Name()); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 type module struct {

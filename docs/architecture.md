@@ -59,7 +59,8 @@ retire the plan before mutation; failures require new planning. When `plan_id` i
 omitted, they execute the current configuration noninteractively with automatic
 approval, without selecting a saved plan. Invalid supplied plans never fall back
 to direct execution. Both paths invalidate node inventory before tool mutation
-and republish only after verified outputs. Destroy checks managed state.
+and republish only after verified outputs. Destroy checks managed state and empty
+node outputs before removing the Instance's `*-known_hosts` artifacts.
 
 Ansible validates node schema, identity, producer, host uniqueness and exact address
 selection. Its private configuration and callback prevent user environment overrides.

@@ -380,7 +380,10 @@ outputs and rejects any remaining nodes. It returns `destroyed` and
 `managed_state_empty` plus `artifact`, `nodes: 0` and `valid: false`; the empty
 node artifact prevents downstream commands from using deleted hosts. Output
 collection is part of apply and destroy. Refresh-only and destroy saved plans
-remain distinct modes.
+remain distinct modes. Once destroy has verified empty state and node outputs, it
+removes the Instance's `artifacts/<configured-id>-known_hosts` files, including
+custom Ansible provider IDs. Apply and failed or partial infrastructure destroys
+preserve these files. A cleanup failure is reported as a command error.
 
 ```sh
 bin/inframill instance exec example opentofu.apply --namespace production --stream
@@ -401,6 +404,8 @@ to `strict`, which requires hosts to be trusted before connecting. Ansible sets
 rerenders and container replacements when the Instance data is persisted. For
 `strict`, add verified host keys to this file before connecting; existing keys in
 `~/.ssh/known_hosts` must be copied here if they should be trusted by Ansible.
+Successful OpenTofu destroy removes the Instance's known hosts files so recreated
+hosts can establish new trust.
 The pv-cloud blueprint explicitly sets `host_key_policy: accept-new` to
 automatically record unknown SSH hosts while still rejecting changed keys.
 
