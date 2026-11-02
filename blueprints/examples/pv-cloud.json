@@ -7,7 +7,7 @@
     "zone_name": "kummus.app"
   },
   "inframill": {
-    "image": "ghcr.io/inframill/kit:0.1.23-dev"
+    "image": "ghcr.io/inframill/kit:0.1.27-dev"
   },
   "network": {
     "private_networks": [],
@@ -86,7 +86,7 @@
     "work_mem_mb": 4
   },
   "millway": {
-    "image": "ghcr.io/inframill/millway:0.1.6-dev",
+    "image": "ghcr.io/inframill/millway:0.1.7-dev",
     "google_client_ids": {
       "web": "894742453283-2rjik40fijulguiff5dtirutbqckce49.apps.googleusercontent.com"
     },
