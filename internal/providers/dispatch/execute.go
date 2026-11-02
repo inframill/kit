@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -215,6 +216,15 @@ func (p *execution) run(ctx context.Context, secrets map[string]string) (any, er
 	if p.static.HostKeyPolicy == "accept-new" {
 		policy = "accept-new"
 	}
+	options := []string{"-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=" + policy, "-o", "ConnectTimeout=15"}
+	if p.static.Connection == "ssh" {
+		knownHosts, err := filepath.Abs(filepath.Join(p.scope.ArtifactDir, p.static.KnownHostsProviderID+"-known_hosts"))
+		if err != nil {
+			return nil, err
+		}
+		// SSH parses a file list inside this argument; preserve spaces and quotes.
+		options = append(options, "-o", "UserKnownHostsFile="+strconv.Quote(knownHosts))
+	}
 	sink := p.scope.Diagnostics
 	if sink == nil {
 		sink = io.Discard
@@ -250,7 +260,7 @@ hostsLoop:
 			selected.args.Directory = DirectorySelection{task.directory}
 			directory := p.settings.Directories[task.directory]
 			c := connection{local: p.static.Connection == "local", address: p.settings.SSHUser + "@" + task.address,
-				options: []string{"-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=" + policy, "-o", "ConnectTimeout=15"},
+				options: options,
 				runner: toolrun.Runner{Tool: tool, Directory: p.scope.WorkspaceDir, Environment: toolrun.Environment(),
 					Logs: hostLog{logs: logs, directory: task.directory, host: task.host, target: p.args.Target}, Secrets: secrets}}
 			var hostErr error

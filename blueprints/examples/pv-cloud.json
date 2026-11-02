@@ -88,7 +88,7 @@
   "millway": {
     "image": "ghcr.io/inframill/millway:0.1.6-dev",
     "google_client_ids": {
-      "web": "REPLACE_WITH_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com"
+      "web": "894742453283-2rjik40fijulguiff5dtirutbqckce49.apps.googleusercontent.com"
     },
     "admin_emails": ["sir.sir.hassan@gmail.com"]
   }

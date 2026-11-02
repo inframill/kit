@@ -411,7 +411,9 @@ automatically record unknown SSH hosts while still rejecting changed keys.
 
 Dispatch is a separate provider using system SSH and SCP clients. Its `push` and
 `make` commands read host records from shared artifacts, transfer directories
-from `workspace/dispatch/` and run Make targets on selected nodes. Configure
+from `workspace/dispatch/` and run Make targets on selected nodes. SSH and SCP share
+Ansible's `artifacts/ansible-known_hosts` by default. For a custom Ansible ID, set
+Dispatch's optional static `known_hosts_provider_id` to that ID. Configure
 payload mappings in `templates/dispatch/`; see [Dispatch usage](dispatch.md).
 
 Use ping after OpenTofu apply to check SSH authentication and remote Python
@@ -470,13 +472,11 @@ stop installation if login fails. Omit `registry` to skip login. See the
 
 For Docker, `task docker:up` mounts the project's `ssh/` directory at `/root/.ssh`.
 Ansible and other providers invoking SSH use the standard identities there, such
-as `ssh/id_ed25519`, along with `ssh/config`. Ansible stores known hosts in the
-Instance artifacts described above. Other SSH providers use `ssh/known_hosts` by
-default. Set directory permissions to `700` and private-key permissions to `600`.
-For a nonstandard key
-name, add an `IdentityFile /root/.ssh/your_key` entry to `ssh/config`. Paths in that
-configuration must refer to the container filesystem. SSH can write `known_hosts`
-to this mount, preserving trusted host keys across container replacements.
+as `ssh/id_ed25519`, along with `ssh/config`. Ansible and Dispatch store known hosts
+in the Instance artifacts described above. Set directory permissions to `700` and
+private-key permissions to `600`. For a nonstandard key name, add an
+`IdentityFile /root/.ssh/your_key` entry to `ssh/config`. Paths in that configuration
+must refer to the container filesystem.
 Re-run `task docker:up` to add the mount to an existing container.
 
 Alternatively, load the matching private key into your host SSH agent with `ssh-add`.

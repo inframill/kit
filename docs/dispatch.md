@@ -13,6 +13,7 @@ directory separately:
 ```text
 instance/
   artifacts/opentofu-nodes-v1.json
+  artifacts/ansible-known_hosts
   workspace/dispatch/
     kit-provider.json
     api/Makefile
@@ -80,6 +81,14 @@ direct execution.
 `connection` defaults to `ssh`. Host-key policy defaults to `strict`; `accept-new`
 records unknown hosts and still rejects changed keys. Authentication uses the
 same SSH agent, configuration and identities as the existing Ansible provider.
+SSH and SCP both use the Instance's `artifacts/ansible-known_hosts`, sharing the
+trust records established by Ansible. For a custom Ansible provider ID, set
+Dispatch's optional static `known_hosts_provider_id` to that ID; the file is then
+`artifacts/<known_hosts_provider_id>-known_hosts`. This defaults to `ansible`,
+independently of Dispatch's own configured ID. Dispatch can record unknown hosts
+with `accept-new` even when Ansible has not run. With `strict`, verified keys must
+already be present in this file. Successful OpenTofu destroy removes these files
+after verifying empty state and node outputs.
 See [provider SSH access](usage.md#providers) for Docker mounts and agent setup.
 The `local` connection is available for loopback-only development fixtures.
 

@@ -16,13 +16,14 @@ import (
 type Provider struct{ Version, Tool string }
 
 type StaticSettings struct {
-	ID              string `json:"id"`
-	SettingsFile    string `json:"settings_file"`
-	ProducerID      string `json:"producer_id"`
-	ProducerVersion string `json:"producer_version"`
-	Artifact        string `json:"artifact"`
-	Connection      string `json:"connection"`
-	HostKeyPolicy   string `json:"host_key_policy"`
+	ID                   string `json:"id"`
+	SettingsFile         string `json:"settings_file"`
+	ProducerID           string `json:"producer_id"`
+	ProducerVersion      string `json:"producer_version"`
+	Artifact             string `json:"artifact"`
+	Connection           string `json:"connection"`
+	HostKeyPolicy        string `json:"host_key_policy"`
+	KnownHostsProviderID string `json:"known_hosts_provider_id,omitempty"`
 }
 
 type Settings struct {
@@ -113,7 +114,10 @@ func (d Provider) parseSettings(config runmill.Settings) (StaticSettings, error)
 	if s.HostKeyPolicy == "" {
 		s.HostKeyPolicy = "strict"
 	}
-	if !runmill.ValidID(s.ID) || !runmill.ValidID(s.ProducerID) || s.ProducerVersion == "" || !artifacts.Flat(s.SettingsFile) || !artifacts.Flat(s.Artifact) || !strings.HasPrefix(s.Artifact, s.ProducerID+"-nodes-") || s.Connection != "ssh" && s.Connection != "local" || s.HostKeyPolicy != "strict" && s.HostKeyPolicy != "accept-new" {
+	if s.KnownHostsProviderID == "" {
+		s.KnownHostsProviderID = "ansible"
+	}
+	if !runmill.ValidID(s.ID) || !runmill.ValidID(s.ProducerID) || !runmill.ValidID(s.KnownHostsProviderID) || s.ProducerVersion == "" || !artifacts.Flat(s.SettingsFile) || !artifacts.Flat(s.Artifact) || !strings.HasPrefix(s.Artifact, s.ProducerID+"-nodes-") || s.Connection != "ssh" && s.Connection != "local" || s.HostKeyPolicy != "strict" && s.HostKeyPolicy != "accept-new" {
 		return s, errors.New("invalid Dispatch static settings")
 	}
 	return s, nil

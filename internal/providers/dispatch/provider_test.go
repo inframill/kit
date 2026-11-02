@@ -3,6 +3,7 @@ package dispatch
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -110,6 +111,13 @@ func TestSelectorsAndArtifactBinding(t *testing.T) {
 
 func TestPrerequisitesValidatesInputsWithoutEffects(t *testing.T) {
 	d, scope, settings, nodes := fixture(t)
+	for _, id := range []any{"../ansible", "/ansible", "a/b", "with space", true} {
+		scope.Settings["known_hosts_provider_id"] = id
+		if err := d.ValidateSettings(t.Context(), scope.Settings); err == nil {
+			t.Fatalf("accepted invalid known hosts provider ID %v", id)
+		}
+	}
+	delete(scope.Settings, "known_hosts_provider_id")
 	before, _ := artifacts.SourceHash(scope.WorkspaceDir)
 	p, err := d.loadExecution(t.Context(), scope, "push", runmill.Arguments{"directory": "api"})
 	if err != nil || p.scope.WorkspaceDir != scope.WorkspaceDir {
@@ -253,7 +261,7 @@ func TestArtifactRetirementAndCancellation(t *testing.T) {
 
 // Exercise real copies, secret delivery and Make; the SSH variant substitutes
 // only the network boundary, executing the actual remote scripts locally.
-func testWorkflow(t *testing.T, useSSH bool) {
+func testWorkflow(t *testing.T, useSSH bool, knownHostsProviderID string) {
 	t.Helper()
 	d, scope, settings, nodes := fixture(t)
 	var logs bytes.Buffer
@@ -266,6 +274,14 @@ func testWorkflow(t *testing.T, useSSH bool) {
 	if useSSH {
 		scope.Settings["connection"] = "ssh"
 		scope.Settings["host_key_policy"] = "accept-new"
+		if knownHostsProviderID != "" {
+			scope.Settings["known_hosts_provider_id"] = knownHostsProviderID
+		}
+		scope.ArtifactDir = filepath.Join(t.TempDir(), "instance's \"storage\"", "artifacts")
+		if err := os.MkdirAll(scope.ArtifactDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		nodes.ArtifactScope = artifacts.Scope(scope.ArtifactDir)
 		directory.Become = true
 		directory.LegacyExclude = []string{"**/*.env", ".hidden"}
 		settings.Directories["api"] = directory
@@ -374,6 +390,14 @@ exec /bin/cp -pR -- "$1" "$destination"
 	if useSSH {
 		ssh, _ := os.ReadFile(filepath.Join(scope.WorkspaceDir, "ssh-arguments"))
 		scp, _ := os.ReadFile(filepath.Join(scope.WorkspaceDir, "scp-arguments"))
+		if knownHostsProviderID == "" {
+			knownHostsProviderID = "ansible"
+		}
+		knownHosts := filepath.Join(scope.ArtifactDir, knownHostsProviderID+"-known_hosts")
+		option := []byte(fmt.Sprintf("-o\nUserKnownHostsFile=%q\n", knownHosts))
+		if !bytes.Contains(ssh, option) || !bytes.Contains(scp, option) {
+			t.Fatalf("SSH and SCP did not use the Instance known hosts option %q", option)
+		}
 		if !bytes.Contains(ssh, []byte("StrictHostKeyChecking=accept-new")) || !bytes.Contains(scp, []byte("-r\n")) {
 			t.Fatal("missing SSH policy or recursive SCP", string(ssh), string(scp))
 		}
@@ -383,8 +407,12 @@ exec /bin/cp -pR -- "$1" "$destination"
 	}
 }
 
-func TestLocalPushAndMake(t *testing.T) { testWorkflow(t, false) }
-func TestSCPAndSSH(t *testing.T)        { testWorkflow(t, true) }
+func TestLocalPushAndMake(t *testing.T) { testWorkflow(t, false, "") }
+func TestSCPAndSSH(t *testing.T) {
+	for _, id := range []string{"", "guest-setup"} {
+		t.Run(id, func(t *testing.T) { testWorkflow(t, true, id) })
+	}
+}
 
 func TestMultipleDirectoriesPreflightPushAndOrderedMake(t *testing.T) {
 	d, scope, settings, nodes := fixture(t)
