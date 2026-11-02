@@ -64,7 +64,7 @@
     "certificate": "-----BEGIN CERTIFICATE-----\nREPLACE_WITH_YOUR_PEM_CERTIFICATE_CHAIN\n-----END CERTIFICATE-----\n"
   },
   "millway": {
-    "image": "ghcr.io/inframill/millway:0.1.6-dev",
+    "image": "ghcr.io/inframill/millway:0.1.7-dev",
     "google_client_ids": {
       "web": "894742453283-2rjik40fijulguiff5dtirutbqckce49.apps.googleusercontent.com"
     },

@@ -296,7 +296,7 @@ Configure Millway in Values:
 
 ```json
 "millway": {
-  "image": "ghcr.io/inframill/millway:0.1.6-dev",
+  "image": "ghcr.io/inframill/millway:0.1.7-dev",
   "google_client_ids": {"web": "YOUR_CLIENT_ID.apps.googleusercontent.com"},
   "admin_emails": ["admin@example.com"]
 }

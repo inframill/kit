@@ -43,7 +43,7 @@ def prepare_payload(root, database_payload=None):
         'nodes': {name: {'roles': ['common', 'docker', role]} for name, role in
                   [('data-1', 'data'), ('worker-1', 'worker'), ('web-1', 'web')]},
         'postgres': {},
-        'millway': {'image': 'ghcr.io/inframill/millway:0.1.6-dev',
+        'millway': {'image': 'ghcr.io/inframill/millway:0.1.7-dev',
                     'google_client_ids': {'web': 'test-web.apps.googleusercontent.com'}},
     }
     (payload / 'settings.json').write_text(json.dumps(document))
